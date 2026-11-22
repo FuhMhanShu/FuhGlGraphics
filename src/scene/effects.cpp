@@ -21,6 +21,18 @@ void Effects::applyTo(render::DeferredRenderer& renderer) const {
     renderer.setShadowStrength(params.shadowStrength);
     renderer.setShadowSceneBounds(params.shadowCenter, params.shadowRadius);
     renderer.setShadowZRange(params.shadowZNear, params.shadowZFar);
+    // F45 shadow-kit parameters
+    renderer.setShadowFilter(params.shadowFilter);
+    renderer.shadowSnapToTexels = params.shadowSnapToTexels;
+    renderer.shadowCascadeBlend = params.shadowCascadeBlend;
+    renderer.shadowLightSize = params.shadowLightSize;
+    renderer.shadowMinVariance = params.shadowMinVariance;
+    renderer.shadowNormalOffset = params.shadowNormalOffset;
+    renderer.shadowPcfRadius = params.shadowPcfRadius;
+    // (width() > 0: the renderer was create()d, so a GL context is current and the
+    //  cube map can be allocated)
+    if (enabled(render::Effect::PointShadows) && !renderer.pointShadowEnabled() && renderer.width() > 0)
+        renderer.enablePointShadow(-1, 1024); // first point light of the frame, cube map 1024^2
 }
 
 } // namespace fuhglgraphics::scene

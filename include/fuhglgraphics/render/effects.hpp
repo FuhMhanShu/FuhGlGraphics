@@ -20,13 +20,15 @@ enum class Effect {
     Upscale,    ///< FSR1-style EASU+RCAS upscaling when renderScale < 1
     Tonemap,    ///< ACES tonemap + gamma in the final pass (off = raw clamped HDR)
     Msaa,       ///< multisampled G-buffer + resolve (create() parameter, not runtime-toggleable)
-    Shadows,    ///< single depth shadow map (FuhGLCore ShadowMap, F15)
-    CsmShadows, ///< cascaded shadow maps (FuhGLCore CascadeShadowMap, F30)
+    Shadows,    ///< single depth shadow map (FuhGLCore ShadowMap on the F45 shadow kit, F15/F46)
+    CsmShadows, ///< cascaded shadow maps (FuhGLCore CascadeShadowMap on the F45 shadow kit, F30/F46)
     Ibl,        ///< image-based lighting from SceneView::env (F29)
+    PointShadows,   ///< cube depth map for one point light (FuhGLCore CubeShadowMap, F46 shadow kit)
+    ContactShadows, ///< screen-space raymarched contact shadows on the shadow light (F46)
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 7;
+constexpr int kEffectCount = 9;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -38,6 +40,8 @@ inline const char* effectName(Effect e) {
         case Effect::Shadows: return "shadows";
         case Effect::CsmShadows: return "CSM shadows";
         case Effect::Ibl: return "IBL";
+        case Effect::PointShadows: return "point shadows";
+        case Effect::ContactShadows: return "contact shadows";
     }
     return "unknown";
 }

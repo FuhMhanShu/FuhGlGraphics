@@ -11,7 +11,9 @@ requirements [G1–G11](docs/REQUIREMENTS.md).
 
 ## Dependencies
 
-- **FuhGLCore (direct)** — GL loading, windowing, math, pipelines. Resolved by CMake in
+- **FuhGLCore (direct)** — GL loading, windowing, math, pipelines. Needs `main` at
+  `9fc991c` or newer (the F45 shadow kit the G3 renderer's shadows are built on).
+  Resolved by CMake in
   this order: `-DFUHGLGRAPHICS_FUHGLCORE_DIR=<path>` (local checkout, `add_subdirectory`)
   → `find_package(FuhGLCore)` (installed) → FetchContent fallback from
   `github.com/FuhMhanShu/FuhGLCore` (`FUHGLGRAPHICS_FUHGLCORE_GIT_TAG`, default `main`).

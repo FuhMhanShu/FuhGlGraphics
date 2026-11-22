@@ -110,6 +110,13 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out docs/images/ci/g9_landscape_sky_sun_fog_rays.png --width 1280 --height 720 --frames 24
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out docs/images/ci/g9_landscape_no_rays.png --width 1280 --height 720 --frames 24 --no-rays
 
+      - name: Render G9 landscape screenshots on the FuhGLCore shadow kit (PCSS/VSM/PCF/lamp)
+        run: |
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out docs/images/ci/g9_landscape_shadowkit_pcss.png --width 1280 --height 720 --frames 24 --shadow-filter pcss --light-size 0.8
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out docs/images/ci/g9_landscape_shadowkit_vsm.png --width 1280 --height 720 --frames 24 --shadow-filter vsm
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out docs/images/ci/g9_landscape_shadowkit_pcf3x3.png --width 1280 --height 720 --frames 24 --shadow-filter pcf3x3 --cascade-blend 0
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out docs/images/ci/g9_landscape_shadowkit_lamp.png --width 1280 --height 720 --frames 24 --shadow-filter pcss --light-size 0.8 --point-shadows --contact-shadows
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)

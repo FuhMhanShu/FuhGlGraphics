@@ -120,6 +120,64 @@ int main() {
         return 1;
     }
 
+    // F45/F46 shadow-kit smoke: switch the CSM filter pcf3x3 -> pcss -> vsm (moments
+    // attachment is recreated on the VSM switch) and render a frame each — the frame
+    // must stay lit and no GL error may occur. Then a point light with a cube shadow map.
+    auto readCenter = [&](unsigned char out[4]) {
+        renderer.output().bind();
+        fuhgl::gl::readPixels(W / 2, H / 2, 1, 1, fuhgl::gl::GL_RGBA, fuhgl::gl::GL_UNSIGNED_BYTE, out);
+        fuhgl::gl::flush();
+    };
+    for (const auto f : {fuhgl::render::ShadowFilter::Pcf3x3, fuhgl::render::ShadowFilter::Pcss,
+                         fuhgl::render::ShadowFilter::Vsm, fuhgl::render::ShadowFilter::PoissonPcf}) {
+        renderer.setShadowFilter(f);
+        renderer.render(scene, &materialIds);
+        unsigned char px[4] = {0, 0, 0, 0};
+        readCenter(px);
+        std::fprintf(stderr, "gl_smoke_render: filter %d center=(%d,%d,%d,%d)\n",
+                     static_cast<int>(f), px[0], px[1], px[2], px[3]);
+        if (!(px[3] == 255 && px[0] > 20)) {
+            std::fprintf(stderr, "gl_smoke_render: FAIL (frame not lit with filter %d)\n", static_cast<int>(f));
+            return 1;
+        }
+        if (fuhgl::gl::lastError() != fuhgl::gl::Error::NoError) {
+            std::fprintf(stderr, "gl_smoke_render: FAIL (GL error with filter %d)\n", static_cast<int>(f));
+            return 1;
+        }
+    }
+    renderer.setShadowFilter(fuhgl::render::ShadowFilter::Pcf3x3);
+    // point-light cube shadow (F46): add a point light, enable Effect::PointShadows via
+    // the map, render — frame must stay lit, cube map must be allocated
+    scene.lights.push_back(fuhgl::render::Light::point({0.f, 3.f, 2.f}, {1.f, 0.8f, 0.6f}, 20.f, 30.f));
+    renderer.enablePointShadow(-1, 512);
+    renderer.setEffectEnabled(fuhglgraphics::render::Effect::PointShadows, true);
+    renderer.render(scene, &materialIds);
+    {
+        unsigned char px[4] = {0, 0, 0, 0};
+        readCenter(px);
+        std::fprintf(stderr, "gl_smoke_render: point-shadow center=(%d,%d,%d,%d) cubeSize=%d\n", px[0], px[1],
+                     px[2], px[3], renderer.pointShadowMap() ? renderer.pointShadowMap()->size() : 0);
+        if (!(px[3] == 255 && px[0] > 20) || !renderer.pointShadowEnabled() ||
+            !renderer.pointShadowMap() || renderer.pointShadowMap()->size() != 512) {
+            std::fprintf(stderr, "gl_smoke_render: FAIL (point shadow path)\n");
+            return 1;
+        }
+    }
+    // contact shadows on the shadow light (F46)
+    renderer.contactShadowsEnabled = true;
+    renderer.render(scene, &materialIds);
+    {
+        unsigned char px[4] = {0, 0, 0, 0};
+        readCenter(px);
+        if (!(px[3] == 255 && px[0] > 20)) {
+            std::fprintf(stderr, "gl_smoke_render: FAIL (contact shadows frame not lit)\n");
+            return 1;
+        }
+    }
+    renderer.contactShadowsEnabled = false;
+    renderer.disablePointShadow();
+    scene.lights.pop_back();
+
     // render-scale path: internal resolution halves, output stays full size
     renderer.setRenderScale(0.5f);
     if (renderer.internalWidth() != W / 2 || renderer.internalHeight() != H / 2 ||

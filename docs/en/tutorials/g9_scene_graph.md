@@ -106,3 +106,28 @@ Same scene with the god rays off (`--no-rays`) — the light shafts toward the s
 
 Reproduce: `cmake --build build --target fuhglgraphics_landscape_screenshot` then
 `FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out shot.png --width 1280 --height 720 --frames 24 [--no-rays] [--no-fog] [--no-clouds] [--no-shadows] [--no-ibl]`.
+
+## Landscape on the FuhGLCore shadow kit (F45/F46)
+
+The G3 renderer's shadows run on FuhGLCore's shadow kit: cascade light VPs are texel-snapped
+(`shadowSnapToTexels`, no more swimming at the splits), cascades cross-fade near the split
+planes (`shadowCascadeBlend`), and the sampling filter is selectable per frame via
+`--shadow-filter pcf3x3|poisson|pcss|vsm` (`EffectParams::shadowFilter` →
+`DeferredRenderer::setShadowFilter`; VSM renders RGBA32F moments into an extra attachment).
+PCSS gives soft, penumbra-wide tree shadows (`--light-size`):
+
+![G9 landscape, PCSS soft shadows + god rays](../../images/g9_landscape_shadowkit_pcss.png)
+
+VSM (variance shadow map, Chebyshev-filtered) and the legacy hard 3x3 PCF for comparison:
+
+![G9 landscape, VSM shadows](../../images/g9_landscape_shadowkit_vsm.png)
+
+![G9 landscape, legacy 3x3 PCF, hard cascade switch](../../images/g9_landscape_shadowkit_pcf3x3.png)
+
+`--point-shadows` adds a warm lamp point light whose cube shadow map (F46 `CubeShadowMap`)
+and `--contact-shadows` (screen-space raymarch against the G-buffer depth) darken the
+lamp's surroundings contact-accurately:
+
+![G9 landscape, lamp with point-light cube shadow + contact shadows](../../images/g9_landscape_shadowkit_lamp.png)
+
+Reproduce: add `[--shadow-filter pcss] [--light-size 0.8] [--cascade-blend 0.25] [--point-shadows] [--contact-shadows] [--no-snap]` to the command above.

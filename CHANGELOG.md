@@ -108,3 +108,21 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   renders any glTF model headless to PNG; reference images `docs/images/g4_*.png`
   (Kenney CC0 ship/chest, pinned commit — see the G4 tutorial). G4 tutorial in
   `docs/en/tutorials/g4_gltf_loader.md` + German translation.
+- **G3 shadows on the FuhGLCore F45 shadow kit** (requires FuhGLCore >= `9fc991c`, PR #42
+  "shadow kit"): `ShadowMap`/`CascadeShadowMap` are now thin wrappers over
+  `ShadowTarget`; the G3 `DeferredRenderer` gained `setShadowFilter(ShadowFilter)`
+  (Pcf3x3 legacy / PoissonPcf / Pcss / Vsm — VSM renders RGBA32F moments into an extra
+  attachment), `shadowSnapToTexels` (texel-snapped cascade VPs, no swimming),
+  `shadowCascadeBlend` (cross-fade near the splits), normal-offset bias, and the GLSL
+  snippets are composed from `fuhgl/render/shadow_glsl.hpp` (`kSkFuncs`). New:
+  `enablePointShadow()` (F46 `CubeShadowMap` for one point light, Effect::PointShadows)
+  and `contactShadowsEnabled` (screen-space raymarched contact shadows against the
+  G-buffer depth in the lighting pass, Effect::ContactShadows). `render::Effect` gained
+  `PointShadows` + `ContactShadows` (kEffectCount = 9); `scene::EffectParams` gained
+  shadowFilter/snap/cascadeBlend/lightSize/minVariance/normalOffset/pcfRadius, applied
+  by `Effects::applyTo()`. Sky cubemap moved from texture unit 11 to 16 (kit uses 11–15).
+  `examples/landscape_screenshot` gained `--shadow-filter/--cascade-blend/--light-size/
+  --point-shadows/--contact-shadows/--no-snap`; new reference images
+  `docs/images/g9_landscape_shadowkit_{pcss,vsm,pcf3x3,lamp}.png`; gl_smoke_render now
+  exercises all filters + point/contact shadows. Docs: USER_GUIDE, REQUIREMENTS §6,
+  G9 tutorials (en/de) embed the new screenshots; CI docs-screenshots renders them.
