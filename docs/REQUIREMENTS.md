@@ -70,6 +70,19 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   background pixels (`setSkyCubemap`, unit 11) and occlusion-tested god rays in the
   tonemap pass (`renderer.godRays`, G-buffer depth as occluder) — demoed by
   `examples/landscape_screenshot` (`docs/images/g9_landscape_sky_sun_fog_rays.png`).
+  Shadows run on the **FuhGLCore F45 shadow kit** (FuhGLCore >= `9fc991c`, PR #42):
+  `ShadowMap`/`CascadeShadowMap` are thin wrappers over `ShadowTarget` there;
+  `DeferredRenderer::setShadowFilter(ShadowFilter)` selects the sampling filter
+  (legacy 3x3 PCF / poisson PCF / PCSS / VSM with RGBA32F moments attachment), the GLSL
+  comes from `fuhgl/render/shadow_glsl.hpp` (`kSkFuncs`); cascade VPs are texel-snapped
+  (`shadowSnapToTexels`, `snapLightVPToTexels`) with optional cross-fade at the splits
+  (`shadowCascadeBlend`); `enablePointShadow()` adds a `CubeShadowMap` for one point light
+  (Effect::PointShadows); `contactShadowsEnabled` raymarches the G-buffer depth in the
+  lighting pass (Effect::ContactShadows). Sky cubemap moved to texture unit 16 (the kit
+  occupies 11–15). New effects in `render::Effect`: `PointShadows`, `ContactShadows`;
+  new `EffectParams` fields: `shadowFilter`, `shadowSnapToTexels`, `shadowCascadeBlend`,
+  `shadowLightSize`, `shadowMinVariance`, `shadowNormalOffset`, `shadowPcfRadius`.
+  Screenshots: `docs/images/g9_landscape_shadowkit_{pcss,vsm,pcf3x3,lamp}.png`.
 - **G9** — implemented: `fuhglgraphics::scene::Scene` / `Node` / components
   (`include/fuhglgraphics/scene/`, `src/scene/`): local TRS + world matrices, children,
   polymorphic component list (`MeshComponent` with several `MeshEntry` meshes per node —

@@ -10,6 +10,7 @@
 #include "../render/effects.hpp"
 
 #include <fuhgl/math/vec.hpp>
+#include <fuhgl/render/shadow_kit.hpp>
 
 #include <algorithm>
 #include <vector>
@@ -32,6 +33,14 @@ struct EffectParams {
     float shadowRadius = 10.f;       ///< shadow scene bounds radius
     float shadowZNear = 0.5f;        ///< camera depth range the cascades cover
     float shadowZFar = 200.f;
+    // --- F45 shadow-kit parameters (Effect::Shadows/CsmShadows/PointShadows/ContactShadows) ---
+    fuhgl::render::ShadowFilter shadowFilter = fuhgl::render::ShadowFilter::Pcf3x3; ///< sampling filter
+    bool shadowSnapToTexels = true;  ///< snap cascade light VPs to the texel grid (less swimming)
+    float shadowCascadeBlend = 0.f;  ///< CSM cross-fade fraction of a cascade span
+    float shadowLightSize = 1.f;     ///< PCSS: world-space light size (penumbra width)
+    float shadowMinVariance = 5e-4f; ///< VSM: min-variance clamp against light bleeding
+    float shadowNormalOffset = 0.f;  ///< normal-offset bias in shadow-map texels
+    float shadowPcfRadius = 2.f;     ///< poisson-PCF kernel radius in texels
     // --- create-time parameters (used at DeferredRenderer::create / enable*CsmShadows) ---
     float renderScale = 1.f;         ///< internal resolution scale for Effect::Upscale
     int msaaSamples = 0;             ///< MSAA samples of the G-buffer (Effect::Msaa)

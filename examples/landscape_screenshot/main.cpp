@@ -7,6 +7,8 @@
 // Usage: fuhglgraphics_landscape_screenshot --out file.png [--width 1280] [--height 720]
 //          [--frames 16] [--scale 1.0] [--msaa 0] [--no-rays] [--no-fog]
 //          [--no-clouds] [--no-shadows] [--no-ibl]
+//          [--shadow-filter pcf3x3|poisson|pcss|vsm] [--cascade-blend 0.25]
+//          [--light-size 0.6] [--point-shadows] [--contact-shadows] [--no-snap]
 //
 // Exit code 2 when no headless GL context is available.
 
@@ -33,6 +35,9 @@ struct Args {
     int width = 1280, height = 720, frames = 16, msaa = 0;
     float scale = 1.f;
     bool rays = true, fog = true, clouds = true, shadows = true, ibl = true;
+    std::string shadowFilter = "pcss"; // pcf3x3 | poisson | pcss | vsm (F45 shadow kit)
+    float cascadeBlend = 0.25f, lightSize = 0.6f;
+    bool pointShadows = false, contactShadows = false, snap = true;
 };
 
 Args parseArgs(int argc, char** argv) {
@@ -49,6 +54,12 @@ Args parseArgs(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--no-clouds") == 0) a.clouds = false;
         else if (std::strcmp(argv[i], "--no-shadows") == 0) a.shadows = false;
         else if (std::strcmp(argv[i], "--no-ibl") == 0) a.ibl = false;
+        else if (std::strcmp(argv[i], "--shadow-filter") == 0 && i + 1 < argc) a.shadowFilter = argv[++i];
+        else if (std::strcmp(argv[i], "--cascade-blend") == 0 && i + 1 < argc) a.cascadeBlend = std::atof(argv[++i]);
+        else if (std::strcmp(argv[i], "--light-size") == 0 && i + 1 < argc) a.lightSize = std::atof(argv[++i]);
+        else if (std::strcmp(argv[i], "--point-shadows") == 0) a.pointShadows = true;
+        else if (std::strcmp(argv[i], "--contact-shadows") == 0) a.contactShadows = true;
+        else if (std::strcmp(argv[i], "--no-snap") == 0) a.snap = false;
     }
     return a;
 }
@@ -197,6 +208,19 @@ int main(int argc, char** argv) {
     scene.root().effects.params.shadowRadius = 90.f;
     scene.root().effects.params.shadowZNear = 0.5f;
     scene.root().effects.params.shadowZFar = 300.f;
+    // F45 shadow-kit effect toggles (the effect LIST is a union over all nodes, so root is fine)
+    if (args.contactShadows) scene.root().effects.enable(render::Effect::ContactShadows);
+    if (args.pointShadows) {
+        scene.root().effects.enable(render::Effect::PointShadows);
+        // a warm lamp on the terrain near the view corridor — the first point light gets
+        // the cube shadow map (F46)
+        const float lampX = 4.f, lampZ = -8.f;
+        const float lampY = terrain.heightAt(lampX, lampZ) + 2.2f;
+        scene::Node& lamp = scene.root().createChild("lamp");
+        lamp.translation = {lampX, lampY, lampZ};
+        lamp.attach<scene::LightComponent>().light =
+            fuhgl::render::Light::point({lampX, lampY, lampZ}, {1.0f, 0.62f, 0.30f}, 260.f, 40.f);
+    }
 
     scene.root().createChild("camera").attach<scene::CameraComponent>().camera = &cam;
 
@@ -266,8 +290,22 @@ int main(int argc, char** argv) {
     if (!args.shadows) {
         frame.effects.disable(render::Effect::Shadows);
         frame.effects.disable(render::Effect::CsmShadows);
+        frame.effects.disable(render::Effect::PointShadows);
+        frame.effects.disable(render::Effect::ContactShadows);
     }
     if (!args.ibl) frame.effects.disable(render::Effect::Ibl);
+    // F45 shadow-kit params: set on the MERGED frame params (per-node merge would let the
+    // last-visited child overwrite root params, so set them after fillFrame)
+    if (args.shadowFilter == "poisson") frame.effects.params.shadowFilter = fuhgl::render::ShadowFilter::PoissonPcf;
+    else if (args.shadowFilter == "pcss") frame.effects.params.shadowFilter = fuhgl::render::ShadowFilter::Pcss;
+    else if (args.shadowFilter == "vsm") frame.effects.params.shadowFilter = fuhgl::render::ShadowFilter::Vsm;
+    else frame.effects.params.shadowFilter = fuhgl::render::ShadowFilter::Pcf3x3;
+    frame.effects.params.shadowCascadeBlend = args.cascadeBlend;
+    frame.effects.params.shadowLightSize = args.lightSize;
+    frame.effects.params.shadowSnapToTexels = args.snap;
+    std::fprintf(stderr, "landscape_screenshot: lights=%zu items=%zu pointShadowFx=%d\n",
+                 frame.view.lights.size(), frame.view.items.size(),
+                 frame.effects.enabled(render::Effect::PointShadows) ? 1 : 0);
     frame.effects.applyTo(renderer);
     frame.view.env = args.ibl ? &env : nullptr;
     frame.view.fogColor = {0.95f, 0.80f, 0.62f}; // warm haze

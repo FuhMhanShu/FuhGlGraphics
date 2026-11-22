@@ -31,6 +31,11 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   fuhglgraphics::render::DeferredRenderer renderer;
   renderer.create(1280, 720, /*msaaSamples=*/0);   // needs a current GL >= 3.3 context
   renderer.enableCsmShadows(2048, 4);              // shadows via FuhGLCore CascadeShadowMap
+  renderer.setShadowFilter(fuhgl::render::ShadowFilter::Pcss); // F45 shadow kit: pcf3x3|poisson|pcss|vsm
+  // renderer.shadowSnapToTexels = true;            // texel-snapped cascade VPs (less swimming)
+  // renderer.shadowCascadeBlend = 0.25f;           // cross-fade cascades near the splits
+  // renderer.enablePointShadow(-1, 1024);          // cube shadow map for the first point light
+  // renderer.contactShadowsEnabled = true;         // screen-space contact shadows (F46)
   renderer.setRenderScale(0.75f);                  // internal res 75%, FSR1-style upscale
   // per frame:
   renderer.render(scene);                          // fuhgl::render::SceneView

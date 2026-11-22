@@ -6,8 +6,11 @@
 ///
 /// - extended G-buffer (GBufferAttachment): albedo+normal, metallic/roughness/AO,
 ///   HDR emissive, motion vectors (for TAA), material ID (for G8 decals), optional MSAA
-/// - PBR lighting pass reusing FuhGLCore lights (LightBlock UBO), shadows
-///   (ShadowMap / CascadeShadowMap) and IBL (render::Environment)
+/// - PBR lighting pass reusing FuhGLCore lights (LightBlock UBO), shadows and IBL
+///   (render::Environment); shadows run on the FuhGLCore F45 shadow kit
+///   (ShadowTarget/ShadowMap/CascadeShadowMap/CubeShadowMap, texel snapping, poisson/PCSS/VSM
+///   filters, cascade cross-fade, point-light cube shadows, contact shadows  —  GLSL snippets
+///   from fuhgl/render/shadow_glsl.hpp)
 /// - own post chain on fuhgl::render::RenderGraph: TAA -> FSR1-style upscaling
 ///   (EASU+RCAS) -> ACES tonemap, each with a per-effect toggle
 /// - F39/F40-style capability gating: unsupported effects are refused with a warning
@@ -25,6 +28,7 @@
 #include <fuhgl/render/material.hpp>
 #include <fuhgl/render/scene.hpp>
 #include <fuhgl/render/shadow.hpp>
+#include <fuhgl/render/shadow_kit.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -33,9 +37,10 @@
 
 namespace fuhglgraphics::render {
 
-/// @brief Texture unit of the optional sky cubemap in the lighting pass (11; FuhGLCore's
-/// built-in pipelines use units 3..10).
-inline constexpr int kTextureUnitSkyCube = 11;
+/// @brief Texture unit of the optional sky cubemap in the lighting pass. 16 because the
+/// F46 shadow kit occupies units 11..15 (moments 2D/array, point cube depth/moments,
+/// scene depth); FuhGLCore's built-in pipelines use units 3..10.
+inline constexpr int kTextureUnitSkyCube = 16;
 
 /// @brief G3 deferred renderer. Usage: create(w, h) once with a current GL context,
 /// then per frame fill a fuhgl::render::SceneView and call render(scene).
@@ -131,7 +136,8 @@ public:
     /// @brief True when the current GPU can run this effect at all (pure mapping, F39).
     bool effectSupported(Effect e) const { return render::effectSupported(e, glMajor_, glMinor_); }
 
-    // --- shadows (reusing FuhGLCore ShadowMap / CascadeShadowMap) --------------------
+    // --- shadows on the FuhGLCore F45 shadow kit (ShadowMap/CascadeShadowMap are thin
+    // wrappers over ShadowTarget there; CubeShadowMap covers point lights) -------------
     void enableShadows(int mapSize = 2048);
     void disableShadows() { shadows_ = false; }
     bool shadowsEnabled() const { return shadows_; }
@@ -146,6 +152,40 @@ public:
     void setShadowStrength(float s) { shadowStrength_ = s; }
     /// @brief Camera depth range the cascades cover; default 0.5 .. 200.
     void setShadowZRange(float zn, float zf) { shadowZNear_ = zn; shadowZFar_ = zf; }
+
+    /// @brief Shadow sampling filter of the shadow light (F46 ShadowFilter): legacy 3x3
+    /// PCF (default, bit-identical to before), poisson-disk PCF, PCSS (blocker search +
+    /// penumbra-sized kernel, needs shadowLightSize) or VSM (renders RGBA32F moments into
+    /// an extra attachment  —  recreated automatically when the filter changes).
+    fuhgl::render::ShadowFilter shadowFilter = fuhgl::render::ShadowFilter::Pcf3x3;
+    void setShadowFilter(fuhgl::render::ShadowFilter f);
+    /// @brief Snap each cascade light VP to the shadow-map texel grid (F45
+    /// snapLightVPToTexels inside CascadeShadowMap)  —  kills sub-texel shadow swimming.
+    bool shadowSnapToTexels = true;
+    /// @brief CSM cross-fade fraction of a cascade span near the split (0 = hard switch).
+    float shadowCascadeBlend = 0.f;
+    float shadowLightSize = 1.f;     ///< PCSS: world-space light size (penumbra width)
+    float shadowMinVariance = 5e-4f;  ///< VSM: min-variance clamp against light bleeding
+    float shadowNormalOffset = 0.f;  ///< normal-offset bias, in shadow-map texels
+    float shadowPcfRadius = 2.f;      ///< poisson-PCF kernel radius in texels
+
+    /// @brief Cube shadow map for one point light (F46 CubeShadowMap, Effect::PointShadows).
+    /// `lightIndex` = index into SceneView::lights, -1 = the first point light of the frame.
+    void enablePointShadow(int lightIndex = -1, int mapSize = 1024);
+    void disablePointShadow() { pointShadows_ = false; }
+    bool pointShadowEnabled() const { return pointShadows_; }
+    fuhgl::render::CubeShadowMap* pointShadowMap() { return pointShadows_ ? &pointShadowMap_ : nullptr; }
+    /// @brief Depth range of the point-light cube map.
+    void setPointShadowRange(float zn, float zf) { pointShadowNear_ = zn; pointShadowFar_ = zf; }
+    void setPointShadowStrength(float s) { pointShadowStrength_ = s; }
+
+    /// @brief Screen-space contact shadows on the shadow light (F46, Effect::ContactShadows):
+    /// raymarched in the lighting pass against the G-buffer depth. Off by default.
+    bool contactShadowsEnabled = false;
+    float contactShadowStrength = 1.f;
+    float contactShadowMaxDist = 3.f;    ///< raymarch length in world units
+    float contactShadowThickness = 0.2f; ///< depth thickness treated as occluder
+    int contactShadowSteps = 16;         ///< raymarch steps
 
     /// @brief Frames rendered with TAA so far (0 after reset) — introspection/tests.
     unsigned frameIndex() const { return frameIndex_; }
@@ -185,6 +225,13 @@ private:
     fuhgl::math::Vec3 shadowCenter_{0.f, 0.f, 0.f};
     float shadowRadius_ = 10.f;
     float shadowStrength_ = 1.f;
+    bool pointShadows_ = false;  ///< F46: point-light cube shadow requested
+    int pointShadowLightIndex_ = -1;
+    int activePointShadowLightIndex_ = -1; ///< resolved during render() (-1 = none this frame)
+    int pointShadowSize_ = 1024;
+    float pointShadowNear_ = 0.5f, pointShadowFar_ = 100.f;
+    float pointShadowStrength_ = 1.f;
+    fuhgl::render::CubeShadowMap pointShadowMap_; ///< F46: allocated when pointShadows_
 
     const fuhgl::Texture* skyCube_ = nullptr;
     int glMajor_ = 0, glMinor_ = 0;

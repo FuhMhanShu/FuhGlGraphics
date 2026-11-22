@@ -149,6 +149,38 @@ layout(std140) uniform LightBlock { // bound to binding point 0 from C++ (GLSL 3
 };
 )GLSL";
 
+// --- F45 shadow-kit uniforms (fuhgl/render/shadow_glsl.hpp kSkFuncs expects these; the
+// ones already declared in kLightFragHead \u2014 uShadowMap, uShadowMapArray, uLightVP,
+// uLightVPs, uView, uCascadeCount, uCascadeSplits \u2014 are NOT redeclared here) ----------
+constexpr const char* kLightFragKit = R"GLSL(
+uniform sampler2D uShadowMoments;           // unit 11 (kTextureUnitShadowMoments, VSM 2D)
+uniform sampler2DArray uShadowMomentsArray; // unit 12 (VSM array, matches the CSM)
+uniform samplerCube uShadowCube;            // unit 13 (point-light cube depth)
+uniform samplerCube uShadowCubeMoments;     // unit 14 (point-light cube VSM moments)
+uniform sampler2D uSceneDepth;              // unit 5 = uGDepth (contact shadows)
+uniform vec3 uLightPos;                     // point-shadow light position
+uniform float uShadowFar;                   // point-shadow far plane (cube depth normalize)
+uniform float uNormalOffset;               // normal-offset bias, world units
+uniform float uLightSize;                   // PCSS world-space light size
+uniform float uShadowWorldWidth;            // PCSS: world width covered by one map layer
+uniform float uMinVariance;                 // VSM min variance
+uniform int uShadowFilterMode;              // 0 = 3x3 PCF, 1 = poisson PCF, 2 = PCSS, 3 = VSM
+uniform float uShadowBlend;                 // CSM cross-fade fraction of a cascade span
+uniform float uPcfRadius;                   // poisson PCF kernel radius in texels
+uniform float uShadowRotation;              // per-frame poisson disk rotation (anti-shimmer)
+uniform int uPointShadows;                  // 1 = sample uShadowCube for uPointShadowLightIndex
+uniform int uPointShadowLightIndex;
+uniform float uPointShadowStrength;
+uniform float uPointShadowRadius;           // cube PCF kernel radius in world units
+uniform int uContactShadows;                // 1 = screen-space contact shadows on the shadow light
+uniform float uContactShadowStrength;
+uniform float uContactShadowMaxDist;
+uniform float uContactShadowThickness;
+uniform int uContactShadowSteps;
+uniform mat4 uProj;                         // camera projection (contact shadows)
+uniform float uCsZNear, uCsZFar;            // camera near/far (contact shadows)
+)GLSL";
+
 constexpr const char* kLightFragPbr = R"GLSL(
 float distributionGGX(float ndoth, float roughness) {
     float a2 = roughness * roughness * roughness * roughness;
@@ -184,6 +216,7 @@ void lightVector(int i, vec3 worldPos, out vec3 L, out float atten) {
         }
     }
 }
+// legacy 3x3 PCF (bit-identical to the pre-kit behavior, ShadowFilter::Pcf3x3)
 float pcf2D(vec2 uv, float z, float bias, sampler2D map) {
     vec2 texel = 1.0 / vec2(textureSize(map, 0));
     float sum = 0.0;
@@ -204,22 +237,75 @@ float pcfArray(vec2 uv, float z, float bias, int layer) {
         }
     return sum / 9.0;
 }
-float shadowFactor(vec3 worldPos, vec3 N, vec3 L) {
-    float bias = max(0.0015 * (1.0 - dot(N, L)), 0.0004);
-    if (uShadowMode == 1) {
-        float viewDepth = -(uView * vec4(worldPos, 1.0)).z;
-        int cascade = uCascadeCount - 1;
-        for (int i = 0; i < uCascadeCount; ++i)
-            if (viewDepth <= uCascadeSplits[i + 1]) { cascade = i; break; }
-        vec4 lp = uLightVPs[cascade] * vec4(worldPos, 1.0);
-        vec3 p = lp.xyz / lp.w * 0.5 + 0.5;
-        if (p.z > 1.0 || p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) return 1.0;
-        return pcfArray(p.xy, p.z, bias, cascade);
+// PCSS on a 2D-array layer (kit provides the 2D variant; the array variant is this wrapper)
+float pcssBlockerArray(sampler2DArray map, vec2 uv, float z, float bias, float searchTexels, int layer,
+                       int taps, float rotation) {
+    vec2 texel = 1.0 / vec2(textureSize(map, 0).xy);
+    float sum = 0.0, cnt = 0.0;
+    for (int i = 0; i < taps; ++i) {
+        vec2 off = shadowPoissonTap(i, taps, rotation) * searchTexels * texel;
+        float d = texture(map, vec3(uv + off, float(layer))).r;
+        if (z - bias > d) { sum += d; cnt += 1.0; }
     }
-    vec4 lp = uLightVP * vec4(worldPos, 1.0);
-    vec3 p = lp.xyz / lp.w * 0.5 + 0.5;
-    if (p.z > 1.0 || p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) return 1.0;
+    return cnt > 0.0 ? sum / cnt : z;
+}
+float pcssArray(sampler2DArray map, vec2 uv, float z, float bias, float lightSize, float worldWidth,
+                int layer, int blockerTaps, int filterTaps, float rotation) {
+    float mapSize = float(textureSize(map, 0).x);
+    float searchTexels = clamp(lightSize / max(worldWidth, 1e-6) * mapSize, 1.0, 64.0);
+    float blocker = pcssBlockerArray(map, uv, z, bias, searchTexels, layer, blockerTaps, rotation);
+    float penumbraTexels = searchTexels * (z - blocker) / max(blocker, 1e-4);
+    return pcfPoissonArray(map, uv, z, bias, clamp(penumbraTexels, 1.0, 64.0), layer, filterTaps, rotation);
+}
+// one filter mode applied to one cascade layer / the single 2D map
+float filterArray(vec3 p, float bias, int layer) {
+    if (uShadowFilterMode == 3) return vsmArray2D(uShadowMomentsArray, p.xy, p.z, uMinVariance, layer);
+    if (uShadowFilterMode == 2)
+        return pcssArray(uShadowMapArray, p.xy, p.z, bias, uLightSize, uShadowWorldWidth, layer, 8, 12, uShadowRotation);
+    if (uShadowFilterMode == 1)
+        return pcfPoissonArray(uShadowMapArray, p.xy, p.z, bias, uPcfRadius, layer, 12, uShadowRotation);
+    return pcfArray(p.xy, p.z, bias, layer);
+}
+float filter2D(vec3 p, float bias) {
+    if (uShadowFilterMode == 3) return vsm2D(uShadowMoments, p.xy, p.z, uMinVariance);
+    if (uShadowFilterMode == 2)
+        return pcss2D(uShadowMap, p.xy, p.z, bias, uLightSize, uShadowWorldWidth, 8, 12, uShadowRotation);
+    if (uShadowFilterMode == 1)
+        return pcfPoisson2D(uShadowMap, p.xy, p.z, bias, uPcfRadius, 12, uShadowRotation);
     return pcf2D(p.xy, p.z, bias, uShadowMap);
+}
+// shadow factor of the shadow light, using the F45 kit functions (shadow_glsl.hpp kSkFuncs)
+float shadowFactor(vec3 worldPos, vec3 N, vec3 L) {
+    float bias = shadowBiasSlope(N, L, 0.0015, 0.0004);
+    vec3 wp = shadowWorldPos(worldPos, N, uNormalOffset);
+    if (uShadowMode == 1) {
+        float viewDepth = -(uView * vec4(wp, 1.0)).z;
+        int c = cascadeSelect(viewDepth);
+        vec3 p = shadowNdc(uLightVPs[c], wp);
+        if (!shadowInBounds(p)) return 1.0;
+        float sh = filterArray(p, bias, c);
+        if (uShadowBlend > 0.0 && c < uCascadeCount - 1) {
+            float span = max(uCascadeSplits[c + 1] - uCascadeSplits[c], 1e-6);
+            float t = clamp((viewDepth - (uCascadeSplits[c + 1] - uShadowBlend * span)) /
+                                max(uShadowBlend * span, 1e-6), 0.0, 1.0);
+            if (t > 0.0) {
+                vec3 p2 = shadowNdc(uLightVPs[c + 1], wp);
+                if (shadowInBounds(p2)) sh = mix(sh, filterArray(p2, bias, c + 1), t);
+            }
+        }
+        return sh;
+    }
+    vec3 p = shadowNdc(uLightVP, wp);
+    if (!shadowInBounds(p)) return 1.0;
+    return filter2D(p, bias);
+}
+// point-light cube shadow (kit cubeShadow / cubeShadowMoments)
+float pointShadowFactor(vec3 worldPos, vec3 N, vec3 L) {
+    float bias = shadowBiasSlope(N, L, 0.002, 0.0005);
+    vec3 wp = shadowWorldPos(worldPos, N, uNormalOffset);
+    if (uShadowFilterMode == 3)
+        return cubeShadowMoments(uShadowCubeMoments, wp, uLightPos, uShadowFar, uMinVariance);
+    return cubeShadow(uShadowCube, wp, uLightPos, uShadowFar, bias, uPointShadowRadius, 8);
 }
 vec3 pbrDirect(vec3 albedo, float metallic, float roughness, vec3 N, vec3 V, vec3 L, vec3 radiance) {
     vec3 H = normalize(L + V);
@@ -256,6 +342,16 @@ vec3 shade(vec3 albedo, float metallic, float roughness, float ao, vec3 N, vec3 
         float sh = 1.0;
         if (uShadowEnabled == 1 && i == uShadowLightIndex)
             sh = mix(1.0, shadowFactor(worldPos, N, L), uShadowStrength);
+        if (uPointShadows == 1 && i == uPointShadowLightIndex)
+            sh *= mix(1.0, pointShadowFactor(worldPos, N, L), uPointShadowStrength);
+        if (uContactShadows == 1 && i == uShadowLightIndex) {
+            vec3 viewPos = (uView * vec4(worldPos, 1.0)).xyz;
+            vec3 dirView = normalize((uView * vec4(L, 0.0)).xyz);
+            float jitter = fract(dot(gl_FragCoord.xy, vec2(0.5, 0.25)));
+            float cs = contactShadow(viewPos, dirView, uContactShadowMaxDist, uContactShadowThickness,
+                                     uContactShadowSteps, jitter);
+            sh *= mix(1.0, cs, uContactShadowStrength);
+        }
         acc += pbrDirect(albedo, metallic, roughness, N, V, L, lightColor[i].rgb * atten) * sh;
     }
     return acc;

@@ -1,5 +1,9 @@
 # FuhGlGraphics — Development (technical)
 
+FuhGLCore must be `main` at commit `9fc991c` or newer (F45 shadow kit — the G3
+renderer's shadows use `ShadowTarget`/`CubeShadowMap` and the `shadow_glsl.hpp`
+snippets; `FUHGLGRAPHICS_FUHGLCORE_GIT_TAG` defaults to `main`).
+
 This is the *development-technical* part: layout, conventions, build, tests, CI.
 The descriptive part is the [README](../README.md) and [USER_GUIDE.md](USER_GUIDE.md);
 the agreed requirements are in [REQUIREMENTS.md](REQUIREMENTS.md).

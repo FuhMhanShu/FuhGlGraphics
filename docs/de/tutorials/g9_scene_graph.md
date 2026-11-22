@@ -108,3 +108,29 @@ Dieselbe Szene ohne God Rays (`--no-rays`) — die Lichtstrahlen zur Sonne versc
 
 Nachbauen: `cmake --build build --target fuhglgraphics_landscape_screenshot`, dann
 `FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out shot.png --width 1280 --height 720 --frames 24 [--no-rays] [--no-fog] [--no-clouds] [--no-shadows] [--no-ibl]`.
+
+## Landschaft auf dem FuhGLCore-Shadow-Kit (F45/F46)
+
+Die Schatten des G3-Renderers laufen auf dem Shadow-Kit von FuhGLCore: Die Cascade-Licht-VPs
+werden auf das Texelraster gesnappt (`shadowSnapToTexels`, kein "Schwimmen" mehr an den
+Split-Ebenen), Kaskaden blenden nahe den Splits weich über (`shadowCascadeBlend`), und der
+Sampling-Filter ist pro Frame wählbar: `--shadow-filter pcf3x3|poisson|pcss|vsm`
+(`EffectParams::shadowFilter` → `DeferredRenderer::setShadowFilter`; VSM rendert
+RGBA32F-Moments in ein zusätzliches Attachment). PCSS liefert weiche, penumbra-breite
+Baumschatten (`--light-size`):
+
+![G9 Landschaft, PCSS weiche Schatten + God Rays](../../images/g9_landscape_shadowkit_pcss.png)
+
+VSM (Variance Shadow Map, Chebyshev-gefiltert) und der Legacy-3x3-PCF zum Vergleich:
+
+![G9 Landschaft, VSM-Schatten](../../images/g9_landscape_shadowkit_vsm.png)
+
+![G9 Landschaft, Legacy-3x3-PCF, harter Kaskaden-Wechsel](../../images/g9_landscape_shadowkit_pcf3x3.png)
+
+`--point-shadows` fügt eine warme Lampen-Punktlichtquelle hinzu, deren Cube-Schattenmap
+(F46 `CubeShadowMap`) zusammen mit `--contact-shadows` (Screen-Space-Raymarch gegen den
+G-Buffer-Depth) die Lampen-Umgebung kontaktgenau abdunkelt:
+
+![G9 Landschaft, Lampe mit Punktlicht-Cube-Shadow + Contact Shadows](../../images/g9_landscape_shadowkit_lamp.png)
+
+Nachbauen: obigen Befehl um `[--shadow-filter pcss] [--light-size 0.8] [--cascade-blend 0.25] [--point-shadows] [--contact-shadows] [--no-snap]` erweitern.

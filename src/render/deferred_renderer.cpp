@@ -4,6 +4,7 @@
 
 #include <fuhgl/fuhgl.hpp>
 #include <fuhgl/render/lod.hpp>
+#include <fuhgl/render/shadow_glsl.hpp>
 
 #include <algorithm>
 #include <cstdio>
@@ -52,6 +53,11 @@ struct DeferredRenderer::Impl {
     fuhgl::Texture dummyShadowArrayTex{fuhgl::Texture::Target::Tex2DArray};
     fuhgl::Texture dummyCube{fuhgl::Texture::Target::Cube};
     fuhgl::Texture dummy2D{fuhgl::Texture::Target::Tex2D};
+    // F46 shadow-kit dummies (keep the lighting pass complete when a sampler is unused)
+    fuhgl::Texture dummyMomentsTex{fuhgl::Texture::Target::Tex2D};        // RGBA32F 2D (unit 11)
+    fuhgl::Texture dummyMomentsArrayTex{fuhgl::Texture::Target::Tex2DArray}; // RGBA32F array (unit 12)
+    fuhgl::Texture dummyShadowCubeTex{fuhgl::Texture::Target::Cube};       // depth cube (unit 13)
+    fuhgl::Texture dummyCubeMomentsTex{fuhgl::Texture::Target::Cube};      // RGBA32F cube (unit 14)
 };
 
 DeferredRenderer::DeferredRenderer() : impl_(std::make_unique<Impl>()) {}
@@ -191,7 +197,8 @@ bool DeferredRenderer::createInternal() {
             return false;
         }
     }
-    const std::string lightFrag = std::string(kLightFragHead) + kLightFragPbr + kLightFragTail;
+    const std::string lightFrag = std::string(kLightFragHead) + kLightFragKit +
+                                  fuhgl::render::kSkFuncs + kLightFragPbr + kLightFragTail;
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
         !compilePostFs(im.taaMat, kTaaFrag, "taa") ||
         !compilePostFs(im.upscaleMat, kUpscaleFrag, "upscale") ||
@@ -206,8 +213,11 @@ bool DeferredRenderer::createInternal() {
     im.fsVao.bind();
 
     // --- recreate shadow maps when they were enabled before a (re)create ---
-    if (shadows_ && shadowSize_ > 0) impl_->shadowMap.create(shadowSize_);
-    if (csmEnabled_ && csmSize_ > 0) impl_->csm.create(csmSize_, csmCascades_);
+    // (F46: VSM additionally renders RGBA32F moments into a second attachment)
+    const bool moments = shadowFilter == fuhgl::render::ShadowFilter::Vsm;
+    if (shadows_ && shadowSize_ > 0) impl_->shadowMap.create(shadowSize_, moments);
+    if (csmEnabled_ && csmSize_ > 0) impl_->csm.create(csmSize_, csmCascades_, moments);
+    if (pointShadows_ && pointShadowSize_ > 0) pointShadowMap_.create(pointShadowSize_, moments);
 
     // --- dummy samplers keep the lighting pass complete when shadows/IBL are off ---
     im.dummyShadowTex.bind();
@@ -218,9 +228,13 @@ bool DeferredRenderer::createInternal() {
     im.dummyShadowArrayTex.texStorage3D(1, fuhgl::gl::GL_DEPTH_COMPONENT24, 1, 1, 1);
     im.dummyShadowArrayTex.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_NEAREST);
     im.dummyShadowArrayTex.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_NEAREST);
+    const fuhgl::Texture::CubeFace cubeFaces[6] = {
+        fuhgl::Texture::CubeFace::PosX, fuhgl::Texture::CubeFace::NegX, fuhgl::Texture::CubeFace::PosY,
+        fuhgl::Texture::CubeFace::NegY, fuhgl::Texture::CubeFace::PosZ, fuhgl::Texture::CubeFace::NegZ,
+    };
     im.dummyCube.bind();
     for (int face = 0; face < 6; ++face)
-        im.dummyCube.setImageCubeFace(static_cast<fuhgl::Texture::CubeFace>(face), 0, fuhgl::gl::GL_RGBA8, 1,
+        im.dummyCube.setImageCubeFace(cubeFaces[face], 0, fuhgl::gl::GL_RGBA8, 1,
                                       fuhgl::gl::GL_RGBA, fuhgl::gl::GL_UNSIGNED_BYTE, nullptr);
     im.dummyCube.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_NEAREST);
     im.dummyCube.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_NEAREST);
@@ -228,6 +242,29 @@ bool DeferredRenderer::createInternal() {
     im.dummy2D.texStorage2D(1, fuhgl::gl::GL_RG16F, 1, 1);
     im.dummy2D.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_NEAREST);
     im.dummy2D.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_NEAREST);
+    // F46 shadow-kit dummies: VSM moments 2D/array (RGBA32F), point cube depth + moments
+    im.dummyMomentsTex.bind();
+    im.dummyMomentsTex.texStorage2D(1, fuhgl::gl::GL_RGBA32F, 1, 1);
+    im.dummyMomentsTex.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_LINEAR);
+    im.dummyMomentsTex.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_LINEAR);
+    im.dummyMomentsArrayTex.bind();
+    im.dummyMomentsArrayTex.texStorage3D(1, fuhgl::gl::GL_RGBA32F, 1, 1, 1);
+    im.dummyMomentsArrayTex.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_LINEAR);
+    im.dummyMomentsArrayTex.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_LINEAR);
+    im.dummyShadowCubeTex.bind();
+    for (int face = 0; face < 6; ++face)
+        im.dummyShadowCubeTex.setImageCubeFace(cubeFaces[face], 0,
+                                               fuhgl::gl::GL_DEPTH_COMPONENT24, 1, fuhgl::gl::GL_DEPTH_COMPONENT,
+                                               fuhgl::gl::GL_FLOAT, nullptr);
+    im.dummyShadowCubeTex.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_NEAREST);
+    im.dummyShadowCubeTex.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_NEAREST);
+    im.dummyCubeMomentsTex.bind();
+    for (int face = 0; face < 6; ++face)
+        im.dummyCubeMomentsTex.setImageCubeFace(cubeFaces[face], 0,
+                                                fuhgl::gl::GL_RGBA32F, 1, fuhgl::gl::GL_RGBA, fuhgl::gl::GL_FLOAT,
+                                                nullptr);
+    im.dummyCubeMomentsTex.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_LINEAR);
+    im.dummyCubeMomentsTex.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_LINEAR);
 
     // --- post graph: lighting -> TAA -> upscale -> tonemap ---
     const fuhgl::Texture& gAlbedo = msaa_ > 0 ? im.rAlbedo : im.texAlbedo;
@@ -387,7 +424,10 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     }
 
     // --- shadow depth pass: CSM (first directional light) or single map ---
+    // (F45 kit: cascade VPs are texel-snapped when shadowSnapToTexels is set)
+    activePointShadowLightIndex_ = -1;
     if (csmEnabled_ && impl_->csm.cascadeCount() > 0) {
+        impl_->csm.snapToTexels = shadowSnapToTexels;
         for (std::size_t i = 0; i < s.lights.size(); ++i) {
             if (s.lights[i].type == fuhgl::render::LightType::Directional) {
                 impl_->csm.render(*shadowView, *s.camera, s.lights[i], shadowCenter_, shadowRadius_, shadowZNear_, shadowZFar_);
@@ -406,6 +446,20 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
                 s.shadowMap = &impl_->shadowMap;
                 s.shadowLightIndex = static_cast<int>(i);
                 s.shadowStrength = shadowStrength_;
+                break;
+            }
+        }
+    }
+
+    // --- F46: point-light cube shadow (first point light, or the requested index) ---
+    if (pointShadows_ && pointShadowMap_.size() > 0) {
+        for (std::size_t i = 0; i < s.lights.size(); ++i) {
+            const bool match = pointShadowLightIndex_ >= 0
+                                   ? static_cast<int>(i) == pointShadowLightIndex_
+                                   : s.lights[i].type == fuhgl::render::LightType::Point;
+            if (match && s.lights[i].type == fuhgl::render::LightType::Point) {
+                pointShadowMap_.render(*shadowView, s.lights[i], pointShadowNear_, pointShadowFar_);
+                activePointShadowLightIndex_ = static_cast<int>(i);
                 break;
             }
         }
@@ -466,6 +520,22 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
     fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitShadowMapArray);
     f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D_ARRAY,
                     s.cascades ? s.cascades->textureId() : im.dummyShadowArrayTex.id());
+    // F46 VSM moments (units 11/12; dummies when the filter is not VSM)
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitShadowMoments);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D,
+                    s.shadowMap && s.shadowMap->moments() ? s.shadowMap->momentsTextureId() : im.dummyMomentsTex.id());
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitShadowMomentsArray);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D_ARRAY,
+                    s.cascades && s.cascades->moments() ? s.cascades->momentsTextureId() : im.dummyMomentsArrayTex.id());
+    // F46 point-light cube shadow (units 13/14; dummies when off)
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitShadowCube);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_CUBE_MAP,
+                    activePointShadowLightIndex_ >= 0 ? pointShadowMap_.textureId() : im.dummyShadowCubeTex.id());
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitShadowCubeMoments);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_CUBE_MAP,
+                    activePointShadowLightIndex_ >= 0 && pointShadowMap_.moments()
+                        ? pointShadowMap_.momentsTextureId()
+                        : im.dummyCubeMomentsTex.id());
     // IBL samplers (units 7/8/9; dummies when off)
     fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitIrradiance);
     f.glBindTexture(fuhgl::gl::GL_TEXTURE_CUBE_MAP, s.env ? s.env->irradianceMap().id() : im.dummyCube.id());
@@ -485,6 +555,11 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
         p.setUniform(p.uniformLocation("uGDepth"), 5);
         p.setUniform(p.uniformLocation("uShadowMap"), fuhgl::render::kTextureUnitShadowMap);
         p.setUniform(p.uniformLocation("uShadowMapArray"), fuhgl::render::kTextureUnitShadowMapArray);
+        p.setUniform(p.uniformLocation("uShadowMoments"), fuhgl::render::kTextureUnitShadowMoments);
+        p.setUniform(p.uniformLocation("uShadowMomentsArray"), fuhgl::render::kTextureUnitShadowMomentsArray);
+        p.setUniform(p.uniformLocation("uShadowCube"), fuhgl::render::kTextureUnitShadowCube);
+        p.setUniform(p.uniformLocation("uShadowCubeMoments"), fuhgl::render::kTextureUnitShadowCubeMoments);
+        p.setUniform(p.uniformLocation("uSceneDepth"), 5); // = uGDepth
         p.setUniform(p.uniformLocation("uIrradianceMap"), fuhgl::render::kTextureUnitIrradiance);
         p.setUniform(p.uniformLocation("uPrefilterMap"), fuhgl::render::kTextureUnitPrefilter);
         p.setUniform(p.uniformLocation("uBrdfLut"), fuhgl::render::kTextureUnitBrdfLut);
@@ -524,6 +599,37 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
             p.setUniform(p.uniformLocation("uShadowEnabled"), 0);
             p.setUniform(p.uniformLocation("uShadowMode"), 0);
         }
+        // --- F45 shadow-kit filter/params (GLSL: fuhgl::render::kSkFuncs) ---
+        p.setUniform(p.uniformLocation("uShadowFilterMode"), static_cast<int>(shadowFilter));
+        p.setUniform("uShadowBlend", shadowCascadeBlend);
+        p.setUniform("uLightSize", shadowLightSize);
+        p.setUniform("uShadowWorldWidth", shadowRadius_ * 2.f);
+        p.setUniform("uMinVariance", shadowMinVariance);
+        p.setUniform("uPcfRadius", shadowPcfRadius);
+        p.setUniform("uShadowRotation", static_cast<float>(frameIndex_ % 64) * 0.7f);
+        const float mapSize = csm ? static_cast<float>(s.cascades->size())
+                                  : static_cast<float>(s.shadowMap ? s.shadowMap->size() : 1024);
+        p.setUniform("uNormalOffset", shadowNormalOffset * (shadowRadius_ * 2.f / mapSize));
+        // point-light cube shadow (F46)
+        if (activePointShadowLightIndex_ >= 0 && activePointShadowLightIndex_ < static_cast<int>(s.lights.size())) {
+            p.setUniform(p.uniformLocation("uPointShadows"), 1);
+            p.setUniform(p.uniformLocation("uPointShadowLightIndex"), activePointShadowLightIndex_);
+            p.setUniform("uPointShadowStrength", pointShadowStrength_);
+            p.setUniform("uPointShadowRadius", shadowLightSize * 0.02f + 0.01f);
+            p.setUniform("uLightPos", s.lights[static_cast<std::size_t>(activePointShadowLightIndex_)].position);
+            p.setUniform("uShadowFar", pointShadowMap_.farPlane());
+        } else {
+            p.setUniform(p.uniformLocation("uPointShadows"), 0);
+        }
+        // contact shadows (F46): raymarch against the G-buffer depth in the lighting pass
+        p.setUniform(p.uniformLocation("uContactShadows"), contactShadowsEnabled ? 1 : 0);
+        p.setUniform("uContactShadowStrength", contactShadowStrength);
+        p.setUniform("uContactShadowMaxDist", contactShadowMaxDist);
+        p.setUniform("uContactShadowThickness", contactShadowThickness);
+        p.setUniform(p.uniformLocation("uContactShadowSteps"), contactShadowSteps);
+        p.setUniform("uProj", s.camera->projection(s.aspect));
+        p.setUniform("uCsZNear", s.camera->zNear());
+        p.setUniform("uCsZFar", s.camera->zFar());
     });
 }
 
@@ -619,6 +725,8 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::Shadows, shadows_);
     gate(Effect::CsmShadows, csmEnabled_);
     gate(Effect::Ibl, iblEnabled_);
+    gate(Effect::PointShadows, pointShadows_);
+    gate(Effect::ContactShadows, contactShadowsEnabled);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -629,6 +737,11 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::Ibl: iblEnabled_ = on; break;
         case Effect::Shadows: shadows_ = on; break;
         case Effect::CsmShadows: csmEnabled_ = on; break;
+        case Effect::PointShadows:
+            // the cube map itself is allocated by enablePointShadow() (needs a GL context)
+            pointShadows_ = on;
+            break;
+        case Effect::ContactShadows: contactShadowsEnabled = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -652,20 +765,23 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::Shadows: return shadows_;
         case Effect::CsmShadows: return csmEnabled_;
         case Effect::Ibl: return iblEnabled_;
+        case Effect::PointShadows: return pointShadows_;
+        case Effect::ContactShadows: return contactShadowsEnabled;
     }
     return false;
 }
 
 void DeferredRenderer::setAllEffects(bool on) {
     taaEnabled_ = upscaleEnabled_ = tonemapEnabled_ = iblEnabled_ = shadows_ = csmEnabled_ = on;
+    pointShadows_ = contactShadowsEnabled = on;
     applyCapabilities();
 }
 
-// --- shadows --------------------------------------------------------------------------
+// --- shadows (on the FuhGLCore F45 shadow kit) -----------------------------------------
 void DeferredRenderer::enableShadows(int mapSize) {
     if (mapSize <= 0) return;
     shadowSize_ = mapSize;
-    impl_->shadowMap.create(mapSize);
+    impl_->shadowMap.create(mapSize, shadowFilter == fuhgl::render::ShadowFilter::Vsm);
     shadows_ = true;
 }
 
@@ -673,8 +789,30 @@ void DeferredRenderer::enableCsmShadows(int mapSize, int cascades) {
     if (mapSize <= 0 || cascades <= 0) return;
     csmSize_ = mapSize;
     csmCascades_ = cascades;
-    impl_->csm.create(mapSize, cascades);
+    impl_->csm.create(mapSize, cascades, shadowFilter == fuhgl::render::ShadowFilter::Vsm);
+    impl_->csm.snapToTexels = shadowSnapToTexels;
     csmEnabled_ = true;
+}
+
+void DeferredRenderer::setShadowFilter(fuhgl::render::ShadowFilter f) {
+    if (f == shadowFilter) return;
+    const bool hadMoments = shadowFilter == fuhgl::render::ShadowFilter::Vsm;
+    const bool wantMoments = f == fuhgl::render::ShadowFilter::Vsm;
+    shadowFilter = f;
+    // VSM needs the RGBA32F moments attachment — recreate the targets when it toggles
+    if (hadMoments != wantMoments && impl_) {
+        if (shadows_ && shadowSize_ > 0) impl_->shadowMap.create(shadowSize_, wantMoments);
+        if (csmEnabled_ && csmSize_ > 0) impl_->csm.create(csmSize_, csmCascades_, wantMoments);
+        if (pointShadows_ && pointShadowSize_ > 0) pointShadowMap_.create(pointShadowSize_, wantMoments);
+    }
+}
+
+void DeferredRenderer::enablePointShadow(int lightIndex, int mapSize) {
+    if (mapSize <= 0) return;
+    pointShadowLightIndex_ = lightIndex;
+    pointShadowSize_ = mapSize;
+    pointShadowMap_.create(mapSize, shadowFilter == fuhgl::render::ShadowFilter::Vsm);
+    pointShadows_ = true;
 }
 
 } // namespace fuhglgraphics::render
