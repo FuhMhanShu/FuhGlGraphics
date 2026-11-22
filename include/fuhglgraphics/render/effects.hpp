@@ -25,10 +25,11 @@ enum class Effect {
     Ibl,        ///< image-based lighting from SceneView::env (F29)
     PointShadows,   ///< cube depth map for one point light (FuhGLCore CubeShadowMap, F46 shadow kit)
     ContactShadows, ///< screen-space raymarched contact shadows on the shadow light (F46)
+    Particles,      ///< G5 particle systems (compute on GL >= 4.3, CPU fallback below)
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 9;
+constexpr int kEffectCount = 10;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -42,6 +43,7 @@ inline const char* effectName(Effect e) {
         case Effect::Ibl: return "IBL";
         case Effect::PointShadows: return "point shadows";
         case Effect::ContactShadows: return "contact shadows";
+        case Effect::Particles: return "particles";
     }
     return "unknown";
 }

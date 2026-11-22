@@ -7,6 +7,8 @@
 /// ID), LightComponent, CameraComponent. Decal / particle-emitter / probe components attach
 /// the same way once G8 / G5 / G7 land.
 
+#include "../particles/particle_system.hpp"
+
 #include <fuhgl/cam/camera.hpp>
 #include <fuhgl/math.hpp>
 #include <fuhgl/render/light.hpp>
@@ -99,6 +101,18 @@ public:
 class CameraComponent : public Component {
 public:
     fuhgl::Camera* camera = nullptr;
+};
+
+/// @brief G5 particle-emitter component: owns one particles::ParticleSystem plus its
+/// EmitterConfig. fill() registers the system in FrameData::particleSystems; the app calls
+/// system.update(dt) per frame and passes the systems to DeferredRenderer::render(...).
+/// create() needs a current GL context (compute path on GL >= 4.3, CPU fallback below).
+class ParticleEmitterComponent : public Component {
+public:
+    particles::EmitterConfig config;      ///< edit, then call system.setEmitter(config)
+    particles::ParticleSystem system;     ///< create(maxParticles, config) once with a GL context
+
+    void fill(const Node& node, FrameData& frame) const override; // defined in component.cpp
 };
 
 } // namespace fuhglgraphics::scene

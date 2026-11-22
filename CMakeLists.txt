@@ -44,6 +44,7 @@ add_library(fuhglgraphics STATIC
     src/scene/scene.cpp
     src/io/json.cpp
     src/io/gltf.cpp
+    src/particles/particle_system.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 

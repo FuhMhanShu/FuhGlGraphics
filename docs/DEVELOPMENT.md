@@ -17,6 +17,8 @@ include/fuhglgraphics/   public API (headers)
   render/                 G3 deferred renderer (implemented: deferred_renderer.hpp,
                           effects.hpp, gbuffer.hpp)
   io/                     G4 glTF 2.0 loader (implemented: json.hpp, gltf.hpp)
+  particles/              G5 GPU particle system (implemented: particle_system.hpp;
+                          compute on GL >= 4.3, CPU fallback below)
   scene/                  G9 scene graph (implemented: component.hpp, effects.hpp,
                           node.hpp, scene.hpp)
   editor/                 G2+G11 minimal Qt6 editor (planned, WITH_QT only)
@@ -24,6 +26,7 @@ src/                      implementations (PIMPL targets)
   version.cpp
   render/                 G3 implementation + GLSL (deferred_renderer.cpp, deferred_glsl.hpp)
   io/                     G4 implementation (json.cpp, gltf.cpp)
+  particles/              G5 implementation (particle_system.cpp, particle_glsl.hpp)
   scene/                  G9 implementation (component.cpp, effects.cpp, node.cpp, scene.cpp)
 examples/                 screenshot tools (render demo scenes headless to PNG):
                           screenshot/ = G3 demo (flat SceneView), scene_screenshot/ = G9
@@ -109,14 +112,19 @@ nothing on some Qt6 qmake versions).
   upload, material-ID readback, normal-map path, effect params changing the output).
   G4: `gl_smoke_gltf.cpp` (fixture .glb → `io::loadGltf` + `io::instantiateGltf` → renderer:
   node world transforms on draw items, material-ID readback, material presets, lit pixels).
+  G5: `gl_smoke_particles.cpp` (ParticleSystem create/update on GL >= 4.3 compute or CPU
+  fallback, alive count, renderer particles pass brightens the emitter region).
   Unit tests for the pure parts live in `tests/test_render.cpp` / `tests/test_scene.cpp` /
-  `tests/test_io.cpp` (JSON, base64, glTF fixtures; PNG decode roundtrip when `WITH_QT=ON`).
+  `tests/test_io.cpp` (JSON, base64, glTF fixtures; PNG decode roundtrip when `WITH_QT=ON`) /
+  `tests/test_particles.cpp` (CpuSim emit/integrate/determinism).
 - `examples/screenshot` — renders the G3 demo scene headless into a PNG;
   `examples/scene_screenshot` — the G9 demo scene (scene graph) with CLI effect switches;
   `examples/landscape_screenshot` — the G9 landscape (vegetation, cloud sky cubemap,
   sun disk, fog, god rays; `--no-rays/--no-fog/--no-clouds/--no-shadows/--no-ibl`);
   `examples/gltf_demo` — G4: renders any glTF 2.0 model (`--model x.glb --out shot.png`,
-  `--no-shadows/--no-ibl/--no-rays/--no-sky/--no-tex`) headless into a PNG
+  `--no-shadows/--no-ibl/--no-rays/--no-sky/--no-tex`) headless into a PNG;
+  `examples/particles_screenshot` — G5: campfire/smoke/pollen particle demo
+  (`--kind fire|smoke|pollen|all`, `--no-particles/--no-shadows/--no-rays`) headless to PNG
   (all used for the reference images in `docs/images/`, locally and by the CI
   `docs-screenshots` job).
 

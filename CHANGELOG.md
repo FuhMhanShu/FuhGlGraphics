@@ -126,3 +126,18 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   `docs/images/g9_landscape_shadowkit_{pcss,vsm,pcf3x3,lamp}.png`; gl_smoke_render now
   exercises all filters + point/contact shadows. Docs: USER_GUIDE, REQUIREMENTS §6,
   G9 tutorials (en/de) embed the new screenshots; CI docs-screenshots renders them.
+- **G5 — GPU particle system** (`fuhglgraphics::particles`, `include/fuhglgraphics/particles/`,
+  `src/particles/`): `ParticleSystem` (PIMPL) with emitter + integrate compute shaders over
+  an SSBO on GL >= 4.3 (same pattern as FuhGLCore's GpuCuller — the SSBO doubles as the
+  divisor-1 instance-attribute buffer), rendered as instanced camera-facing billboards;
+  on GL 3.3–4.2 the identical math runs on the CPU (`CpuSim`, pure/unit-tested) and streams
+  into a dynamic VBO. The G3 DeferredRenderer gained a "particles" post pass (hdr -> hdrP,
+  before TAA): additive/alpha blend, radial falloff, life fade, soft-particle depth fade
+  against the G-buffer depth. New `render::Effect::Particles` (kEffectCount = 10); G9
+  integration via `scene::ParticleEmitterComponent` -> `FrameData::particleSystems` ->
+  `DeferredRenderer::render(..., &particleSystems)`.
+  Tests: `tests/test_particles.cpp` (unit: CpuSim) + `tests/gl_smoke_particles.cpp`
+  (gl_context: gpu() vs GL version, aliveCount, brighter emitter region, no GL error).
+  New tool `examples/particles_screenshot` (`--kind fire|smoke|pollen|all`) with reference
+  images `docs/images/g5_particles_{fire,smoke,pollen,all_nofx}.png`. G5 tutorial en/de;
+  USER_GUIDE/REQUIREMENTS/READMEs/DEVELOPMENT updated; CI docs-screenshots renders them.

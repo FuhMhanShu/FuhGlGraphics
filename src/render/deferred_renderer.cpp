@@ -1,5 +1,7 @@
 #include "fuhglgraphics/render/deferred_renderer.hpp"
 
+#include <fuhglgraphics/particles/particle_system.hpp>
+
 #include "deferred_glsl.hpp"
 
 #include <fuhgl/fuhgl.hpp>
@@ -43,7 +45,7 @@ struct DeferredRenderer::Impl {
         rMotion{fuhgl::Texture::Target::Tex2D}, rMatId{fuhgl::Texture::Target::Tex2D};
     fuhgl::Texture texOutput{fuhgl::Texture::Target::Tex2D};
 
-    fuhgl::render::Material gbufferMat, lightingMat, taaMat, upscaleMat, tonemapMat;
+    fuhgl::render::Material gbufferMat, lightingMat, taaMat, upscaleMat, tonemapMat, copyMat;
     fuhgl::UniformBuffer lightsUbo;
     fuhgl::VertexArray fsVao;
     fuhgl::render::RenderGraph post;
@@ -202,7 +204,8 @@ bool DeferredRenderer::createInternal() {
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
         !compilePostFs(im.taaMat, kTaaFrag, "taa") ||
         !compilePostFs(im.upscaleMat, kUpscaleFrag, "upscale") ||
-        !compilePostFs(im.tonemapMat, kTonemapFrag, "tonemap")) {
+        !compilePostFs(im.tonemapMat, kTonemapFrag, "tonemap") ||
+        !compilePostFs(im.copyMat, kCopyFrag, "copy")) {
         return false;
     }
     im.lightingMat.program().bindUniformBlock("LightBlock", 0);
@@ -280,11 +283,14 @@ bool DeferredRenderer::createInternal() {
     im.post.addExternal("gMatId", &(msaa_ > 0 ? im.rMatId : im.texMatId), iw, ih);
     im.post.addExternal("gDepth", &im.texDepth, iw, ih);
     im.post.addResource("hdr", iw, ih, fuhgl::gl::GL_RGBA16F);
+    im.post.addResource("hdrP", iw, ih, fuhgl::gl::GL_RGBA16F); // hdr + G5 particles
     im.post.addResource("taa", iw, ih, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("up", width_, height_, fuhgl::gl::GL_RGBA16F);
     im.post.addPass("lighting", {"gAlbedo", "gNormal", "gPbr", "gEmissive", "gDepth"}, {"hdr"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawLighting(ctx); });
-    im.post.addPass("taa", {"hdr", "gMotion", "taa"}, {"taa"},
+    im.post.addPass("particles", {"hdr", "gDepth"}, {"hdrP"},
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawParticles(ctx); });
+    im.post.addPass("taa", {"hdrP", "gMotion", "taa"}, {"taa"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTaa(ctx); }, /*feedback=*/true);
     im.post.addPass("upscale", {"taa"}, {"up"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawUpscale(ctx); });
@@ -401,10 +407,12 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
 
 void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
                               const std::vector<std::uint32_t>* materialIds,
-                              const std::vector<bool>* castShadow) {
+                              const std::vector<bool>* castShadow,
+                              const std::vector<const particles::ParticleSystem*>* particleSystems) {
     if (!scene.camera || width_ <= 0) return;
     fuhgl::render::SceneView s = scene;
     applyCapabilities();
+    curParticles_ = particleSystems;
 
     if (s.env && !effectEnabled(Effect::Ibl)) {
         s.env = nullptr; // gated in applyCapabilities() with a one-time warning
@@ -493,6 +501,31 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     impl_->post.execute();
     if (taaOn) ++frameIndex_;
     curScene_ = nullptr;
+    curParticles_ = nullptr;
+}
+
+// G5 particles post pass: copy hdr -> hdrP, then draw each system's instanced billboards
+// (blended, depth-tested against the G-buffer depth) into hdrP.
+void DeferredRenderer::drawParticles(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "hdr");
+    ctx.bindInput(1, "gDepth");
+    Impl& im = *impl_;
+    drawFs(im.copyMat, [&](fuhgl::Program& p) { p.setUniform(p.uniformLocation("uSrc"), 0); });
+    if (!effectEnabled(Effect::Particles) || !curParticles_ || curParticles_->empty() || !curScene_) return;
+    const fuhgl::render::SceneView& s = *curScene_;
+    // the pass target hdrP has no depth attachment — occlusion is done in the billboard
+    // shader against uSceneDepth (unit 1 = gDepth), with a soft-particle distance fade
+    for (const particles::ParticleSystem* ps : *curParticles_) {
+        if (!ps || !ps->isReady()) continue;
+        ps->beginPass(*s.camera, s.aspect, internalWidth_, internalHeight_, 1);
+        if (ps->emitter().blend == particles::BlendMode::Additive)
+            fuhgl::gl::blendFunc(fuhgl::gl::BlendFactor::One, fuhgl::gl::BlendFactor::One);
+        else
+            fuhgl::gl::blendFunc(fuhgl::gl::BlendFactor::SrcAlpha, fuhgl::gl::BlendFactor::OneMinusSrcAlpha);
+        fuhgl::gl::enable(fuhgl::gl::Cap::Blend);
+        ps->drawPass();
+        fuhgl::gl::disable(fuhgl::gl::Cap::Blend);
+    }
 }
 
 void DeferredRenderer::drawFs(fuhgl::render::Material& mat,
@@ -634,7 +667,7 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
 }
 
 void DeferredRenderer::drawTaa(fuhgl::render::RenderGraph::PassContext& ctx) {
-    ctx.bindInput(0, "hdr");
+    ctx.bindInput(0, "hdrP"); // lighting + G5 particles
     ctx.bindInput(1, "gMotion");
     ctx.bindInput(2, "taa");
     const bool taaOn = effectEnabled(Effect::Taa);
@@ -727,6 +760,7 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::Ibl, iblEnabled_);
     gate(Effect::PointShadows, pointShadows_);
     gate(Effect::ContactShadows, contactShadowsEnabled);
+    gate(Effect::Particles, particlesEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -742,6 +776,7 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
             pointShadows_ = on;
             break;
         case Effect::ContactShadows: contactShadowsEnabled = on; break;
+        case Effect::Particles: particlesEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -767,13 +802,14 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::Ibl: return iblEnabled_;
         case Effect::PointShadows: return pointShadows_;
         case Effect::ContactShadows: return contactShadowsEnabled;
+        case Effect::Particles: return particlesEnabled_;
     }
     return false;
 }
 
 void DeferredRenderer::setAllEffects(bool on) {
     taaEnabled_ = upscaleEnabled_ = tonemapEnabled_ = iblEnabled_ = shadows_ = csmEnabled_ = on;
-    pointShadows_ = contactShadowsEnabled = on;
+    pointShadows_ = contactShadowsEnabled = particlesEnabled_ = on;
     applyCapabilities();
 }
 

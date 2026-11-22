@@ -111,4 +111,15 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   [G4 tutorial](en/tutorials/g4_gltf_loader.md)). See `tests/test_io.cpp`,
   `tests/gl_smoke_gltf.cpp`, `examples/gltf_demo`, `docs/images/g4_*.png` and the
   [G4 tutorial](en/tutorials/g4_gltf_loader.md).
-- G2, G5–G8, G10, G11 — planned.
+- **G5 — GPU particle system** (`fuhglgraphics::particles`, `include/fuhglgraphics/particles/`,
+  `src/particles/`): `ParticleSystem` (PIMPL) with emitter + integrate compute shaders over
+  an SSBO (GL >= 4.3, same pattern as FuhGLCore's GpuCuller — the SSBO is simultaneously the
+  divisor-1 instance-attribute buffer) rendered as instanced camera-facing billboards in the
+  G3 renderer's "particles" post pass (additive/alpha blend, soft-particle depth fade vs the
+  G-buffer depth); on GL 3.3–4.2 the identical math runs on the CPU (`CpuSim`, unit-tested)
+  and is streamed as instance data — F39-style fallback, toggle `render::Effect::Particles`.
+  G9 integration: `scene::ParticleEmitterComponent` → `FrameData::particleSystems` →
+  `DeferredRenderer::render(..., &particleSystems)`. See `tests/test_particles.cpp`,
+  `tests/gl_smoke_particles.cpp`, `examples/particles_screenshot`,
+  `docs/images/g5_particles_*.png` and the [G5 tutorial](en/tutorials/g5_particles.md).
+- G2, G6–G8, G10, G11 — planned.

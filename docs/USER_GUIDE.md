@@ -88,7 +88,27 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   frame.effects.applyTo(renderer);             // merged effects -> G3 DeferredRenderer
   renderer.render(frame.view, &frame.materialIds, &frame.castShadow);
   ```
-- **Effects (G5–G8, G10).** GPU particles (GL 4.3, CPU fallback), skeletal animation,
+- **Particles (G5).** `particles::ParticleSystem` (PIMPL): emitter + integrate compute
+  shaders over an SSBO on GL >= 4.3 (`system.gpu()`), CPU fallback (same math in `CpuSim`)
+  below; rendered as instanced camera-facing billboards in the G3 renderer's "particles"
+  post pass (additive/alpha blend, soft-particle depth fade against the G-buffer depth).
+  As a G9 component: attach `scene::ParticleEmitterComponent` to a node — `fillFrame()`
+  collects the systems into `FrameData::particleSystems`, pass them to
+  `renderer.render(view, &materialIds, &castShadow, &frame.particleSystems)` (toggle:
+  `render::Effect::Particles`). Quick start: [G5 tutorial](en/tutorials/g5_particles.md),
+  demo `examples/particles_screenshot`, screenshots:
+  [fire](images/g5_particles_fire.png), [smoke](images/g5_particles_smoke.png),
+  [pollen](images/g5_particles_pollen.png).
+
+  ```cpp
+  auto& em = node.attach<fuhglgraphics::scene::ParticleEmitterComponent>();
+  em.config.position = {0.f, 0.35f, 0.f}; em.config.rate = 350.f; // ...
+  em.system.create(8192, em.config);              // needs a current GL context
+  // per frame:
+  em.system.update(dt);
+  renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems);
+  ```
+- **Effects (G6–G8, G10).** skeletal animation,
   SH light probes / lightmaps, deferred decals, plus quick upgrades: MSAA, CSM
   hardening, temporal upscaling, bokeh DoF, screenshot diffs in CI, debug HUD.
 - **Infrastructure (G11).** On-disk asset cache keyed by content hash, JSON config system
