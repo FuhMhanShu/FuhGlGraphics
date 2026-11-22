@@ -39,6 +39,7 @@ FuhGLCore.
 | G9 | Scene graph + components (roadmap 6) | FuhGLCore scene.hpp is a flat DrawItem list; add lightweight graph: Node with local/world transform, children, components (mesh, light, camera, decal, particle emitter, probe), optional LodMesh; world AABBs for culling (F34 at nodes); glTF node mapping (G4) |
 | G10 | Smaller quickly-visible upgrades (roadmap 7) | MSAA wiring+test in G3 (DeferredRenderer has msaaSamples already), CSM contact hardening (penumbra), temporal upscaling (FSR1-style EASU+RCAS) after TAA, DoF bokeh shape instead of circular, CI screenshot perceptual diff (reference PNGs in docs/images/, PSNR/perceptual threshold), mini debug HUD (ImGui-like panel on FuhGLCore TextRenderer: fps, frame-time, effect toggles) |
 | G11 | Engine infrastructure (roadmap 8) | on-disk asset cache keyed by content hash (imported meshes/textures + baked IBL/env persist); JSON config system for F40 effect toggles/window/renderer (same minimal JSON parser as G4); minimal Qt editor (G2): gizmo+camera+scene tree+viewport |
+| G12 | Asset creator Qt tool | `tools/asset_creator/` executable `fuhglgraphics_asset_creator` (built with `FUHGLGRAPHICS_WITH_QT=ON` + new option `FUHGLGRAPHICS_BUILD_TOOLS`): create/load/edit assets with a data-structures panel (scene tree + inspector + asset browser), a viewport with editing tools on the G3 `DeferredRenderer`, and an LLM chat over MCP (stdio JSON-RPC 2.0, configurable server command). Project file = own `.fasset` JSON (`io::Json` + new `io::writeJson`, scene serialization in `scene/serialize.hpp`, MCP message helpers in `mcp/jsonrpc.hpp` — all Qt-free + unit tests). MVC, PIMPL, UI multilingual (English default, German first translation). Design: [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) |
 
 ## 4. Non-functional requirements
 
@@ -138,3 +139,6 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   differ), `examples/animation_screenshot`, `docs/images/g6_animation_*.png` and the
   [G6 tutorial](en/tutorials/g6_animation.md).
 - G2, G7, G8, G10, G11 — planned.
+- **G12 — asset creator Qt tool** — planned; design agreed in
+  [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON
+  project files, MCP stdio chat). Implementation in phases P1–P5 after review.

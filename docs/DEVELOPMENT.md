@@ -24,6 +24,8 @@ include/fuhglgraphics/   public API (headers)
   scene/                  G9 scene graph (implemented: component.hpp, effects.hpp,
                           node.hpp, scene.hpp)
   editor/                 G2+G11 minimal Qt6 editor (planned, WITH_QT only)
+  tools/                  G12 asset creator Qt tool (planned: tools/asset_creator/,
+                          design in docs/ASSET_CREATOR.md, WITH_QT + BUILD_TOOLS only)
 src/                      implementations (PIMPL targets)
   version.cpp
   render/                 G3 implementation + GLSL (deferred_renderer.cpp, deferred_glsl.hpp)
@@ -60,7 +62,7 @@ docs/                     README.md (language picker), USER_GUIDE.md, DEVELOPMEN
   `struct Impl; std::unique_ptr<Impl>`, the `.cpp` defines it).
 - **No exceptions** for domain errors: fallible APIs return `bool` + info-log string.
 - **Namespace `fuhglgraphics`** (`fuhglgraphics::render`, `fuhglgraphics::io`, …).
-- **Qt only in `editor/`** — the library core builds Qt-free
+- **Qt only in `editor/` and `tools/`** — the library core builds Qt-free
   (`-DFUHGLGRAPHICS_WITH_QT=OFF`).
 - GL loading, windowing and math come from FuhGLCore — do not re-implement them here.
 
