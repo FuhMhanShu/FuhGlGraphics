@@ -3,6 +3,7 @@ add_executable(fuhglgraphics_tests
     test_version.cpp
     test_render.cpp
     test_scene.cpp
+    test_io.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -25,3 +26,12 @@ add_executable(fuhglgraphics_gl_smoke_scene gl_smoke_scene.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_scene PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_scene COMMAND fuhglgraphics_gl_smoke_scene)
 set_tests_properties(fuhglgraphics_gl_smoke_scene PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G4 glTF loader (label "gl_context"): parses a generated
+# .glb fixture, instantiates it into a scene::Scene (GL meshes/materials), renders through
+# the G3 DeferredRenderer and verifies pixels + per-item material IDs.
+# Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_gltf gl_smoke_gltf.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_gltf PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_gltf COMMAND fuhglgraphics_gl_smoke_gltf)
+set_tests_properties(fuhglgraphics_gl_smoke_gltf PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

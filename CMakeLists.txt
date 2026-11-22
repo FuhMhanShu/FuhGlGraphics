@@ -42,6 +42,8 @@ add_library(fuhglgraphics STATIC
     src/scene/effects.cpp
     src/scene/node.cpp
     src/scene/scene.cpp
+    src/io/json.cpp
+    src/io/gltf.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 

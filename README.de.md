@@ -37,8 +37,12 @@ Szenengraph `fuhglgraphics::scene::Scene` (Nodes mit polymorpher Komponentenlist
 Meshes + Albedo-/Normalmap-Texturen pro Node, Licht-/Kamera-Komponenten, Effektliste +
 Parameter pro Node, Instancing pro Node, World-AABBs + Frustum-Culling; `Scene::fillFrame()`
 füttert den G3-Renderer) — siehe [G9-Tutorial](docs/de/tutorials/g9_scene_graph.md) und
-Effekt-Vergleichsbilder in [docs/images/](docs/images/g9_scene_graph.png).
-Als Nächstes: **G4** (glTF-2.0-Asset-Loading).
+Effekt-Vergleichsbilder in [docs/images/](docs/images/g9_scene_graph.png) — und **G4** —
+glTF-2.0-Asset-Loading: `fuhglgraphics::io::loadGltf()` (.gltf/.glb, eigener JSON-Parser,
+Puffer/Accessoren/Primitive/Materialien/Bilder) + `io::instantiateGltf()` auf den
+G9-Szenengraphen — siehe [G4-Tutorial](docs/de/tutorials/g4_gltf_loader.md) und Bilder in
+[docs/images/](docs/images/g4_gltf_ship.png).
+Als Nächstes: **G5** (GPU-Partikel).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.
 

@@ -12,19 +12,21 @@ include/fuhglgraphics/   public API (headers)
   graphics.hpp            umbrella header (module map)
   render/                 G3 deferred renderer (implemented: deferred_renderer.hpp,
                           effects.hpp, gbuffer.hpp)
-  io/                     G4 glTF 2.0 loader (planned)
+  io/                     G4 glTF 2.0 loader (implemented: json.hpp, gltf.hpp)
   scene/                  G9 scene graph (implemented: component.hpp, effects.hpp,
                           node.hpp, scene.hpp)
   editor/                 G2+G11 minimal Qt6 editor (planned, WITH_QT only)
 src/                      implementations (PIMPL targets)
   version.cpp
   render/                 G3 implementation + GLSL (deferred_renderer.cpp, deferred_glsl.hpp)
+  io/                     G4 implementation (json.cpp, gltf.cpp)
   scene/                  G9 implementation (component.cpp, effects.cpp, node.cpp, scene.cpp)
 examples/                 screenshot tools (render demo scenes headless to PNG):
                           screenshot/ = G3 demo (flat SceneView), scene_screenshot/ = G9
                           demo (scene graph + per-node effects), landscape_screenshot/ =
                           G9 landscape (terrain + trees, cloud sky cubemap, sun, fog,
-                          god rays)
+                          god rays), gltf_demo/ = G4 glTF model demo (--model x.glb
+                          --out shot.png, headless PNG via the G3 renderer)
 tests/                    unit tests + gl smoke tests (own mini runner, no framework)
 cmake/                    package config template
 FuhGlGraphics.pro         qmake project (static library, alternative to CMake)
@@ -101,11 +103,16 @@ nothing on some Qt6 qmake versions).
   G3: `gl_smoke_render.cpp` (extended G-buffer, material IDs, MSAA path, render scale).
   G9: `gl_smoke_scene.cpp` (scene graph → FrameData → renderer: frame contents, instancing
   upload, material-ID readback, normal-map path, effect params changing the output).
-  Unit tests for the pure parts live in `tests/test_render.cpp` / `tests/test_scene.cpp`.
+  G4: `gl_smoke_gltf.cpp` (fixture .glb → `io::loadGltf` + `io::instantiateGltf` → renderer:
+  node world transforms on draw items, material-ID readback, material presets, lit pixels).
+  Unit tests for the pure parts live in `tests/test_render.cpp` / `tests/test_scene.cpp` /
+  `tests/test_io.cpp` (JSON, base64, glTF fixtures; PNG decode roundtrip when `WITH_QT=ON`).
 - `examples/screenshot` — renders the G3 demo scene headless into a PNG;
   `examples/scene_screenshot` — the G9 demo scene (scene graph) with CLI effect switches;
   `examples/landscape_screenshot` — the G9 landscape (vegetation, cloud sky cubemap,
-  sun disk, fog, god rays; `--no-rays/--no-fog/--no-clouds/--no-shadows/--no-ibl`)
+  sun disk, fog, god rays; `--no-rays/--no-fog/--no-clouds/--no-shadows/--no-ibl`);
+  `examples/gltf_demo` — G4: renders any glTF 2.0 model (`--model x.glb --out shot.png`,
+  `--no-shadows/--no-ibl/--no-rays/--no-sky/--no-tex`) headless into a PNG
   (all used for the reference images in `docs/images/`, locally and by the CI
   `docs-screenshots` job).
 

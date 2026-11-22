@@ -36,10 +36,28 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   renderer.render(scene);                          // fuhgl::render::SceneView
   // renderer.output() is the LDR frame; renderer.texMotion()/texMaterialId()/... the G-buffer
   ```
-- **glTF import (G4).** `fuhglgraphics::io::loadGltf(path)` loads glTF 2.0 files
-  (core + `KHR_materials_pbrMetallicRoughness`, embedded base64 and external `.bin`
-  buffers, PNG/JPEG via Qt when available) into FuhGLCore `render::MeshData` + materials.
-  Errors are reported as `bool` + log, never exceptions.
+- **glTF import (G4).** `fuhglgraphics::io::loadGltf(path)` loads glTF 2.0 files (.gltf/.glb;
+  core + `KHR_materials_pbrMetallicRoughness`, embedded base64 / external `.bin` buffers /
+  GLB BIN chunk, PNG/JPEG decoded via Qt QImage when built `WITH_QT`) into plain data
+  (`GltfAsset`: meshes as FuhGLCore `render::MeshData`, materials, images, nodes, scenes).
+  `io::instantiateGltf(asset, scene, gpu)` maps the default scene onto the G9 scene graph
+  with GL meshes/materials/textures (needs a current GL context). Errors are `bool` + log,
+  never exceptions. Quick start: [G4 tutorial](en/tutorials/g4_gltf_loader.md), demo tool
+  `examples/gltf_demo`, screenshots: [ship](images/g4_gltf_ship.png),
+  [no shadows](images/g4_gltf_ship_no_shadows.png), [no IBL](images/g4_gltf_ship_no_ibl.png),
+  [chest](images/g4_gltf_chest.png).
+
+  ```cpp
+  fuhglgraphics::io::GltfAsset asset;
+  if (!fuhglgraphics::io::loadGltf("ship.glb", asset)) { /* err string, bool+log */ }
+  fuhglgraphics::scene::Scene scene;
+  fuhglgraphics::io::GltfGpuResources gpu;          // needs a current GL context
+  fuhglgraphics::io::instantiateGltf(asset, scene, gpu);   // TRS of the glTF nodes preserved
+  fuhglgraphics::scene::FrameData frame;
+  scene.fillFrame(frame, nullptr, 1280, 720);
+  frame.effects.applyTo(renderer);
+  renderer.render(frame.view, &frame.materialIds, &frame.castShadow);
+  ```
 - **Scene graph (G9).** On top of FuhGLCore's flat `DrawItem` list: `scene::Node` with local
   TRS + world transform, children and a polymorphic component list — `MeshComponent` (several
   `MeshEntry` meshes per node, each with its own local offset, material parameters, albedo +

@@ -4,7 +4,7 @@
 //
 // Module map (see docs/REQUIREMENTS.md §3):
 //   render/   G3   deferred renderer on top of FuhGLCore (implemented)
-//   io/       G4   glTF 2.0 asset loading
+//   io/       G4   glTF 2.0 asset loading (implemented: json.hpp, gltf.hpp)
 //   scene/    G9   scene graph + components + per-node effects/instancing (implemented)
 //   editor/   G2+G11  minimal Qt6 editor (only built with FUHGLGRAPHICS_WITH_QT=1)
 // Additionally planned: G5 GPU particles, G6 animation/skinning, G7 light
@@ -23,3 +23,6 @@
 #include <fuhglgraphics/scene/effects.hpp>
 #include <fuhglgraphics/scene/node.hpp>
 #include <fuhglgraphics/scene/scene.hpp>
+
+#include <fuhglgraphics/io/json.hpp>
+#include <fuhglgraphics/io/gltf.hpp>

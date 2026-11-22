@@ -110,6 +110,32 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out docs/images/ci/g9_landscape_sky_sun_fog_rays.png --width 1280 --height 720 --frames 24
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out docs/images/ci/g9_landscape_no_rays.png --width 1280 --height 720 --frames 24 --no-rays
 
+      # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
+      # asset (Kenney, pinned commit — not vendored into the repo, see N7).
+      - name: Install Qt6 (for the G4 glTF demo)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev
+
+      - name: Fetch demo asset (Kenney CC0, pinned to 3694c687)
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/shorepine/kenney.git /tmp/kenney
+          git -C /tmp/kenney sparse-checkout set 3d/pirate
+          git -C /tmp/kenney checkout 3694c6879e487c108f55677be7dd2ca75b07cc3b
+
+      - name: Configure Qt build
+        run: cmake -S . -B build-qt -DCMAKE_BUILD_TYPE=Release -DFUHGLGRAPHICS_WITH_QT=ON -DFUHGL_LINUX_BACKEND=EGL
+
+      - name: Build glTF demo
+        run: cmake --build build-qt -j --target fuhglgraphics_gltf_demo
+
+      - name: Render G4 glTF screenshots
+        run: |
+          FUHGL_BACKEND=surfaceless QT_QPA_PLATFORM=offscreen ./build-qt/examples/fuhglgraphics_gltf_demo --model /tmp/kenney/3d/pirate/ship-pirate-medium.glb --out docs/images/ci/g4_gltf_ship.png --width 1280 --height 720 --frames 24 --azimuth 35 --elevation 14 --sun-azimuth 120 --sun-elevation 32
+          FUHGL_BACKEND=surfaceless QT_QPA_PLATFORM=offscreen ./build-qt/examples/fuhglgraphics_gltf_demo --model /tmp/kenney/3d/pirate/ship-pirate-medium.glb --out docs/images/ci/g4_gltf_ship_no_shadows.png --width 1280 --height 720 --frames 24 --azimuth 35 --elevation 14 --sun-azimuth 120 --sun-elevation 32 --no-shadows
+          FUHGL_BACKEND=surfaceless QT_QPA_PLATFORM=offscreen ./build-qt/examples/fuhglgraphics_gltf_demo --model /tmp/kenney/3d/pirate/ship-pirate-medium.glb --out docs/images/ci/g4_gltf_ship_no_ibl.png --width 1280 --height 720 --frames 24 --azimuth 35 --elevation 14 --sun-azimuth 120 --sun-elevation 32 --no-ibl
+          FUHGL_BACKEND=surfaceless QT_QPA_PLATFORM=offscreen ./build-qt/examples/fuhglgraphics_gltf_demo --model /tmp/kenney/3d/pirate/chest.glb --out docs/images/ci/g4_gltf_chest.png --width 1280 --height 720 --frames 24 --size 1.6 --distance 4.2 --azimuth -35 --elevation 20 --sun-azimuth 145 --sun-elevation 38
+
       - name: Upload screenshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

@@ -11,8 +11,11 @@ One small tutorial per feature. Each is self-contained: goal → code → result
   albedo + normal-map textures per mesh, lights, camera), per-node effects + instancing,
   `Scene::fillFrame()` → G3 renderer, with effect-comparison screenshots in
   [docs/images/](../../images/g9_scene_graph.png)
+- [G4 — glTF 2.0 loader](g4_gltf_loader.md) — `io::loadGltf()` + `io::instantiateGltf()` onto
+  the G9 scene graph, demo asset (Kenney, CC0) + `examples/gltf_demo`, screenshots in
+  [docs/images/](../../images/g4_gltf_ship.png)
 
-Next: **G4** (glTF 2.0 asset loading) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
+Next: **G5** (GPU particles) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Prerequisite for all: build the library and link `FuhGlGraphics::fuhglgraphics`
 (see [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).

@@ -89,3 +89,22 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   `automoc` + `FUHGLGRAPHICS_WITH_QT=1`, `0` builds the Qt-free headless core.
   Source lists use per-directory globs (no `**`, which expands to nothing on
   some Qt6 qmake versions).
+- **G4 — glTF 2.0 asset loading** (`fuhglgraphics::io`, `include/fuhglgraphics/io/`,
+  `src/io/`): own minimal JSON parser + base64 (`io/json.hpp`, no nlohmann) and
+  `io::loadGltf(path)` for .gltf (JSON) and .glb (binary container) — buffers (external
+  .bin, embedded base64 data-URIs, GLB BIN chunk), bufferViews/accessors (all component
+  types, normalized, strided, sparse), primitives (TRIANGLES/STRIP/FAN with
+  POSITION/NORMAL/TEXCOORD_0/COLOR_0 + indices → FuhGLCore `render::MeshData`),
+  `KHR_materials_pbrMetallicRoughness` (factors + baseColor/normal textures, alphaMode,
+  doubleSided), images (external/embedded; PNG/JPEG → RGBA8 via Qt QImage when
+  `WITH_QT=ON`, else factors only), samplers, nodes (TRS + matrix→TRS), scenes.
+  `io::instantiateGltf(asset, scene, gpu, parent)` maps the default scene onto the G9
+  scene graph with GL resources (one `render::Mesh` per primitive, preset materials with
+  textures, one `MeshEntry` per primitive, `castShadow = true`, running material IDs).
+  bool+log errors, no exceptions; no vendored third-party assets (tests use generated
+  fixtures in `tests/gltf_fixture.hpp`). Tests: `tests/test_io.cpp` (unit) +
+  `tests/gl_smoke_gltf.cpp` (label `gl_context`, skip 77; with `WITH_QT=ON` also a PNG
+  decode roundtrip). New tool `examples/gltf_demo` (`--model x.glb --out shot.png ...`)
+  renders any glTF model headless to PNG; reference images `docs/images/g4_*.png`
+  (Kenney CC0 ship/chest, pinned commit — see the G4 tutorial). G4 tutorial in
+  `docs/en/tutorials/g4_gltf_loader.md` + German translation.
