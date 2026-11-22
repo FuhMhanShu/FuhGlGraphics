@@ -181,6 +181,55 @@ uniform mat4 uProj;                         // camera projection (contact shadow
 uniform float uCsZNear, uCsZFar;            // camera near/far (contact shadows)
 )GLSL";
 
+// --- G7 light probes: SH L2 irradiance grid, 7 RGBA16F 3D textures (units 17..23) -----
+// 27 floats per probe packed into 7 RGBA texels (c0=t0.xyz, c1=(t0.w,t1.x,t1.y), ...);
+// hardware-linear 3D sampling interpolates the coefficients trilinearly across the grid.
+constexpr const char* kLightFragProbes = R"GLSL(
+uniform sampler3D uProbe0; // unit 17 (kFirstTextureUnit)
+uniform sampler3D uProbe1; // 18
+uniform sampler3D uProbe2; // 19
+uniform sampler3D uProbe3; // 20
+uniform sampler3D uProbe4; // 21
+uniform sampler3D uProbe5; // 22
+uniform sampler3D uProbe6; // 23
+uniform int uProbesEnabled;
+uniform vec3 uProbeMin;      // grid min corner (world)
+uniform vec3 uProbeCellInv;  // 1 / cell size (world per probe step)
+uniform vec3 uProbeMaxCoord; // dims - 1 (for clamping the grid coords)
+uniform float uProbeStrength;
+// irradiance E(n) = sum_l A_l c_lm Y_lm(n) from the packed SH L2 coefficients
+vec3 probeIrradiance(vec3 worldPos, vec3 N) {
+    vec3 g = clamp((worldPos - uProbeMin) * uProbeCellInv, vec3(0.0), uProbeMaxCoord);
+    vec3 uvw = (g + 0.5) / (uProbeMaxCoord + 1.0);
+    vec4 t0 = texture(uProbe0, uvw);
+    vec4 t1 = texture(uProbe1, uvw);
+    vec4 t2 = texture(uProbe2, uvw);
+    vec4 t3 = texture(uProbe3, uvw);
+    vec4 t4 = texture(uProbe4, uvw);
+    vec4 t5 = texture(uProbe5, uvw);
+    vec4 t6 = texture(uProbe6, uvw);
+    vec3 c0 = t0.xyz;
+    vec3 c1 = vec3(t0.w, t1.x, t1.y);
+    vec3 c2 = vec3(t1.z, t1.w, t2.x);
+    vec3 c3 = vec3(t2.y, t2.z, t2.w);
+    vec3 c4 = t3.xyz;
+    vec3 c5 = vec3(t3.w, t4.x, t4.y);
+    vec3 c6 = vec3(t4.z, t4.w, t5.x);
+    vec3 c7 = vec3(t5.y, t5.z, t5.w);
+    vec3 c8 = t6.xyz;
+    const float A0 = 3.14159265, A1 = 2.09439510, A2 = 0.78539816;
+    return c0 * (A0 * 0.28209479)
+         + c1 * (A1 * 0.48860251 * N.y)
+         + c2 * (A1 * 0.48860251 * N.z)
+         + c3 * (A1 * 0.48860251 * N.x)
+         + c4 * (A2 * 1.09254843 * N.x * N.y)
+         + c5 * (A2 * 1.09254843 * N.y * N.z)
+         + c6 * (A2 * 0.31539157 * (3.0 * N.z * N.z - 1.0))
+         + c7 * (A2 * 1.09254843 * N.x * N.z)
+         + c8 * (A2 * 0.54627422 * (N.x * N.x - N.y * N.y));
+}
+)GLSL";
+
 constexpr const char* kLightFragPbr = R"GLSL(
 float distributionGGX(float ndoth, float roughness) {
     float a2 = roughness * roughness * roughness * roughness;
@@ -320,21 +369,31 @@ vec3 pbrDirect(vec3 albedo, float metallic, float roughness, vec3 N, vec3 V, vec
     vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
     return (kD * albedo + spec) * radiance * ndotl;
 }
-vec3 pbrAmbient(vec3 albedo, float metallic, float roughness, float ao, vec3 N, vec3 V) {
+vec3 pbrAmbient(vec3 albedo, float metallic, float roughness, float ao, vec3 N, vec3 V, vec3 worldPos) {
+    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+    vec3 F = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
+    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+    vec3 spec = vec3(0.0);
+    vec3 diff;
     if (uEnvEnabled == 1) {
-        vec3 F0 = mix(vec3(0.04), albedo, metallic);
-        vec3 F = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
-        vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
         vec3 irradiance = texture(uIrradianceMap, N).rgb;
         vec3 R = reflect(-V, N);
         vec3 prefiltered = textureLod(uPrefilterMap, R, roughness * uPrefilterMaxLod).rgb;
         vec2 brdf = texture(uBrdfLut, vec2(max(dot(N, V), 0.0), roughness)).rg;
-        return (kD * irradiance * albedo + prefiltered * (F * brdf.x + vec3(brdf.y))) * ao * uEnvIntensity;
+        spec = prefiltered * (F * brdf.x + vec3(brdf.y)) * ao * uEnvIntensity;
+        diff = kD * irradiance * albedo * ao * uEnvIntensity;
+    } else {
+        diff = albedo * uAmbient * ao;
     }
-    return albedo * uAmbient * ao;
+    if (uProbesEnabled == 1) {
+        // G7: diffuse indirect from the SH probe grid replaces the diffuse ambient
+        // (IBL keeps its specular part); diffuse outgoing = albedo/pi * E(n)
+        diff = kD * albedo * (probeIrradiance(worldPos, N) * 0.31830989) * ao * uProbeStrength;
+    }
+    return diff + spec;
 }
 vec3 shade(vec3 albedo, float metallic, float roughness, float ao, vec3 N, vec3 worldPos, vec3 V) {
-    vec3 acc = pbrAmbient(albedo, metallic, roughness, ao, N, V);
+    vec3 acc = pbrAmbient(albedo, metallic, roughness, ao, N, V, worldPos);
     for (int i = 0; i < uLightCount && i < 64; ++i) {
         vec3 L;
         float atten;

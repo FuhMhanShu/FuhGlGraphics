@@ -50,8 +50,12 @@ G9-`ParticleEmitterComponent`, gerendert im G3-"particles"-Post-Pass — siehe
 `anim::Skeleton` mit CPU-Skinning (`skinMeshCpu`), glTF-Animationen/Skins über den
 G4-Loader, als G9-`AnimationComponent` — siehe
 [G6-Tutorial](docs/de/tutorials/g6_animation.md) und Bilder in
-[docs/images/](docs/images/g6_animation_bend.png).
-Als Nächstes: **G7** (Light-Probes / Lightmapping).
+[docs/images/](docs/images/g6_animation_bend.png) — und **G7** — SH-Light-Probes
+(`probes::LightProbeGrid`, CPU-Bake + 3D-Textur-Sampling in der G3-Lighting-Pass) für
+diffuses indirektes Licht / Color-Bleeding, als G9-`LightProbeComponent` — siehe
+[G7-Tutorial](docs/de/tutorials/g7_light_probes.md) und Bilder in
+[docs/images/](docs/images/g7_probes_on.png).
+Als Nächstes: **G8** (Decals).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.
 

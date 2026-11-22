@@ -164,3 +164,24 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   reference images `docs/images/g6_animation_{bend,straight,nofx}.png`. G6 tutorial
   en/de; USER_GUIDE/REQUIREMENTS/READMEs/DEVELOPMENT updated; CI docs-screenshots renders
   them.
+- **G7 — light probes / SH irradiance GI** (`fuhglgraphics::probes`,
+  `include/fuhglgraphics/probes/light_probes.hpp`, `src/probes/light_probes.cpp`):
+  `LightProbeGrid` — regular grid of SH L2 irradiance probes over an AABB, baked on the
+  CPU (`bake(BakeInput)`: fibonacci-sphere rays vs a world-space `ProbeTriangle` soup,
+  one bounce = sky via `skyRadiance(dir)` callback + direct lights with shadow-ray
+  occlusion; projected with `shProject`; `shIrradiance` evaluates E(n) = sum A_l c_lm
+  Y_lm(n), constant radiance L -> E = pi*L, unit-tested). GL side (GL 3.3 baseline): the
+  27 floats per probe are packed into seven RGBA16F 3D textures (units 17..23) and
+  sampled with hardware trilinear interpolation in the G3 lighting pass; upload is lazy
+  in `render()`. With `render::Effect::LightProbes` (kEffectCount = 11) the diffuse
+  ambient becomes `kD * albedo * (E(N)/pi) * ao * lightProbeStrength` (IBL keeps its
+  specular part) — diffuse indirect light / color bleeding. G9:
+  `scene::LightProbeComponent` -> `FrameData::lightProbes` ->
+  `DeferredRenderer::render(..., lightProbes)`; `EffectParams::lightProbeStrength`.
+  Tests: `tests/test_probes.cpp` (unit) + `tests/gl_smoke_probes.cpp` (gl_context: upload,
+  render on vs off differ, frame brighter with probes, no GL error).
+  New tool `examples/probes_screenshot` (colored-wall courtyard, `--no-probes/
+  --no-shadows/--no-rays`) with reference images `docs/images/g7_probes_{on,off,nofx}.png`
+  (pixel-verified: sky unchanged, shadowed floor brighter, per-channel color bleeding).
+  G7 tutorial en/de; USER_GUIDE/REQUIREMENTS/READMEs/DEVELOPMENT updated; CI
+  docs-screenshots renders them.

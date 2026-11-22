@@ -8,3 +8,4 @@ void runSceneTests();
 void runIoTests();
 void runParticlesTests();
 void runAnimTests();
+void runProbesTests();

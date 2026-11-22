@@ -21,6 +21,8 @@ include/fuhglgraphics/   public API (headers)
                           compute on GL >= 4.3, CPU fallback below)
   anim/                   G6 animation/skinning (implemented: animation.hpp;
                           AnimationPlayer + Skeleton + CPU skinning)
+  probes/                 G7 light probes (implemented: light_probes.hpp; SH L2 grid,
+                          CPU bake + RGBA16F 3D textures, units 17..23)
   scene/                  G9 scene graph (implemented: component.hpp, effects.hpp,
                           node.hpp, scene.hpp)
   editor/                 G2+G11 minimal Qt6 editor (planned, WITH_QT only)
@@ -30,6 +32,7 @@ src/                      implementations (PIMPL targets)
   io/                     G4 implementation (json.cpp, gltf.cpp)
   particles/              G5 implementation (particle_system.cpp, particle_glsl.hpp)
   anim/                   G6 implementation (animation.cpp)
+  probes/                 G7 implementation (light_probes.cpp)
   scene/                  G9 implementation (component.cpp, effects.cpp, node.cpp, scene.cpp)
 examples/                 screenshot tools (render demo scenes headless to PNG):
                           screenshot/ = G3 demo (flat SceneView), scene_screenshot/ = G9
@@ -38,7 +41,9 @@ examples/                 screenshot tools (render demo scenes headless to PNG):
                           god rays), gltf_demo/ = G4 glTF model demo (--model x.glb
                           --out shot.png, headless PNG via the G3 renderer),
                           animation_screenshot/ = G6 demo (skinned robot arm + waving
-                          flag, --time 0.7 --frames 16 --no-shadows --no-rays)
+                          flag, --time 0.7 --frames 16 --no-shadows --no-rays),
+                          probes_screenshot/ = G7 demo (colored-wall courtyard, SH probe
+                          grid baked on the CPU, --no-probes/--no-shadows/--no-rays)
 tests/                    unit tests + gl smoke tests (own mini runner, no framework)
 cmake/                    package config template
 FuhGlGraphics.pro         qmake project (static library, alternative to CMake)
@@ -121,11 +126,15 @@ nothing on some Qt6 qmake versions).
   fallback, alive count, renderer particles pass brightens the emitter region).
   G6: `gl_smoke_anim.cpp` (fixture .glb with animation + skin → player/skeletons/
   skinnedMeshes, CPU-skinned vertex check, rendered frames at t=0 vs t=1 differ).
+  G7: `gl_smoke_probes.cpp` (CPU-baked SH probe grid → upload, render with
+  Effect::LightProbes on vs off: frames differ, frame brighter with probes, no GL error).
   Unit tests for the pure parts live in `tests/test_render.cpp` / `tests/test_scene.cpp` /
   `tests/test_io.cpp` (JSON, base64, glTF fixtures incl. animations/skins/JOINTS_0/
   WEIGHTS_0; PNG decode roundtrip when `WITH_QT=ON`) / `tests/test_particles.cpp`
   (CpuSim emit/integrate/determinism) / `tests/test_anim.cpp` (channel sampling lerp/
-  slerp/clamp, loop modes, applyTo node map, skinMeshCpu).
+  slerp/clamp, loop modes, applyTo node map, skinMeshCpu) / `tests/test_probes.cpp`
+  (SH basis/projection/irradiance, ray-triangle, grid layout, CPU bake incl. occlusion
+  and color bleeding).
 - `examples/screenshot` — renders the G3 demo scene headless into a PNG;
   `examples/scene_screenshot` — the G9 demo scene (scene graph) with CLI effect switches;
   `examples/landscape_screenshot` — the G9 landscape (vegetation, cloud sky cubemap,
@@ -135,7 +144,9 @@ nothing on some Qt6 qmake versions).
   `examples/particles_screenshot` — G5: campfire/smoke/pollen particle demo
   (`--kind fire|smoke|pollen|all`, `--no-particles/--no-shadows/--no-rays`) headless to PNG;
   `examples/animation_screenshot` — G6: skinned robot arm + waving flag
-  (`--time 0.7`, `--frames 16`, `--no-shadows/--no-rays`) headless to PNG
+  (`--time 0.7`, `--frames 16`, `--no-shadows/--no-rays`) headless to PNG;
+  `examples/probes_screenshot` — G7: colored-wall courtyard with a CPU-baked SH probe
+  grid (`--no-probes/--no-shadows/--no-rays`) headless to PNG
   (all used for the reference images in `docs/images/`, locally and by the CI
   `docs-screenshots` job).
 

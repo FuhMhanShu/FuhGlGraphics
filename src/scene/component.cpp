@@ -46,6 +46,10 @@ void ParticleEmitterComponent::fill(const Node& /*node*/, FrameData& frame) cons
     if (system.isReady()) frame.particleSystems.push_back(&system);
 }
 
+void LightProbeComponent::fill(const Node& /*node*/, FrameData& frame) const {
+    if (grid.valid() && !frame.lightProbes) frame.lightProbes = &grid;
+}
+
 void LightComponent::fill(const Node& node, FrameData& frame) const {
     fuhgl::render::Light l = light;
     const fuhgl::math::Mat4& w = node.worldMatrix();

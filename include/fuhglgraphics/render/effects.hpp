@@ -26,10 +26,11 @@ enum class Effect {
     PointShadows,   ///< cube depth map for one point light (FuhGLCore CubeShadowMap, F46 shadow kit)
     ContactShadows, ///< screen-space raymarched contact shadows on the shadow light (F46)
     Particles,      ///< G5 particle systems (compute on GL >= 4.3, CPU fallback below)
+    LightProbes,    ///< G7 SH-irradiance light-probe grid (diffuse indirect light, 3D textures)
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 10;
+constexpr int kEffectCount = 11;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -44,6 +45,7 @@ inline const char* effectName(Effect e) {
         case Effect::PointShadows: return "point shadows";
         case Effect::ContactShadows: return "contact shadows";
         case Effect::Particles: return "particles";
+        case Effect::LightProbes: return "light probes";
     }
     return "unknown";
 }

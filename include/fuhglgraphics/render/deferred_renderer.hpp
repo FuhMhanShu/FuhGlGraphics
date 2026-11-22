@@ -39,6 +39,10 @@ namespace fuhglgraphics::particles {
 class ParticleSystem;
 }
 
+namespace fuhglgraphics::probes {
+class LightProbeGrid;
+}
+
 namespace fuhglgraphics::render {
 
 /// @brief Texture unit of the optional sky cubemap in the lighting pass. 16 because the
@@ -77,10 +81,14 @@ public:
     /// @param particleSystems optional G5 particle systems (e.g. FrameData::particleSystems
     /// from ParticleEmitterComponents) — drawn in the "particles" post pass when
     /// Effect::Particles is enabled. Call ParticleSystem::update(dt) yourself per frame.
+    /// @param lightProbes optional G7 SH light-probe grid (e.g. FrameData::lightProbes from
+    /// a LightProbeComponent) — sampled in the lighting pass when Effect::LightProbes is
+    /// enabled; the grid's 3D textures are uploaded lazily on the first render with it.
     void render(const fuhgl::render::SceneView& scene,
                 const std::vector<std::uint32_t>* materialIds = nullptr,
                 const std::vector<bool>* castShadow = nullptr,
-                const std::vector<const particles::ParticleSystem*>* particleSystems = nullptr);
+                const std::vector<const particles::ParticleSystem*>* particleSystems = nullptr,
+                const probes::LightProbeGrid* lightProbes = nullptr);
 
     /// @brief LDR output target (RGBA8, tonemapped when Effect::Tonemap is on).
     fuhgl::Framebuffer& output();
@@ -195,6 +203,10 @@ public:
     float contactShadowThickness = 0.2f; ///< depth thickness treated as occluder
     int contactShadowSteps = 16;         ///< raymarch steps
 
+    /// @brief G7: strength of the light-probe diffuse indirect term in the lighting pass
+    /// (Effect::LightProbes). Set per frame via scene::EffectParams::lightProbeStrength.
+    float lightProbeStrength = 1.f;
+
     /// @brief Frames rendered with TAA so far (0 after reset) — introspection/tests.
     unsigned frameIndex() const { return frameIndex_; }
 
@@ -227,6 +239,8 @@ private:
     bool iblEnabled_ = true;
     bool particlesEnabled_ = true; ///< Effect::Particles
     const std::vector<const particles::ParticleSystem*>* curParticles_ = nullptr;
+    bool lightProbesEnabled_ = true; ///< Effect::LightProbes
+    const probes::LightProbeGrid* curProbes_ = nullptr;
     bool shadows_ = false;
     bool csmEnabled_ = false;
     int shadowSize_ = 0;   ///< map size of the single ShadowMap (recreated on resize/scale change)

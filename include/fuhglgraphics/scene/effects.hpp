@@ -46,6 +46,8 @@ struct EffectParams {
     int msaaSamples = 0;             ///< MSAA samples of the G-buffer (Effect::Msaa)
     int shadowMapSize = 2048;        ///< shadow map size
     int csmCascades = 4;             ///< cascade count for Effect::CsmShadows
+    // --- G7 light probes (Effect::LightProbes) ---
+    float lightProbeStrength = 1.f;  ///< scale of the probe diffuse-indirect term
 };
 
 /// @brief Effect list + parameters of one scene node (or of a whole frame after merging).
