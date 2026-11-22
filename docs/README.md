@@ -9,6 +9,7 @@ and REQUIREMENTS.md at this level are English-only)
 ---
 
 🇬🇧 **English:** [Tutorials](en/tutorials/README.md) · [User guide](USER_GUIDE.md) ·
-[Development](DEVELOPMENT.md) · [Requirements](REQUIREMENTS.md)
+[Development](DEVELOPMENT.md) · [Requirements](REQUIREMENTS.md) ·
+[Asset creator design (G12)](ASSET_CREATOR.md)
 
 🇩🇪 **Deutsch:** [Tutorials](de/tutorials/README.md) · [README.de.md](../README.de.md)

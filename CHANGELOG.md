@@ -7,6 +7,17 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ## [Unreleased]
 
+### Planned
+
+- **G12 — asset creator Qt tool** — design agreed, implementation in phases after review:
+  `tools/asset_creator/` (executable `fuhglgraphics_asset_creator`, built with
+  `FUHGLGRAPHICS_WITH_QT=ON` + new option `FUHGLGRAPHICS_BUILD_TOOLS`) to create/load/edit
+  assets: data-structures panel (scene tree + inspector + asset browser), viewport with
+  editing tools on the G3 `DeferredRenderer`, LLM chat over MCP (stdio JSON-RPC 2.0,
+  configurable server command). Project files are own `.fasset` JSON. Design doc:
+  [docs/ASSET_CREATOR.md](docs/ASSET_CREATOR.md); requirement entry G12 in
+  [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 ### Added
 
 - **G3 — deferred renderer** (`fuhglgraphics::render::DeferredRenderer`,
