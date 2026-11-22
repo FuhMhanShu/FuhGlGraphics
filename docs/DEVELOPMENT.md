@@ -14,8 +14,8 @@ the agreed requirements are in [REQUIREMENTS.md](REQUIREMENTS.md).
 include/fuhglgraphics/   public API (headers)
   version.hpp             version constants + versionString()
   graphics.hpp            umbrella header (module map)
-  render/                 G3 deferred renderer (implemented: deferred_renderer.hpp,
-                          effects.hpp, gbuffer.hpp)
+  render/                 G3 deferred renderer + G8 decals (implemented:
+                          deferred_renderer.hpp, effects.hpp, gbuffer.hpp, decals.hpp)
   io/                     G4 glTF 2.0 loader (implemented: json.hpp, gltf.hpp)
   particles/              G5 GPU particle system (implemented: particle_system.hpp;
                           compute on GL >= 4.3, CPU fallback below)
@@ -45,7 +45,9 @@ examples/                 screenshot tools (render demo scenes headless to PNG):
                           animation_screenshot/ = G6 demo (skinned robot arm + waving
                           flag, --time 0.7 --frames 16 --no-shadows --no-rays),
                           probes_screenshot/ = G7 demo (colored-wall courtyard, SH probe
-                          grid baked on the CPU, --no-probes/--no-shadows/--no-rays)
+                          grid baked on the CPU, --no-probes/--no-shadows/--no-rays),
+                          decals_screenshot/ = G8 demo (plaza with bullet-hole/marking
+                          decals, --no-decals/--no-shadows/--no-rays)
 tests/                    unit tests + gl smoke tests (own mini runner, no framework)
 cmake/                    package config template
 FuhGlGraphics.pro         qmake project (static library, alternative to CMake)
@@ -130,13 +132,16 @@ nothing on some Qt6 qmake versions).
   skinnedMeshes, CPU-skinned vertex check, rendered frames at t=0 vs t=1 differ).
   G7: `gl_smoke_probes.cpp` (CPU-baked SH probe grid → upload, render with
   Effect::LightProbes on vs off: frames differ, frame brighter with probes, no GL error).
+  G8: `gl_smoke_decals.cpp` (red decal box on a ground quad: mark appears only with
+  Effect::Decals on, material-ID mask gates it, no GL error).
   Unit tests for the pure parts live in `tests/test_render.cpp` / `tests/test_scene.cpp` /
   `tests/test_io.cpp` (JSON, base64, glTF fixtures incl. animations/skins/JOINTS_0/
   WEIGHTS_0; PNG decode roundtrip when `WITH_QT=ON`) / `tests/test_particles.cpp`
   (CpuSim emit/integrate/determinism) / `tests/test_anim.cpp` (channel sampling lerp/
   slerp/clamp, loop modes, applyTo node map, skinMeshCpu) / `tests/test_probes.cpp`
   (SH basis/projection/irradiance, ray-triangle, grid layout, CPU bake incl. occlusion
-  and color bleeding).
+  and color bleeding). G8 decal projection tests live in `tests/test_render.cpp`
+  (`render::decalProject`: containment, dominant-axis UV, rotated boxes).
 - `examples/screenshot` — renders the G3 demo scene headless into a PNG;
   `examples/scene_screenshot` — the G9 demo scene (scene graph) with CLI effect switches;
   `examples/landscape_screenshot` — the G9 landscape (vegetation, cloud sky cubemap,
@@ -148,7 +153,9 @@ nothing on some Qt6 qmake versions).
   `examples/animation_screenshot` — G6: skinned robot arm + waving flag
   (`--time 0.7`, `--frames 16`, `--no-shadows/--no-rays`) headless to PNG;
   `examples/probes_screenshot` — G7: colored-wall courtyard with a CPU-baked SH probe
-  grid (`--no-probes/--no-shadows/--no-rays`) headless to PNG
+  grid (`--no-probes/--no-shadows/--no-rays`) headless to PNG;
+  `examples/decals_screenshot` — G8: plaza with bullet-hole/marking decals
+  (`--no-decals/--no-shadows/--no-rays`) headless to PNG
   (all used for the reference images in `docs/images/`, locally and by the CI
   `docs-screenshots` job).
 

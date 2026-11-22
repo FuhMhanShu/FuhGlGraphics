@@ -33,3 +33,8 @@ target_link_libraries(fuhglgraphics_animation_screenshot PRIVATE fuhglgraphics)
 # in the G3 lighting pass (Effect::LightProbes) — color bleeding in the shadows.
 add_executable(fuhglgraphics_probes_screenshot probes_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_probes_screenshot PRIVATE fuhglgraphics)
+
+# G8 decal demo: plaza with bullet-hole decals (ground + wall, material-ID gated) and a
+# ground marking, projected into the G-buffer by the G3 decal pass (Effect::Decals).
+add_executable(fuhglgraphics_decals_screenshot decals_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_decals_screenshot PRIVATE fuhglgraphics)

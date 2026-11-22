@@ -448,6 +448,85 @@ void main() {
 }
 )GLSL";
 
+// --- G8 decal pass: project decal boxes into the G-buffer (albedo + normal) -----------
+// The decal box (unit box scaled by uHalfExtents) is drawn with depth test LESS; the
+// fragment shader reconstructs the G-buffer world position from depth, keeps pixels whose
+// surface lies inside the box, gates on the G-buffer material ID and writes the projected
+// decal albedo/normal into attachments 0/1. Units: uGAlbedo 0, uGNormal 1, uDecalTex 3
+// (kTextureUnitAlbedo), uDecalNormal 4 (kTextureUnitNormalMap), uGDepth 5, uGMatId 6.
+constexpr const char* kDecalVert = R"GLSL(#version 330 core
+layout(location = 0) in vec3 aPos; // unit box in [-1,1]
+uniform mat4 uViewProj;
+uniform mat4 uDecalWorld;
+uniform vec3 uHalfExtents;
+out vec3 vLocal;
+void main() {
+    vLocal = aPos;
+    vec4 wp = uDecalWorld * vec4(aPos * uHalfExtents, 1.0);
+    gl_Position = uViewProj * wp;
+}
+)GLSL";
+
+constexpr const char* kDecalFrag = R"GLSL(#version 330 core
+in vec3 vLocal;
+uniform sampler2D uGAlbedo;     // unit 0
+uniform sampler2D uGNormal;     // unit 1
+uniform sampler2D uDecalTex;    // unit 3 (kTextureUnitAlbedo)
+uniform sampler2D uDecalNormal; // unit 4 (kTextureUnitNormalMap)
+uniform sampler2D uGDepth;      // unit 5
+uniform sampler2D uGMatId;      // unit 6
+uniform mat4 uInvViewProj;
+uniform vec2 uResolution;
+uniform mat4 uDecalWorld;
+uniform mat4 uInvDecalWorld;
+uniform vec3 uHalfExtents;
+uniform vec3 uAlbedo;
+uniform float uOpacity;
+uniform int uUseTex;
+uniform int uUseNormalMap;
+uniform uint uMatIdMask;
+layout(location = 0) out vec4 oAlbedo;
+layout(location = 1) out vec4 oNormal;
+void main() {
+    vec2 uv = gl_FragCoord.xy / uResolution;
+    float depth = texture(uGDepth, uv).r;
+    if (depth >= 0.99999) discard; // sky: no G-buffer surface
+    vec4 ndc = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 wp = uInvViewProj * ndc;
+    vec3 worldPos = wp.xyz / wp.w;
+    vec3 lp = (uInvDecalWorld * vec4(worldPos, 1.0)).xyz;
+    if (any(greaterThan(abs(lp), uHalfExtents))) discard;
+    vec4 mid = texture(uGMatId, uv);
+    uint matId = uint(mid.r * 255.0 + 0.5) | (uint(mid.g * 255.0 + 0.5) << 8)
+               | (uint(mid.b * 255.0 + 0.5) << 16) | (uint(mid.a * 255.0 + 0.5) << 24);
+    if ((matId & uMatIdMask) == 0u) discard;
+    vec3 N = normalize(texture(uGNormal, uv).rgb * 2.0 - 1.0);
+    vec3 ln = normalize((uInvDecalWorld * vec4(N, 0.0)).xyz);
+    vec3 al = abs(ln);
+    vec2 duv, he;
+    vec3 T, B;
+    if (al.y >= al.x && al.y >= al.z) { duv = lp.xz; he = uHalfExtents.xz; T = vec3(1,0,0); B = vec3(0,0,1); }
+    else if (al.x >= al.z)            { duv = lp.zy; he = uHalfExtents.zy; T = vec3(0,0,1); B = vec3(0,1,0); }
+    else                              { duv = lp.xy; he = uHalfExtents.xy; T = vec3(0,1,0); B = vec3(1,0,0); }
+    vec2 tuv = duv / (2.0 * he) + 0.5;
+    if (tuv.x < 0.0 || tuv.x > 1.0 || tuv.y < 0.0 || tuv.y > 1.0) discard;
+    vec4 tex = (uUseTex == 1) ? texture(uDecalTex, tuv) : vec4(1.0);
+    vec3 dAlbedo = uAlbedo * tex.rgb;
+    float alpha = clamp(uOpacity * tex.a, 0.0, 1.0);
+    vec3 gAlb = texture(uGAlbedo, uv).rgb;
+    oAlbedo = vec4(mix(gAlb, dAlbedo, alpha), 1.0);
+    vec3 dN = N;
+    if (uUseNormalMap == 1 && alpha > 0.0) {
+        vec3 nts = texture(uDecalNormal, tuv).rgb * 2.0 - 1.0;
+        vec3 lw = normalize(T * nts.x + B * nts.y + ln * nts.z);
+        dN = normalize((uDecalWorld * vec4(lw, 0.0)).xyz);
+    }
+    vec3 gN = texture(uGNormal, uv).rgb * 2.0 - 1.0;
+    vec3 outN = normalize(mix(gN, dN, alpha));
+    oNormal = vec4(outN * 0.5 + 0.5, 1.0);
+}
+)GLSL";
+
 // --- TAA pass: motion-vector reprojected history with 3x3 neighborhood clamp ---------
 constexpr const char* kTaaFrag = R"GLSL(#version 330 core
 in vec2 vUV;

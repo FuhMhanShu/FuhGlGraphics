@@ -139,6 +139,13 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_probes_screenshot --out docs/images/ci/g7_probes_off.png --width 1280 --height 720 --frames 16 --no-probes
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_probes_screenshot --out docs/images/ci/g7_probes_nofx.png --width 1280 --height 720 --frames 16 --no-probes --no-shadows --no-rays
 
+      - name: Build + render G8 decal screenshots (bullet holes + marking, material-ID gated)
+        run: |
+          cmake --build build -j --target fuhglgraphics_decals_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_decals_screenshot --out docs/images/ci/g8_decals_on.png --width 1280 --height 720 --frames 16
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_decals_screenshot --out docs/images/ci/g8_decals_off.png --width 1280 --height 720 --frames 16 --no-decals
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_decals_screenshot --out docs/images/ci/g8_decals_nofx.png --width 1280 --height 720 --frames 16 --no-decals --no-shadows --no-rays
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)

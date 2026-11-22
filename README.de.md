@@ -54,8 +54,11 @@ G4-Loader, als G9-`AnimationComponent` — siehe
 (`probes::LightProbeGrid`, CPU-Bake + 3D-Textur-Sampling in der G3-Lighting-Pass) für
 diffuses indirektes Licht / Color-Bleeding, als G9-`LightProbeComponent` — siehe
 [G7-Tutorial](docs/de/tutorials/g7_light_probes.md) und Bilder in
-[docs/images/](docs/images/g7_probes_on.png).
-Als Nächstes: **G8** (Decals).
+[docs/images/](docs/images/g7_probes_on.png) — und **G8** — Deferred-Decals
+(`render::Decal`-Boxen in den G-Buffer projiziert, Material-ID-gegated) als G9-
+`DecalComponent` — siehe [G8-Tutorial](docs/de/tutorials/g8_decals.md) und Bilder in
+[docs/images/](docs/images/g8_decals_on.png).
+Als Nächstes: **G10** (Quick-Upgrades) oder **G11** (Engine-Infrastruktur).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.
 

@@ -5,12 +5,12 @@
 /// Implemented now: MeshComponent (a node can hold *several* meshes — one MeshEntry each,
 /// with its own local offset, material parameters, textures, castShadow flag and material
 /// ID), LightComponent, CameraComponent, ParticleEmitterComponent (G5),
-/// AnimationComponent (G6), LightProbeComponent (G7). Decal components attach the same
-/// way once G8 lands.
+/// AnimationComponent (G6), LightProbeComponent (G7), DecalComponent (G8).
 
 #include "../anim/animation.hpp"
 #include "../particles/particle_system.hpp"
 #include "../probes/light_probes.hpp"
+#include "../render/decals.hpp"
 
 #include <fuhgl/cam/camera.hpp>
 #include <fuhgl/math.hpp>
@@ -135,6 +135,17 @@ public:
 class LightProbeComponent : public Component {
 public:
     probes::LightProbeGrid grid;
+
+    void fill(const Node& node, FrameData& frame) const override; // defined in component.cpp
+};
+
+/// @brief G8 decal component: one render::Decal. Edit `decal` (halfExtents, albedo,
+/// albedoTexture/normalMap, opacity, materialIdMask); fill() sets the decal's world
+/// matrix from the node's world transform and appends it to FrameData::decals. Pass
+/// `&frame.decals` to DeferredRenderer::render(...) and enable render::Effect::Decals.
+class DecalComponent : public Component {
+public:
+    render::Decal decal;
 
     void fill(const Node& node, FrameData& frame) const override; // defined in component.cpp
 };

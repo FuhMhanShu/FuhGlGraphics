@@ -18,6 +18,7 @@
 /// Conventions like FuhGLCore: PIMPL, no exceptions for domain errors (bool + log),
 /// namespace fuhglgraphics::render.
 
+#include "decals.hpp"
 #include "effects.hpp"
 #include "gbuffer.hpp"
 
@@ -84,11 +85,15 @@ public:
     /// @param lightProbes optional G7 SH light-probe grid (e.g. FrameData::lightProbes from
     /// a LightProbeComponent) — sampled in the lighting pass when Effect::LightProbes is
     /// enabled; the grid's 3D textures are uploaded lazily on the first render with it.
+    /// @param decals optional G8 decal list (e.g. FrameData::decals from DecalComponents) —
+    /// projected into the G-buffer (albedo + normal) after the geometry pass when
+    /// Effect::Decals is enabled; limited to render::kMaxDecals, sorted back-to-front.
     void render(const fuhgl::render::SceneView& scene,
                 const std::vector<std::uint32_t>* materialIds = nullptr,
                 const std::vector<bool>* castShadow = nullptr,
                 const std::vector<const particles::ParticleSystem*>* particleSystems = nullptr,
-                const probes::LightProbeGrid* lightProbes = nullptr);
+                const probes::LightProbeGrid* lightProbes = nullptr,
+                const std::vector<Decal>* decals = nullptr);
 
     /// @brief LDR output target (RGBA8, tonemapped when Effect::Tonemap is on).
     fuhgl::Framebuffer& output();
@@ -217,6 +222,7 @@ private:
     bool createInternal(); ///< (re)builds all GL resources at the current sizes
     void renderGBuffer(const fuhgl::render::SceneView& scene,
                        const std::vector<std::uint32_t>* materialIds);
+    void drawDecals(const fuhgl::render::SceneView& scene);
     void drawFs(fuhgl::render::Material& mat, const std::function<void(fuhgl::Program&)>& setUniforms);
     void drawLighting(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawParticles(fuhgl::render::RenderGraph::PassContext& ctx);
@@ -241,6 +247,8 @@ private:
     const std::vector<const particles::ParticleSystem*>* curParticles_ = nullptr;
     bool lightProbesEnabled_ = true; ///< Effect::LightProbes
     const probes::LightProbeGrid* curProbes_ = nullptr;
+    bool decalsEnabled_ = true; ///< Effect::Decals
+    const std::vector<Decal>* curDecals_ = nullptr;
     bool shadows_ = false;
     bool csmEnabled_ = false;
     int shadowSize_ = 0;   ///< map size of the single ShadowMap (recreated on resize/scale change)

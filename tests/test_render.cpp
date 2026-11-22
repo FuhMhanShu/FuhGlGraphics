@@ -5,6 +5,7 @@
 #include "test_framework.hpp"
 
 #include <fuhglgraphics/render/deferred_renderer.hpp>
+#include <fuhglgraphics/render/decals.hpp>
 #include <fuhglgraphics/render/effects.hpp>
 #include <fuhglgraphics/render/gbuffer.hpp>
 
@@ -12,7 +13,7 @@ using namespace fuhglgraphics::render;
 
 void runRenderTests() {
     // --- effectName / kEffectCount ---
-    CHECK(kEffectCount == 11);
+    CHECK(kEffectCount == 12);
     CHECK(std::string(effectName(Effect::Taa)) == "TAA");
     CHECK(std::string(effectName(Effect::Upscale)) == "upscaling");
     CHECK(std::string(effectName(Effect::Tonemap)) == "tonemap");
@@ -24,6 +25,7 @@ void runRenderTests() {
     CHECK(std::string(effectName(Effect::ContactShadows)) == "contact shadows");
     CHECK(std::string(effectName(Effect::Particles)) == "particles");
     CHECK(std::string(effectName(Effect::LightProbes)) == "light probes");
+    CHECK(std::string(effectName(Effect::Decals)) == "decals");
 
     // --- effectSupported: pure GL-version mapping (F39) ---
     for (int e = 0; e < kEffectCount; ++e) {
@@ -77,4 +79,25 @@ void runRenderTests() {
     // consecutive frames differ (subpixel jitter actually moves)
     const fuhgl::math::Vec2 j1 = taaJitterNdc(1, 1280, 720);
     CHECK(std::fabs(j1.x - j0.x) > 1e-9 || std::fabs(j1.y - j0.y) > 1e-9);
+
+    // --- G8 decalProject: box containment + dominant-axis UV (pure) ---
+    const fuhgl::math::Mat4 identity{};
+    const fuhgl::math::Vec3 he{2.f, 0.5f, 3.f};
+    fuhgl::math::Vec2 uv{0.f, 0.f};
+    // ground point under a flat box: dominant axis = Y -> uv from (x, z)
+    CHECK(decalProject(identity, he, {1.f, 0.f, -2.f}, {0.f, 1.f, 0.f}, uv));
+    CHECK_NEAR(uv.x, (1.f / (2.f * 2.f)) + 0.5f, 1e-6f);  // x=1 of half 2
+    CHECK_NEAR(uv.y, (-2.f / (2.f * 3.f)) + 0.5f, 1e-6f); // z=-2 of half 3
+    // outside the box -> rejected
+    CHECK(!decalProject(identity, he, {5.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, uv));
+    CHECK(!decalProject(identity, he, {0.f, 2.f, 0.f}, {0.f, 1.f, 0.f}, uv));
+    // vertical wall (normal +Z): dominant axis = Z -> uv from (x, y)
+    CHECK(decalProject(identity, he, {0.5f, 0.25f, 1.f}, {0.f, 0.f, 1.f}, uv));
+    CHECK_NEAR(uv.x, (0.5f / 4.f) + 0.5f, 1e-6f);
+    CHECK_NEAR(uv.y, (0.25f / 1.f) + 0.5f, 1e-6f);
+    // rotated decal: world = translate(10, 0, 0); local = world - (10,0,0)
+    const fuhgl::math::Mat4 world = fuhgl::math::translate({10.f, 0.f, 0.f});
+    CHECK(decalProject(world.inverse(), he, {10.5f, 0.f, 0.f}, {0.f, 1.f, 0.f}, uv));
+    CHECK_NEAR(uv.x, (0.5f / 4.f) + 0.5f, 1e-6f);
+    CHECK(!decalProject(world.inverse(), he, {13.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, uv)); // outside (local x=3 > 2)
 }

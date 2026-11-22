@@ -50,6 +50,12 @@ void LightProbeComponent::fill(const Node& /*node*/, FrameData& frame) const {
     if (grid.valid() && !frame.lightProbes) frame.lightProbes = &grid;
 }
 
+void DecalComponent::fill(const Node& node, FrameData& frame) const {
+    render::Decal d = decal;
+    d.world = node.worldMatrix();
+    frame.decals.push_back(d);
+}
+
 void LightComponent::fill(const Node& node, FrameData& frame) const {
     fuhgl::render::Light l = light;
     const fuhgl::math::Mat4& w = node.worldMatrix();

@@ -46,7 +46,8 @@ struct DeferredRenderer::Impl {
         rMotion{fuhgl::Texture::Target::Tex2D}, rMatId{fuhgl::Texture::Target::Tex2D};
     fuhgl::Texture texOutput{fuhgl::Texture::Target::Tex2D};
 
-    fuhgl::render::Material gbufferMat, lightingMat, taaMat, upscaleMat, tonemapMat, copyMat;
+    fuhgl::render::Material gbufferMat, lightingMat, taaMat, upscaleMat, tonemapMat, copyMat, decalMat;
+    fuhgl::render::Mesh decalBox; ///< G8: unit box for the decal projection pass
     fuhgl::UniformBuffer lightsUbo;
     fuhgl::VertexArray fsVao;
     fuhgl::render::RenderGraph post;
@@ -201,6 +202,23 @@ bool DeferredRenderer::createInternal() {
             return false;
         }
     }
+    // G8 decal pass (projects into gAlbedo/gNormal between geometry and lighting)
+    if (!im.decalMat.create()) return false;
+    {
+        fuhgl::Shader vs(fuhgl::Shader::Type::Vertex), fs(fuhgl::Shader::Type::Fragment);
+        if (!vs.compile(kDecalVert) || !fs.compile(kDecalFrag)) {
+            std::fprintf(stderr, "DeferredRenderer: decal shader: %s%s\n", vs.infoLog().c_str(), fs.infoLog().c_str());
+            return false;
+        }
+        im.decalMat.program().attach(vs);
+        im.decalMat.program().attach(fs);
+        if (!im.decalMat.program().link()) {
+            std::fprintf(stderr, "DeferredRenderer: decal link: %s\n", im.decalMat.program().infoLog().c_str());
+            return false;
+        }
+    }
+    if (!im.decalBox.create()) return false;
+    im.decalBox.setMeshData(fuhgl::render::shapes::boxData({1.f, 1.f, 1.f}, {1.f, 1.f, 1.f}));
     const std::string lightFrag = std::string(kLightFragHead) + kLightFragKit +
                                   fuhgl::render::kSkFuncs + kLightFragProbes + kLightFragPbr + kLightFragTail;
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
@@ -410,18 +428,115 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
         f.glBindFramebuffer(fuhgl::gl::GL_READ_FRAMEBUFFER, 0);
         f.glBindFramebuffer(fuhgl::gl::GL_DRAW_FRAMEBUFFER, 0);
     }
+
+    // --- G8 decals: project into gAlbedo/gNormal (after the MSAA resolve when MSAA) ---
+    if (effectEnabled(Effect::Decals) && curDecals_ && !curDecals_->empty()) drawDecals(scene);
+}
+
+// G8 decal pass: draw each decal box (depth-tested, front faces) and let the decal shader
+// rewrite attachments 0 (albedo) + 1 (normal) where the G-buffer surface lies inside the
+// box and matches the decal's material-ID mask. Sorted back-to-front, capped at
+// kMaxDecals; with direct overwrite the nearest decal wins.
+void DeferredRenderer::drawDecals(const fuhgl::render::SceneView& scene) {
+    Impl& im = *impl_;
+    auto& f = fuhgl::gl::functions();
+    std::vector<const Decal*> sorted;
+    sorted.reserve(curDecals_->size());
+    for (const Decal& d : *curDecals_) sorted.push_back(&d);
+    const fuhgl::math::Vec3 eye = scene.camera->eye();
+    std::sort(sorted.begin(), sorted.end(), [&](const Decal* a, const Decal* b) {
+        const fuhgl::math::Vec4 ca = a->world * fuhgl::math::Vec4{0.f, 0.f, 0.f, 1.f};
+        const fuhgl::math::Vec4 cb = b->world * fuhgl::math::Vec4{0.f, 0.f, 0.f, 1.f};
+        const fuhgl::math::Vec3 da{ca.x - eye.x, ca.y - eye.y, ca.z - eye.z};
+        const fuhgl::math::Vec3 db{cb.x - eye.x, cb.y - eye.y, cb.z - eye.z};
+        return fuhgl::math::lengthSq(da) > fuhgl::math::lengthSq(db); // farthest first
+    });
+    if (sorted.size() > static_cast<std::size_t>(kMaxDecals)) {
+        static bool warned = false;
+        if (!warned) {
+            std::fprintf(stderr, "fuhglgraphics::DeferredRenderer: %zu decals > kMaxDecals=%d, farthest dropped\n",
+                         sorted.size(), kMaxDecals);
+            warned = true;
+        }
+        sorted.resize(static_cast<std::size_t>(kMaxDecals));
+    }
+
+
+    // target: the resolved FBO when MSAA (samplers need non-multisample textures), else the G-buffer
+    fuhgl::Framebuffer& target = msaa_ > 0 ? im.resolve : im.gbuffer;
+    const fuhgl::Texture& gAlbedo = msaa_ > 0 ? im.rAlbedo : im.texAlbedo;
+    const fuhgl::Texture& gNormal = msaa_ > 0 ? im.rNormal : im.texNormal;
+    const fuhgl::Texture& gMatId = msaa_ > 0 ? im.rMatId : im.texMatId;
+    target.bind();
+    const fuhgl::gl::GLenum decalBufs[2] = {fuhgl::gl::GL_COLOR_ATTACHMENT0, fuhgl::gl::GL_COLOR_ATTACHMENT1};
+    fuhgl::gl::drawBuffers(2, decalBufs);
+    fuhgl::gl::viewport(0, 0, internalWidth_, internalHeight_);
+    fuhgl::gl::depthMask(false); // decals must not write depth
+    fuhgl::gl::disable(fuhgl::gl::Cap::Blend); // the shader outputs the already-mixed color
+
+    // G-buffer samplers for the decal shader
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + 0);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, gAlbedo.id());
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + 1);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, gNormal.id());
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + 5);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, im.texDepth.id());
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + 6);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, gMatId.id());
+
+    fuhgl::Program& p = im.decalMat.program();
+    p.use();
+    p.setUniform("uViewProj", fuhgl::math::jitterViewProj(scene.camera->viewProj(scene.aspect), scene.jitter));
+    p.setUniform("uInvViewProj", scene.camera->viewProj(scene.aspect).inverse());
+    p.setUniform("uResolution", fuhgl::math::Vec2(static_cast<float>(internalWidth_),
+                                                  static_cast<float>(internalHeight_)));
+    p.setUniform(p.uniformLocation("uGAlbedo"), 0);
+    p.setUniform(p.uniformLocation("uGNormal"), 1);
+    p.setUniform(p.uniformLocation("uDecalTex"), fuhgl::render::kTextureUnitAlbedo);
+    p.setUniform(p.uniformLocation("uDecalNormal"), fuhgl::render::kTextureUnitNormalMap);
+    p.setUniform(p.uniformLocation("uGDepth"), 5);
+    p.setUniform(p.uniformLocation("uGMatId"), 6);
+    for (const Decal* d : sorted) {
+        p.setUniform("uDecalWorld", d->world);
+        p.setUniform("uInvDecalWorld", d->world.inverse());
+        p.setUniform("uHalfExtents", d->halfExtents);
+        p.setUniform("uAlbedo", d->albedo);
+        p.setUniform("uOpacity", d->opacity);
+        p.setUniform(p.uniformLocation("uMatIdMask"), d->materialIdMask);
+        p.setUniform(p.uniformLocation("uUseTex"), d->albedoTexture ? 1 : 0);
+        if (d->albedoTexture) {
+            fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitAlbedo);
+            f.glBindTexture(static_cast<fuhgl::gl::GLenum>(d->albedoTexture->target()), d->albedoTexture->id());
+        }
+        p.setUniform(p.uniformLocation("uUseNormalMap"), d->normalMap ? 1 : 0);
+        if (d->normalMap) {
+            fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitNormalMap);
+            f.glBindTexture(static_cast<fuhgl::gl::GLenum>(d->normalMap->target()), d->normalMap->id());
+        }
+        im.decalBox.draw();
+    }
+
+    // restore the G-buffer state (all 6 attachments + depth writes) for the next passes
+    const fuhgl::gl::GLenum allBufs[6] = {fuhgl::gl::GL_COLOR_ATTACHMENT0, fuhgl::gl::GL_COLOR_ATTACHMENT1,
+                                           fuhgl::gl::GL_COLOR_ATTACHMENT2, fuhgl::gl::GL_COLOR_ATTACHMENT3,
+                                           fuhgl::gl::GL_COLOR_ATTACHMENT4, fuhgl::gl::GL_COLOR_ATTACHMENT5};
+    fuhgl::gl::drawBuffers(6, allBufs);
+    fuhgl::gl::depthMask(true);
+    fuhgl::Framebuffer::unbind();
 }
 
 void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
                               const std::vector<std::uint32_t>* materialIds,
                               const std::vector<bool>* castShadow,
                               const std::vector<const particles::ParticleSystem*>* particleSystems,
-                              const probes::LightProbeGrid* lightProbes) {
+                              const probes::LightProbeGrid* lightProbes,
+                              const std::vector<Decal>* decals) {
     if (!scene.camera || width_ <= 0) return;
     fuhgl::render::SceneView s = scene;
     applyCapabilities();
     curParticles_ = particleSystems;
     curProbes_ = lightProbes;
+    curDecals_ = decals;
 
     if (s.env && !effectEnabled(Effect::Ibl)) {
         s.env = nullptr; // gated in applyCapabilities() with a one-time warning
@@ -512,6 +627,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     curScene_ = nullptr;
     curParticles_ = nullptr;
     curProbes_ = nullptr;
+    curDecals_ = nullptr;
 }
 
 // G5 particles post pass: copy hdr -> hdrP, then draw each system's instanced billboards
@@ -798,6 +914,7 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::ContactShadows, contactShadowsEnabled);
     gate(Effect::Particles, particlesEnabled_);
     gate(Effect::LightProbes, lightProbesEnabled_);
+    gate(Effect::Decals, decalsEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -815,6 +932,7 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::ContactShadows: contactShadowsEnabled = on; break;
         case Effect::Particles: particlesEnabled_ = on; break;
         case Effect::LightProbes: lightProbesEnabled_ = on; break;
+        case Effect::Decals: decalsEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -842,13 +960,14 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::ContactShadows: return contactShadowsEnabled;
         case Effect::Particles: return particlesEnabled_;
         case Effect::LightProbes: return lightProbesEnabled_;
+        case Effect::Decals: return decalsEnabled_;
     }
     return false;
 }
 
 void DeferredRenderer::setAllEffects(bool on) {
     taaEnabled_ = upscaleEnabled_ = tonemapEnabled_ = iblEnabled_ = shadows_ = csmEnabled_ = on;
-    pointShadows_ = contactShadowsEnabled = particlesEnabled_ = lightProbesEnabled_ = on;
+    pointShadows_ = contactShadowsEnabled = particlesEnabled_ = lightProbesEnabled_ = decalsEnabled_ = on;
     applyCapabilities();
 }
 

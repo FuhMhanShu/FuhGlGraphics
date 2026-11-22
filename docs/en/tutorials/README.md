@@ -26,8 +26,11 @@ One small tutorial per feature. Each is self-contained: goal → code → result
   (CPU bake, 3D-texture trilinear sampling in the G3 lighting pass) as a G9
   `LightProbeComponent`; color bleeding from colored walls into shadows, screenshots in
   [docs/images/](../../images/g7_probes_on.png)
+- [G8 — Deferred decals](g8_decals.md) — `render::Decal` boxes projected into the G-buffer
+  (albedo + normal), material-ID gated, as a G9 `DecalComponent`; bullet holes + markings
+  screenshots in [docs/images/](../../images/g8_decals_on.png)
 
-Next: **G8** (decals) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
+Next: **G10** (quick upgrades) / **G11** (engine infrastructure) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Prerequisite for all: build the library and link `FuhGlGraphics::fuhglgraphics`
 (see [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).

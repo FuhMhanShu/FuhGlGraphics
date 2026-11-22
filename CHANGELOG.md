@@ -196,3 +196,22 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   (pixel-verified: sky unchanged, shadowed floor brighter, per-channel color bleeding).
   G7 tutorial en/de; USER_GUIDE/REQUIREMENTS/READMEs/DEVELOPMENT updated; CI
   docs-screenshots renders them.
+- **G8 — decals / projected textures** (`render::Decal` in
+  `include/fuhglgraphics/render/decals.hpp`; decal pass in `src/render/deferred_renderer.cpp`,
+  `kDecalVert/kDecalFrag` in `src/render/deferred_glsl.hpp`): oriented box decals projected
+  into the G-buffer albedo + normal attachments between the geometry pass and the lighting
+  pass. The fragment shader reconstructs the world position from the G-buffer depth, keeps
+  pixels inside the box, gates on the G-buffer MaterialId (`materialIdMask`), projects onto
+  the dominant face axis of the surface normal and mixes albedo/normal in. Sorted
+  back-to-front, capped at `render::kMaxDecals` = 16 (one-time warning), after the MSAA
+  resolve when MSAA is on. New `render::Effect::Decals` (kEffectCount = 12);
+  `DeferredRenderer::render(..., decals)` trailing parameter. Pure `render::decalProject()`
+  helper (unit-tested). G9: `scene::DecalComponent` -> `FrameData::decals`.
+  Tests: `tests/test_render.cpp` (decalProject: containment, dominant-axis UV, rotated
+  boxes) + `tests/gl_smoke_decals.cpp` (gl_context: mark appears only with the effect on,
+  material-ID mask gates it, no GL error).
+  New tool `examples/decals_screenshot` (plaza with bullet-hole decals on ground + wall and
+  a red ring marking; `--no-decals/--no-shadows/--no-rays`) with reference images
+  `docs/images/g8_decals_{on,off,nofx}.png` (pixel-verified: red marking present only with
+  decals on). G8 tutorial en/de; USER_GUIDE/REQUIREMENTS/READMEs/DEVELOPMENT updated; CI
+  docs-screenshots renders them.
