@@ -153,7 +153,22 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   upload in render). See `tests/test_probes.cpp`, `tests/gl_smoke_probes.cpp`,
   `examples/probes_screenshot`, `docs/images/g7_probes_*.png` and the
   [G7 tutorial](en/tutorials/g7_light_probes.md).
-- G2, G8, G10, G11 — planned.
+- **G8 — decals / projected textures** (`render::Decal` in
+  `include/fuhglgraphics/render/decals.hpp`, decal pass in `src/render/deferred_renderer.cpp`
+  + `kDecalVert/kDecalFrag` in `src/render/deferred_glsl.hpp`): oriented box decals
+  projected into the G-buffer albedo + normal attachments between the geometry pass and
+  the lighting pass — the MaterialId attachment gates the target surfaces
+  (`materialIdMask`, "material-ID/stencil from G3"); box projection onto the dominant face
+  axis of the surface normal, optional albedo texture + normal map, `opacity`, sorted
+  back-to-front, limited to `render::kMaxDecals` = 16 (farthest dropped with a one-time
+  warning); with MSAA the pass runs after the resolve. New `render::Effect::Decals`
+  (kEffectCount = 12). Pure projection helper `render::decalProject()` (unit-tested).
+  G9: `scene::DecalComponent` → `FrameData::decals` →
+  `DeferredRenderer::render(..., &decals)`. See `tests/test_render.cpp` (decalProject),
+  `tests/gl_smoke_decals.cpp` (mark appears only when enabled, material-ID mask gates it),
+  `examples/decals_screenshot`, `docs/images/g8_decals_*.png` and the
+  [G8 tutorial](en/tutorials/g8_decals.md).
+- G2, G10, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON
   project files, MCP stdio chat). Implementation in phases P1–P5 after review.

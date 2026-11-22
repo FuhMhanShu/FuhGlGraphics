@@ -65,3 +65,11 @@ add_executable(fuhglgraphics_gl_smoke_probes gl_smoke_probes.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_probes PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_probes COMMAND fuhglgraphics_gl_smoke_probes)
 set_tests_properties(fuhglgraphics_gl_smoke_probes PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G8 decals (label "gl_context"): renders a ground quad with
+# a red decal box with Effect::Decals on vs off and verifies the mark appears only when
+# enabled and only on the targeted material ID. Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_decals gl_smoke_decals.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_decals PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_decals COMMAND fuhglgraphics_gl_smoke_decals)
+set_tests_properties(fuhglgraphics_gl_smoke_decals PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

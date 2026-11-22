@@ -25,8 +25,11 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   (CPU-Bake, 3D-Textur-Trilinear-Sampling in der G3-Lighting-Pass) als G9-
   `LightProbeComponent`; Color-Bleeding von farbigen Wänden in die Schatten, Bilder in
   [docs/images/](../../images/g7_probes_on.png)
+- [G8 — Deferred-Decals](g8_decals.md) — `render::Decal`-Boxen in den G-Buffer projiziert
+  (Albedo + Normal), Material-ID-gegated, als G9-`DecalComponent`; Kugellöcher +
+  Markierungen in [docs/images/](../../images/g8_decals_on.png)
 
-Als Nächstes: **G8** (Decals) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
+Als Nächstes: **G10** (Quick-Upgrades) / **G11** (Engine-Infrastruktur) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Voraussetzung für alle: Bibliothek bauen und `FuhGlGraphics::fuhglgraphics` linken
 (siehe [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).

@@ -166,8 +166,17 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
                   frame.lightProbes);
   ```
-- **Effects (G8, G10).** deferred decals, plus quick
-  upgrades: MSAA, CSM
+- **Decals (G8).** `fuhglgraphics::render::Decal` (plain data): oriented box decals projected
+  into the G-buffer's albedo + normal attachments by a dedicated pass between the G-buffer
+  geometry pass and the lighting pass — the G-buffer MaterialId attachment gates which
+  surfaces receive a decal (`materialIdMask`). Box projection onto the dominant face axis,
+  optional albedo texture + normal map, `opacity`, sorted back-to-front, capped at
+  `render::kMaxDecals` (16). Toggle: `render::Effect::Decals`. G9:
+  `scene::DecalComponent` → `FrameData::decals` →
+  `renderer.render(..., &frame.decals)`. Quick start: [G8 tutorial](en/tutorials/g8_decals.md),
+  demo `examples/decals_screenshot`, screenshots: [on](images/g8_decals_on.png),
+  [off](images/g8_decals_off.png), [no effects](images/g8_decals_nofx.png).
+- **Effects (G10).** quick upgrades: MSAA, CSM
   hardening, temporal upscaling, bokeh DoF, screenshot diffs in CI, debug HUD.
 - **Infrastructure (G11).** On-disk asset cache keyed by content hash, JSON config system
   (same minimal in-repo JSON parser as the glTF loader), minimal Qt editor.
