@@ -4,6 +4,7 @@ add_executable(fuhglgraphics_tests
     test_render.cpp
     test_scene.cpp
     test_io.cpp
+    test_particles.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -35,3 +36,12 @@ add_executable(fuhglgraphics_gl_smoke_gltf gl_smoke_gltf.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_gltf PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_gltf COMMAND fuhglgraphics_gl_smoke_gltf)
 set_tests_properties(fuhglgraphics_gl_smoke_gltf PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G5 particle system (label "gl_context"): creates a
+# ParticleSystem (compute path on GL >= 4.3, CPU fallback below), simulates 1 s, renders
+# through the G3 renderer's particles pass and verifies the frame gets brighter.
+# Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_particles gl_smoke_particles.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_particles PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_particles COMMAND fuhglgraphics_gl_smoke_particles)
+set_tests_properties(fuhglgraphics_gl_smoke_particles PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

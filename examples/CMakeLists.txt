@@ -17,3 +17,9 @@ target_link_libraries(fuhglgraphics_landscape_screenshot PRIVATE fuhglgraphics)
 # scene graph), stages it on a plaza with sun/sky/IBL and renders a PNG headless.
 add_executable(fuhglgraphics_gltf_demo gltf_demo/main.cpp)
 target_link_libraries(fuhglgraphics_gltf_demo PRIVATE fuhglgraphics)
+
+# G5 particle demo: GPU particle systems (compute on GL >= 4.3, CPU fallback) as G9
+# ParticleEmitterComponents through the G3 renderer's particles pass — campfire embers,
+# smoke plume, pollen motes — headless to PNG.
+add_executable(fuhglgraphics_particles_screenshot particles_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_particles_screenshot PRIVATE fuhglgraphics)

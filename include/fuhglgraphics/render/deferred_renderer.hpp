@@ -35,6 +35,10 @@
 #include <memory>
 #include <vector>
 
+namespace fuhglgraphics::particles {
+class ParticleSystem;
+}
+
 namespace fuhglgraphics::render {
 
 /// @brief Texture unit of the optional sky cubemap in the lighting pass. 16 because the
@@ -70,9 +74,13 @@ public:
     /// @param castShadow optional, parallel to scene.items: per-item flag whether the
     /// item is drawn into the shadow depth pass (G9 scene graph sets this per node;
     /// missing entries default to true).
+    /// @param particleSystems optional G5 particle systems (e.g. FrameData::particleSystems
+    /// from ParticleEmitterComponents) — drawn in the "particles" post pass when
+    /// Effect::Particles is enabled. Call ParticleSystem::update(dt) yourself per frame.
     void render(const fuhgl::render::SceneView& scene,
                 const std::vector<std::uint32_t>* materialIds = nullptr,
-                const std::vector<bool>* castShadow = nullptr);
+                const std::vector<bool>* castShadow = nullptr,
+                const std::vector<const particles::ParticleSystem*>* particleSystems = nullptr);
 
     /// @brief LDR output target (RGBA8, tonemapped when Effect::Tonemap is on).
     fuhgl::Framebuffer& output();
@@ -199,6 +207,7 @@ private:
                        const std::vector<std::uint32_t>* materialIds);
     void drawFs(fuhgl::render::Material& mat, const std::function<void(fuhgl::Program&)>& setUniforms);
     void drawLighting(fuhgl::render::RenderGraph::PassContext& ctx);
+    void drawParticles(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawTaa(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawUpscale(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawTonemap(fuhgl::render::RenderGraph::PassContext& ctx);
@@ -216,6 +225,8 @@ private:
     bool upscaleEnabled_ = true;
     bool tonemapEnabled_ = true;
     bool iblEnabled_ = true;
+    bool particlesEnabled_ = true; ///< Effect::Particles
+    const std::vector<const particles::ParticleSystem*>* curParticles_ = nullptr;
     bool shadows_ = false;
     bool csmEnabled_ = false;
     int shadowSize_ = 0;   ///< map size of the single ShadowMap (recreated on resize/scale change)

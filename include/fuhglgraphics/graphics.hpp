@@ -3,12 +3,14 @@
 // FuhGlGraphics umbrella header.
 //
 // Module map (see docs/REQUIREMENTS.md §3):
-//   render/   G3   deferred renderer on top of FuhGLCore (implemented)
+//   render/   G3   deferred renderer on top of FuhGLCore (implemented; shadows on the
+//                   FuhGLCore F45 shadow kit)
 //   io/       G4   glTF 2.0 asset loading (implemented: json.hpp, gltf.hpp)
 //   scene/    G9   scene graph + components + per-node effects/instancing (implemented)
+//   particles/ G5  GPU particle system, compute on GL >= 4.3 + CPU fallback (implemented)
 //   editor/   G2+G11  minimal Qt6 editor (only built with FUHGLGRAPHICS_WITH_QT=1)
-// Additionally planned: G5 GPU particles, G6 animation/skinning, G7 light
-// probes, G8 decals, G10 quick upgrades, G11 engine infrastructure.
+// Additionally planned: G6 animation/skinning, G7 light probes, G8 decals,
+// G10 quick upgrades, G11 engine infrastructure.
 //
 // The library core stays Qt-free; build with -DFUHGLGRAPHICS_WITH_QT=OFF for
 // headless use.
@@ -26,3 +28,5 @@
 
 #include <fuhglgraphics/io/json.hpp>
 #include <fuhglgraphics/io/gltf.hpp>
+
+#include <fuhglgraphics/particles/particle_system.hpp>

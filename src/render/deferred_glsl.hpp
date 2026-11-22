@@ -527,4 +527,12 @@ inline bool compilePostFs(fuhgl::render::Material& mat, const std::string& fragS
     return true;
 }
 
+// --- plain fullscreen copy (particles pass: hdr -> hdrP before the blended billboards) --
+constexpr const char* kCopyFrag = R"GLSL(#version 330 core
+in vec2 vUV;
+uniform sampler2D uSrc;
+out vec4 FragColor;
+void main() { FragColor = texture(uSrc, vUV); }
+)GLSL";
+
 } // namespace fuhglgraphics::render

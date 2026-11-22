@@ -14,8 +14,12 @@ One small tutorial per feature. Each is self-contained: goal → code → result
 - [G4 — glTF 2.0 loader](g4_gltf_loader.md) — `io::loadGltf()` + `io::instantiateGltf()` onto
   the G9 scene graph, demo asset (Kenney, CC0) + `examples/gltf_demo`, screenshots in
   [docs/images/](../../images/g4_gltf_ship.png)
+- [G5 — GPU particles](g5_particles.md) — `particles::ParticleSystem` (compute on
+  GL >= 4.3, CPU fallback) as a G9 `ParticleEmitterComponent`, rendered in the G3
+  "particles" post pass; campfire/smoke/pollen screenshots in
+  [docs/images/](../../images/g5_particles_fire.png)
 
-Next: **G5** (GPU particles) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
+Next: **G6** (animation/skinning) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Prerequisite for all: build the library and link `FuhGlGraphics::fuhglgraphics`
 (see [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).

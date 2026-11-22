@@ -117,6 +117,14 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out docs/images/ci/g9_landscape_shadowkit_pcf3x3.png --width 1280 --height 720 --frames 24 --shadow-filter pcf3x3 --cascade-blend 0
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out docs/images/ci/g9_landscape_shadowkit_lamp.png --width 1280 --height 720 --frames 24 --shadow-filter pcss --light-size 0.8 --point-shadows --contact-shadows
 
+      - name: Build + render G5 particle screenshots (compute path on GL >= 4.3)
+        run: |
+          cmake --build build -j --target fuhglgraphics_particles_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_particles_screenshot --out docs/images/ci/g5_particles_fire.png --kind fire --width 1280 --height 720 --frames 24
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_particles_screenshot --out docs/images/ci/g5_particles_smoke.png --kind smoke --width 1280 --height 720 --frames 24
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_particles_screenshot --out docs/images/ci/g5_particles_pollen.png --kind pollen --width 1280 --height 720 --frames 24
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_particles_screenshot --out docs/images/ci/g5_particles_all_nofx.png --kind all --width 1280 --height 720 --frames 24 --no-rays --no-shadows --no-particles
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)

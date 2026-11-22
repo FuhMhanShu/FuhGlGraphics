@@ -21,15 +21,21 @@
 #include <cstdint>
 #include <vector>
 
+namespace fuhglgraphics::particles {
+class ParticleSystem;
+}
+
 namespace fuhglgraphics::scene {
 
 /// @brief Everything one frame needs: the FuhGLCore SceneView plus the parallel per-item
-/// vectors for the G3 renderer and the merged Effects of the whole graph.
+/// vectors for the G3 renderer, the merged Effects of the whole graph and the G5 particle
+/// systems collected from ParticleEmitterComponents (rendered when Effect::Particles is on).
 struct FrameData {
     fuhgl::render::SceneView view;          ///< items + lights + camera + size
     std::vector<std::uint32_t> materialIds; ///< parallel to view.items (G-buffer MaterialId)
     std::vector<bool> castShadow;           ///< parallel to view.items (shadow depth pass)
     Effects effects;                        ///< merged union of all node effects
+    std::vector<const particles::ParticleSystem*> particleSystems; ///< G5 emitters
 };
 
 /// @brief The G9 scene graph (root node + frame filling with frustum culling).

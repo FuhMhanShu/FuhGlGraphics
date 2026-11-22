@@ -41,8 +41,12 @@ Effekt-Vergleichsbilder in [docs/images/](docs/images/g9_scene_graph.png) — un
 glTF-2.0-Asset-Loading: `fuhglgraphics::io::loadGltf()` (.gltf/.glb, eigener JSON-Parser,
 Puffer/Accessoren/Primitive/Materialien/Bilder) + `io::instantiateGltf()` auf den
 G9-Szenengraphen — siehe [G4-Tutorial](docs/de/tutorials/g4_gltf_loader.md) und Bilder in
-[docs/images/](docs/images/g4_gltf_ship.png).
-Als Nächstes: **G5** (GPU-Partikel).
+[docs/images/](docs/images/g4_gltf_ship.png) — und **G5** — GPU-Partikel
+(`particles::ParticleSystem`, Compute ab GL 4.3 mit CPU-Fallback) als
+G9-`ParticleEmitterComponent`, gerendert im G3-"particles"-Post-Pass — siehe
+[G5-Tutorial](docs/de/tutorials/g5_particles.md) und Bilder in
+[docs/images/](docs/images/g5_particles_fire.png).
+Als Nächstes: **G6** (Animation/Skinning).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.
 

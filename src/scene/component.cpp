@@ -42,6 +42,10 @@ void MeshComponent::fill(const Node& node, FrameData& frame) const {
     }
 }
 
+void ParticleEmitterComponent::fill(const Node& /*node*/, FrameData& frame) const {
+    if (system.isReady()) frame.particleSystems.push_back(&system);
+}
+
 void LightComponent::fill(const Node& node, FrameData& frame) const {
     fuhgl::render::Light l = light;
     const fuhgl::math::Mat4& w = node.worldMatrix();
