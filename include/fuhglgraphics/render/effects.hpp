@@ -28,10 +28,12 @@ enum class Effect {
     Particles,      ///< G5 particle systems (compute on GL >= 4.3, CPU fallback below)
     LightProbes,    ///< G7 SH-irradiance light-probe grid (diffuse indirect light, 3D textures)
     Decals,         ///< G8 deferred decals projected into the G-buffer (material-ID gated)
+    Dof,            ///< G10 depth of field with a hexagonal bokeh kernel (post pass after upscale)
+    DebugHud,       ///< G10 mini debug HUD (fps, frame time, effect toggles) on FuhGLCore TextRenderer
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 12;
+constexpr int kEffectCount = 14;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -48,6 +50,8 @@ inline const char* effectName(Effect e) {
         case Effect::Particles: return "particles";
         case Effect::LightProbes: return "light probes";
         case Effect::Decals: return "decals";
+        case Effect::Dof: return "DoF";
+        case Effect::DebugHud: return "debug HUD";
     }
     return "unknown";
 }

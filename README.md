@@ -59,8 +59,12 @@ diffuse indirect light / color bleeding, as a G9 `LightProbeComponent` — see t
 [docs/images/](docs/images/g7_probes_on.png) — and **G8** — deferred decals
 (`render::Decal` boxes projected into the G-buffer, material-ID gated) as a G9
 `DecalComponent` — see the [G8 tutorial](docs/en/tutorials/g8_decals.md) and
-screenshots in [docs/images/](docs/images/g8_decals_on.png).
-Next up: **G10** (quick upgrades) or **G11** (engine infrastructure).
+screenshots in [docs/images/](docs/images/g8_decals_on.png) — and **G10** — quick upgrades:
+DoF with a hexagonal bokeh kernel (`Effect::Dof`), a mini debug HUD on FuhGLCore's
+TextRenderer (`Effect::DebugHud`), and a perceptual PSNR screenshot diff in CI — see the
+[G10 tutorial](docs/en/tutorials/g10_upgrades.md) and screenshots in
+[docs/images/](docs/images/g10_dof_on.png).
+Next up: **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2** (Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.
 

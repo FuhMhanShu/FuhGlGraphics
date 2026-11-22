@@ -176,7 +176,17 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   `renderer.render(..., &frame.decals)`. Quick start: [G8 tutorial](en/tutorials/g8_decals.md),
   demo `examples/decals_screenshot`, screenshots: [on](images/g8_decals_on.png),
   [off](images/g8_decals_off.png), [no effects](images/g8_decals_nofx.png).
-- **Effects (G10).** quick upgrades: MSAA, CSM
+- **Quick upgrades (G10).** `render::Effect::Dof`: depth of field with a hexagonal bokeh
+  kernel — a post pass between upscale and tonemap, CoC from the linearized G-buffer depth
+  (`dofFocusDist` / `dofStrength` / `dofMaxCoC` in `EffectParams`). `render::Effect::DebugHud`:
+  `render::DebugHud` (PIMPL over FuhGLCore's TextRenderer, embedded 8x8 font) draws fps,
+  frame ms and the on/off state of every effect into the output after the post graph —
+  `renderer.hud().fps()`, `renderer.lastFrameMs()`. CI: `docs/screenshot_diff.py` does a
+  perceptual PSNR diff of the rendered `docs/images/ci/*.png` against the checked-in
+  references in the `docs-screenshots` job. Quick start:
+  [G10 tutorial](en/tutorials/g10_upgrades.md), demo `examples/dof_screenshot`,
+  screenshots: [DoF on](images/g10_dof_on.png), [off](images/g10_dof_off.png),
+  [HUD](images/g10_hud.png).
   hardening, temporal upscaling, bokeh DoF, screenshot diffs in CI, debug HUD.
 - **Infrastructure (G11).** On-disk asset cache keyed by content hash, JSON config system
   (same minimal in-repo JSON parser as the glTF loader), minimal Qt editor.

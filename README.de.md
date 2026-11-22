@@ -57,8 +57,12 @@ diffuses indirektes Licht / Color-Bleeding, als G9-`LightProbeComponent` — sie
 [docs/images/](docs/images/g7_probes_on.png) — und **G8** — Deferred-Decals
 (`render::Decal`-Boxen in den G-Buffer projiziert, Material-ID-gegated) als G9-
 `DecalComponent` — siehe [G8-Tutorial](docs/de/tutorials/g8_decals.md) und Bilder in
-[docs/images/](docs/images/g8_decals_on.png).
-Als Nächstes: **G10** (Quick-Upgrades) oder **G11** (Engine-Infrastruktur).
+[docs/images/](docs/images/g8_decals_on.png) — und **G10** — Quick-Upgrades: DoF mit
+hexagonalem Bokeh-Kernel (`Effect::Dof`), Mini-Debug-HUD auf FuhGLCore's TextRenderer
+(`Effect::DebugHud`) und perzeptueller PSNR-Screenshot-Diff in der CI — siehe
+[G10-Tutorial](docs/de/tutorials/g10_upgrades.md) und Bilder in
+[docs/images/](docs/images/g10_dof_on.png).
+Als Nächstes: **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder **G2** (Qt-Editor).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.
 
