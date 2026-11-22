@@ -120,7 +120,7 @@ int main() {
 
     // water region = lower half of the image; frames must differ there (waves + reflection
     // vs plain PBR), and the two animated water frames must differ as well (time advances)
-    auto regionDiff = [](const std::vector<unsigned char>& a, const std::vector<unsigned char>& b) {
+    auto regionDiff = [&](const std::vector<unsigned char>& a, const std::vector<unsigned char>& b) {
         long sum = 0;
         for (int y = 0; y < H / 2; ++y)
             for (int x = 0; x < W; ++x) {
