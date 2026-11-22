@@ -89,3 +89,20 @@ raw clamp, visible aliasing, no shadows — for comparison:
 Reproduce: `cmake --build build --target fuhglgraphics_scene_screenshot` then
 `FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_scene_screenshot --out shot.png --width 1280 --height 720 --frames 24 [--no-shadows] ...`
 (exit code 2 when no headless GL is available).
+
+## Landscape with cloud sky, sun, fog and god rays
+
+`examples/landscape_screenshot` builds a bigger G9 landscape: a heightmap terrain with
+~170 tree nodes (each holding **two mesh entries** — trunk + foliage), a procedural fBm
+**cloud sky cubemap** (`renderer.setSkyCubemap`, also baked as the IBL environment), a low
+warm sun (sun disk from the directional light), distance fog and **god rays**
+(`renderer.godRays`, occlusion-tested against the G-buffer depth in the tonemap pass):
+
+![G9 landscape: cloud sky, low sun, fog, god rays](../../images/g9_landscape_sky_sun_fog_rays.png)
+
+Same scene with the god rays off (`--no-rays`) — the light shafts toward the sun disappear:
+
+![G9 landscape without god rays](../../images/g9_landscape_no_rays.png)
+
+Reproduce: `cmake --build build --target fuhglgraphics_landscape_screenshot` then
+`FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out shot.png --width 1280 --height 720 --frames 24 [--no-rays] [--no-fog] [--no-clouds] [--no-shadows] [--no-ibl]`.

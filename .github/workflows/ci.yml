@@ -88,7 +88,7 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DFUHGLGRAPHICS_WITH_QT=OFF -DFUHGL_LINUX_BACKEND=EGL
 
       - name: Build screenshot tools
-        run: cmake --build build -j --target fuhglgraphics_screenshot fuhglgraphics_scene_screenshot
+        run: cmake --build build -j --target fuhglgraphics_screenshot fuhglgraphics_scene_screenshot fuhglgraphics_landscape_screenshot
 
       - name: Render G3 reference screenshots
         run: |
@@ -104,6 +104,11 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_scene_screenshot --out docs/images/ci/g9_no_ibl.png --width 1280 --height 720 --frames 24 --no-ibl
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_scene_screenshot --out docs/images/ci/g9_upscale_scale0.6.png --width 1280 --height 720 --frames 24 --scale 0.6
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_scene_screenshot --out docs/images/ci/g9_no_effects.png --width 1280 --height 720 --frames 24 --no-taa --no-tonemap --no-upscale --no-shadows --no-ibl
+
+      - name: Render G9 landscape screenshots (cloud sky, sun, fog, god rays)
+        run: |
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out docs/images/ci/g9_landscape_sky_sun_fog_rays.png --width 1280 --height 720 --frames 24
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out docs/images/ci/g9_landscape_no_rays.png --width 1280 --height 720 --frames 24 --no-rays
 
       - name: Upload screenshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

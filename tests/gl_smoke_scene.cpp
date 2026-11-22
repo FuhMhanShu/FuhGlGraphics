@@ -82,6 +82,11 @@ int main() {
     fuhgl::render::shapes::box(pillar, {0.25f, 1.2f, 0.25f}, {0.7f, 0.7f, 0.75f});
 
     // flat tangent-space normal map (+Z) — exercises the uUseNormalMap path
+    // NOTE: CubeFace is an enum class over GL face constants — cast the GL constant, not an index
+    const fuhgl::Texture::CubeFace cubeFaces[6] = {
+        fuhgl::Texture::CubeFace::PosX, fuhgl::Texture::CubeFace::NegX, fuhgl::Texture::CubeFace::PosY,
+        fuhgl::Texture::CubeFace::NegY, fuhgl::Texture::CubeFace::PosZ, fuhgl::Texture::CubeFace::NegZ,
+    };
     fuhgl::Texture normalTex;
     const bool haveNormalTex = normalTex.create(fuhgl::Texture::Target::Tex2D);
     if (haveNormalTex) {
@@ -139,7 +144,8 @@ int main() {
 
     scene::Node& sunNode = scene.root().createChild("sun");
     scene::LightComponent& slc = sunNode.attach<scene::LightComponent>();
-    slc.light = fuhgl::render::Light::directional({-0.4f, -1.f, -0.3f}, {1.f, 0.9f, 0.75f}, 3.f);
+    // sun toward -Z + up (~20 deg elevation): inside the camera frame so the sun disk + god rays show
+    slc.light = fuhgl::render::Light::directional({0.2f, -0.35f, 0.9f}, {1.f, 0.9f, 0.75f}, 3.f);
 
     glErrAt("after scene setup");
     scene::FrameData frame;
@@ -231,6 +237,66 @@ int main() {
         return 1;
     }
     std::fprintf(stderr, "gl_smoke_scene: exposure 1 -> %d, exposure 4 -> %d\n", rLow, rHigh);
+
+    // --- sky cubemap + god rays ---
+    // solid green 1x1 sky cube: background pixels must turn green
+    fuhgl::Texture skyCube;
+    if (!skyCube.create(fuhgl::Texture::Target::Cube)) {
+        std::fprintf(stderr, "gl_smoke_scene: FAIL (sky cube create)\n");
+        return 1;
+    }
+    skyCube.bind();
+    const unsigned char green[4] = {0, 255, 0, 255};
+    for (int face = 0; face < 6; ++face)
+        skyCube.setImageCubeFace(cubeFaces[face], 0, fuhgl::gl::GL_RGBA8, 1, fuhgl::gl::GL_RGBA,
+                                 fuhgl::gl::GL_UNSIGNED_BYTE, green);
+    skyCube.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_NEAREST);
+    skyCube.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_NEAREST);
+    renderer.setSkyCubemap(&skyCube);
+
+    frame.effects.setAll(false);
+    frame.effects.enable(render::Effect::Tonemap);
+    frame.effects.params.exposure = 1.f;
+    frame.effects.applyTo(renderer);
+
+    // deterministic single frames (TAA off): god rays off vs on — rays must only add light
+    renderer.godRays.enabled = false;
+    renderer.render(frame.view, &frame.materialIds, &frame.castShadow);
+    fuhgl::gl::flush();
+    renderer.output().bind();
+    std::vector<unsigned char> imgA(static_cast<std::size_t>(W) * H * 4, 0);
+    fuhgl::gl::readPixels(0, 0, W, H, fuhgl::gl::GL_RGBA, fuhgl::gl::GL_UNSIGNED_BYTE, imgA.data());
+    unsigned char cornerA[4] = {0, 0, 0, 0};
+    fuhgl::gl::readPixels(2, H - 3, 1, 1, fuhgl::gl::GL_RGBA, fuhgl::gl::GL_UNSIGNED_BYTE, cornerA);
+
+    renderer.godRays.enabled = true;
+    renderer.godRays.strength = 0.8f;
+    renderer.godRays.samples = 16;
+    renderer.render(frame.view, &frame.materialIds, &frame.castShadow);
+    fuhgl::gl::flush();
+    renderer.output().bind();
+    std::vector<unsigned char> imgB(static_cast<std::size_t>(W) * H * 4, 0);
+    fuhgl::gl::readPixels(0, 0, W, H, fuhgl::gl::GL_RGBA, fuhgl::gl::GL_UNSIGNED_BYTE, imgB.data());
+    unsigned char cornerB[4] = {0, 0, 0, 0};
+    fuhgl::gl::readPixels(2, H - 3, 1, 1, fuhgl::gl::GL_RGBA, fuhgl::gl::GL_UNSIGNED_BYTE, cornerB);
+    std::fprintf(stderr, "gl_smoke_scene: corner sky cube: A=(%d,%d,%d) B=(%d,%d,%d)\n", cornerA[0], cornerA[1],
+                 cornerA[2], cornerB[0], cornerB[1], cornerB[2]);
+    // solid green cubemap -> the background pixel must be green-dominant
+    // (with the gradient fallback it would be blue-dominant)
+    if (!(cornerA[1] > 100 && cornerA[1] > cornerA[0] + 50 && cornerA[1] > cornerA[2] + 50)) {
+        std::fprintf(stderr, "gl_smoke_scene: FAIL (sky cubemap not sampled in background)\n");
+        return 1;
+    }
+    unsigned long sumA = 0, sumB = 0;
+    for (std::size_t i = 0; i < imgA.size(); i += 4) {
+        sumA += imgA[i] + imgA[i + 1] + imgA[i + 2];
+        sumB += imgB[i] + imgB[i + 1] + imgB[i + 2];
+    }
+    std::fprintf(stderr, "gl_smoke_scene: luminance rays off=%lu on=%lu\n", sumA, sumB);
+    if (!(sumB > sumA)) { // god rays only add light (ACES is monotonic)
+        std::fprintf(stderr, "gl_smoke_scene: FAIL (god rays did not brighten the frame)\n");
+        return 1;
+    }
 
     std::fprintf(stderr, "gl_smoke_scene: PASS (GL %d.%d)\n", fuhgl::gl::version().major,
                  fuhgl::gl::version().minor);

@@ -90,3 +90,21 @@ rohes Clamp, sichtbares Aliasing, keine Schatten — zum Vergleich:
 Nachbauen: `cmake --build build --target fuhglgraphics_scene_screenshot`, dann
 `FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_scene_screenshot --out shot.png --width 1280 --height 720 --frames 24 [--no-shadows] ...`
 (Rückgabecode 2, wenn kein headless GL verfügbar ist).
+
+## Landschaft mit Wolkenhimmel, Sonne, Nebel und God Rays
+
+`examples/landscape_screenshot` baut eine größere G9-Landschaft: Heightmap-Terrain mit
+~170 Baum-Nodes (jeder hält **zwei Mesh-Einträge** — Stamm + Krone), eine prozedurale
+fBm-**Wolken-Skybox-Cubemap** (`renderer.setSkyCubemap`, wird auch als IBL-Environment
+gebaked), eine tief stehende warme Sonne (Sonnenscheibe aus dem Directional-Light),
+Distanznebel und **God Rays** (`renderer.godRays`, per Occlusion gegen den G-Buffer-Depth
+im Tonemap-Pass getestet):
+
+![G9 Landschaft: Wolkenhimmel, tiefe Sonne, Nebel, God Rays](../../images/g9_landscape_sky_sun_fog_rays.png)
+
+Dieselbe Szene ohne God Rays (`--no-rays`) — die Lichtstrahlen zur Sonne verschwinden:
+
+![G9 Landschaft ohne God Rays](../../images/g9_landscape_no_rays.png)
+
+Nachbauen: `cmake --build build --target fuhglgraphics_landscape_screenshot`, dann
+`FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_landscape_screenshot --out shot.png --width 1280 --height 720 --frames 24 [--no-rays] [--no-fog] [--no-clouds] [--no-shadows] [--no-ibl]`.

@@ -115,6 +115,8 @@ uniform sampler2DArray uShadowMapArray;  // unit 10 (kTextureUnitShadowMapArray)
 uniform samplerCube uIrradianceMap;      // unit 7 (kTextureUnitIrradiance)
 uniform samplerCube uPrefilterMap;       // unit 8 (kTextureUnitPrefilter)
 uniform sampler2D uBrdfLut;              // unit 9 (kTextureUnitBrdfLut)
+uniform samplerCube uSkyCube;            // unit 11 (kTextureUnitSkyCube)
+uniform int uUseSkyCube;                 // 1 = sample the sky cubemap for background pixels
 uniform mat4 uInvViewProj;   // camera viewProj inverse: depth -> world position
 uniform vec3 uCamPos;
 uniform vec3 uAmbient;
@@ -268,7 +270,8 @@ void main() {
         // background: sky gradient + HDR sun disk (bloom source)
         vec4 fp = uInvViewProj * vec4(vUV * 2.0 - 1.0, 1.0, 1.0);
         vec3 ray = normalize(fp.xyz / fp.w - uCamPos);
-        vec3 sky = mix(uSkyBottom, uSkyTop, clamp(vUV.y, 0.0, 1.0));
+        vec3 sky = (uUseSkyCube == 1) ? texture(uSkyCube, ray).rgb
+                                      : mix(uSkyBottom, uSkyTop, clamp(vUV.y, 0.0, 1.0));
         sky += uSunColor * smoothstep(uSunCos, 1.0, dot(ray, uSunDir));
         FragColor = vec4(sky, 1.0);
         return;
@@ -362,12 +365,41 @@ void main() {
 constexpr const char* kTonemapFrag = R"GLSL(#version 330 core
 in vec2 vUV;
 uniform sampler2D uHdr; // unit 0: upscaled HDR
+uniform sampler2D uGDepth; // unit 1: G-buffer depth (internal resolution) for ray occlusion
 uniform float uExposure;
 uniform int uUseTonemap;
+uniform vec2 uSunScreen;    // sun position in uv of the output image
+uniform float uRayStrength; // 0 = god rays off
+uniform float uRayDecay;
+uniform int uRaySamples;
 out vec4 FragColor;
 vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
 void main() {
     vec3 c = texture(uHdr, vUV).rgb * uExposure;
+    if (uRayStrength > 0.0) {
+        // god rays: weighted average of the HDR image along the segment from this pixel
+        // toward the sun's screen position. Each sample is occluded when the G-buffer depth
+        // at its uv is closer than the ray line (sun ~ far plane), so geometry (trees,
+        // hills) casts real light shafts.
+        float depthP = texture(uGDepth, vUV).r;
+        vec2 delta = (uSunScreen - vUV) / max(float(uRaySamples), 1.0);
+        vec3 acc = vec3(0.0);
+        vec2 suv = vUV;
+        for (int i = 0; i < 64; ++i) {
+            if (i >= uRaySamples) break;
+            suv += delta;
+            float t = float(i + 1) / max(float(uRaySamples), 1.0);
+            float rayDepth = mix(depthP, 1.0, t);
+            float sceneDepth = texture(uGDepth, clamp(suv, vec2(0.001), vec2(0.999))).r;
+            float occl = step(rayDepth - 0.002, sceneDepth); // 1 = light passes, 0 = blocked
+            vec3 s = texture(uHdr, clamp(suv, vec2(0.001), vec2(0.999))).rgb;
+            // weight 1 at the sun end, decaying toward the pixel: shafts come from the
+            // bright sky/sun region, modulated per-pixel by the geometry occlusion
+            float d = pow(uRayDecay, float(uRaySamples - i));
+            acc += max(s - vec3(0.35), vec3(0.0)) * d * occl;
+        }
+        c += (acc / max(float(uRaySamples), 1.0)) * uRayStrength;
+    }
     if (uUseTonemap == 1) {
         c = aces(c);
         c = pow(c, vec3(1.0 / 2.2));

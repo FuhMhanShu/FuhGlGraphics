@@ -66,7 +66,10 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   TAA → FSR1-style upscale → ACES tonemap on `render::RenderGraph`, per-effect toggles with
   F39/F40-style gating). See `include/fuhglgraphics/render/`, `src/render/`,
   `tests/gl_smoke_render.cpp`, `examples/screenshot`, `docs/images/` and the
-  [G3 tutorial](en/tutorials/g3_deferred_renderer.md).
+  [G3 tutorial](en/tutorials/g3_deferred_renderer.md). Extensions: sky cubemap for
+  background pixels (`setSkyCubemap`, unit 11) and occlusion-tested god rays in the
+  tonemap pass (`renderer.godRays`, G-buffer depth as occluder) — demoed by
+  `examples/landscape_screenshot` (`docs/images/g9_landscape_sky_sun_fog_rays.png`).
 - **G9** — implemented: `fuhglgraphics::scene::Scene` / `Node` / components
   (`include/fuhglgraphics/scene/`, `src/scene/`): local TRS + world matrices, children,
   polymorphic component list (`MeshComponent` with several `MeshEntry` meshes per node —

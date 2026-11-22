@@ -251,7 +251,7 @@ bool DeferredRenderer::createInternal() {
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTaa(ctx); }, /*feedback=*/true);
     im.post.addPass("upscale", {"taa"}, {"up"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawUpscale(ctx); });
-    im.post.addPass("tonemap", {"up"}, {},
+    im.post.addPass("tonemap", {"up", "gDepth"}, {},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTonemap(ctx); });
     if (!im.post.compile()) {
         std::fprintf(stderr, "fuhglgraphics::DeferredRenderer: post graph compile failed\n");
@@ -473,6 +473,9 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
     f.glBindTexture(fuhgl::gl::GL_TEXTURE_CUBE_MAP, s.env ? s.env->prefilterMap().id() : im.dummyCube.id());
     fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitBrdfLut);
     f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, s.env ? s.env->brdfLut().id() : im.dummy2D.id());
+    // sky cubemap (unit 11; dummy when off)
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + kTextureUnitSkyCube);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_CUBE_MAP, skyCube_ ? skyCube_->id() : im.dummyCube.id());
 
     drawFs(im.lightingMat, [&](fuhgl::Program& p) {
         p.setUniform(p.uniformLocation("uGAlbedo"), 0);
@@ -485,6 +488,8 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
         p.setUniform(p.uniformLocation("uIrradianceMap"), fuhgl::render::kTextureUnitIrradiance);
         p.setUniform(p.uniformLocation("uPrefilterMap"), fuhgl::render::kTextureUnitPrefilter);
         p.setUniform(p.uniformLocation("uBrdfLut"), fuhgl::render::kTextureUnitBrdfLut);
+        p.setUniform(p.uniformLocation("uSkyCube"), kTextureUnitSkyCube);
+        p.setUniform(p.uniformLocation("uUseSkyCube"), skyCube_ ? 1 : 0);
         p.setUniform("uInvViewProj", s.camera->viewProj(s.aspect).inverse());
         p.setUniform("uCamPos", s.camera->eye());
         p.setUniform("uAmbient", s.ambient);
@@ -552,15 +557,33 @@ void DeferredRenderer::drawUpscale(fuhgl::render::RenderGraph::PassContext& ctx)
 
 void DeferredRenderer::drawTonemap(fuhgl::render::RenderGraph::PassContext& ctx) {
     ctx.bindInput(0, "up");
+    ctx.bindInput(1, "gDepth"); // for the god-ray occlusion
     fuhgl::Framebuffer& out = impl_->output;
     out.bind();
     const fuhgl::gl::GLenum buf[1] = {fuhgl::gl::GL_COLOR_ATTACHMENT0};
     fuhgl::gl::drawBuffers(1, buf);
     fuhgl::gl::viewport(0, 0, width_, height_);
+    // sun screen position for the god rays (behind the camera -> rays off)
+    float rayStrength = 0.f;
+    fuhgl::math::Vec2 sunScreen{-10.f, -10.f};
+    if (godRays.enabled && curScene_ && curScene_->camera) {
+        const fuhgl::render::SceneView& s = *curScene_;
+        const fuhgl::math::Vec4 clip =
+            s.camera->viewProj(s.aspect) * fuhgl::math::Vec4{s.sunDirection.x, s.sunDirection.y, s.sunDirection.z, 0.f};
+        if (clip.w > 0.f) {
+            sunScreen = {clip.x / clip.w * 0.5f + 0.5f, clip.y / clip.w * 0.5f + 0.5f};
+            rayStrength = godRays.strength;
+        }
+    }
     drawFs(impl_->tonemapMat, [&](fuhgl::Program& p) {
         p.setUniform(p.uniformLocation("uHdr"), 0);
+        p.setUniform(p.uniformLocation("uGDepth"), 1);
         p.setUniform("uExposure", exposure);
         p.setUniform(p.uniformLocation("uUseTonemap"), effectEnabled(Effect::Tonemap) ? 1 : 0);
+        p.setUniform("uSunScreen", sunScreen);
+        p.setUniform("uRayStrength", rayStrength);
+        p.setUniform("uRayDecay", godRays.decay);
+        p.setUniform("uRaySamples", godRays.samples);
     });
     fuhgl::Framebuffer::unbind();
 }

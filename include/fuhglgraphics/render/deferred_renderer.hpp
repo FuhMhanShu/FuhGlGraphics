@@ -33,6 +33,10 @@
 
 namespace fuhglgraphics::render {
 
+/// @brief Texture unit of the optional sky cubemap in the lighting pass (11; FuhGLCore's
+/// built-in pipelines use units 3..10).
+inline constexpr int kTextureUnitSkyCube = 11;
+
 /// @brief G3 deferred renderer. Usage: create(w, h) once with a current GL context,
 /// then per frame fill a fuhgl::render::SceneView and call render(scene).
 /// The frame lands LDR-tonemapped in output(); the extended G-buffer and the HDR
@@ -96,7 +100,24 @@ public:
     float taaBlend = 0.1f;            ///< weight of the current frame in the TAA blend (1 on the first frame)
     float upscaleSharpness = 0.6f;    ///< RCAS sharpening amount of the FSR1-style upscale (0..1)
     fuhgl::math::Vec3 skyTop{0.25f, 0.45f, 0.9f};    ///< sky gradient, used for background pixels
-    fuhgl::math::Vec3 skyBottom{0.85f, 0.88f, 0.95f};
+    fuhgl::math::Vec3 skyBottom{0.85f, 0.88f, 0.95f}; ///< (replaced by the sky cubemap when set)
+
+    /// @brief Optional sky cubemap: when set, background pixels in the lighting pass sample
+    /// it by view-ray direction instead of the skyTop/skyBottom gradient (unit kTextureUnitSkyCube).
+    void setSkyCubemap(const fuhgl::Texture* cube) { skyCube_ = cube; }
+    const fuhgl::Texture* skyCubemap() const { return skyCube_; }
+
+    /// @brief God rays (crepuscular rays) toward the sun, added in the tonemap pass: a radial
+    /// blur from each pixel toward the sun's screen position on the HDR image (cheap
+    /// approximation without occlusion). The sun disk itself is drawn by the lighting pass
+    /// (SceneView::sunColor, derived from the first directional light). Off by default.
+    struct GodRays {
+        bool enabled = false;
+        float strength = 0.8f; ///< scale of the added ray light
+        float decay = 0.95f;   ///< per-sample decay along the ray
+        int samples = 32;      ///< radial blur samples (max 64)
+    };
+    GodRays godRays;
 
     // --- effects: uniform toggle API + capability gating (F39/F40-style) -------------
     /// @brief Enables/disables one effect. Unsupported effects are refused with a
@@ -165,6 +186,7 @@ private:
     float shadowRadius_ = 10.f;
     float shadowStrength_ = 1.f;
 
+    const fuhgl::Texture* skyCube_ = nullptr;
     int glMajor_ = 0, glMinor_ = 0;
     unsigned warnedMask_ = 0; ///< effects already warned about (bit = Effect index)
 };

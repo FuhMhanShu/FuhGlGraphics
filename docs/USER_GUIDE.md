@@ -19,8 +19,13 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   `render/gbuffer.hpp`), PBR lighting reusing FuhGLCore lights/shadows/IBL, and its own post
   chain on a `render::RenderGraph` (TAA → FSR1-style EASU+RCAS upscaling → ACES tonemap) with
   per-effect toggles (`setEffectEnabled(render::Effect::Taa, ...)`) and F39/F40-style
-  capability gating. Quick start: [G3 tutorial](en/tutorials/g3_deferred_renderer.md),
-  result: [screenshot](images/g3_deferred_1280x720.png).
+  capability gating. Extras: `setSkyCubemap(&cube)` renders a real sky cubemap for
+  background pixels (instead of the skyTop/skyBottom gradient), and `renderer.godRays`
+  adds occlusion-tested god rays toward the sun in the tonemap pass (G-buffer depth as
+  occluder, sun disk from the first directional light). Quick start:
+  [G3 tutorial](en/tutorials/g3_deferred_renderer.md),
+  result: [screenshot](images/g3_deferred_1280x720.png),
+  landscape with cloud sky + sun + fog + god rays: [screenshot](images/g9_landscape_sky_sun_fog_rays.png).
 
   ```cpp
   fuhglgraphics::render::DeferredRenderer renderer;

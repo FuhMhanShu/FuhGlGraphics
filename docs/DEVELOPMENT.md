@@ -22,7 +22,9 @@ src/                      implementations (PIMPL targets)
   scene/                  G9 implementation (component.cpp, effects.cpp, node.cpp, scene.cpp)
 examples/                 screenshot tools (render demo scenes headless to PNG):
                           screenshot/ = G3 demo (flat SceneView), scene_screenshot/ = G9
-                          demo (scene graph + per-node effects)
+                          demo (scene graph + per-node effects), landscape_screenshot/ =
+                          G9 landscape (terrain + trees, cloud sky cubemap, sun, fog,
+                          god rays)
 tests/                    unit tests + gl smoke tests (own mini runner, no framework)
 cmake/                    package config template
 FuhGlGraphics.pro         qmake project (static library, alternative to CMake)
@@ -101,8 +103,10 @@ nothing on some Qt6 qmake versions).
   upload, material-ID readback, normal-map path, effect params changing the output).
   Unit tests for the pure parts live in `tests/test_render.cpp` / `tests/test_scene.cpp`.
 - `examples/screenshot` — renders the G3 demo scene headless into a PNG;
-  `examples/scene_screenshot` — the G9 demo scene (scene graph) with CLI effect switches
-  (used for the reference images in `docs/images/`, locally and by the CI
+  `examples/scene_screenshot` — the G9 demo scene (scene graph) with CLI effect switches;
+  `examples/landscape_screenshot` — the G9 landscape (vegetation, cloud sky cubemap,
+  sun disk, fog, god rays; `--no-rays/--no-fog/--no-clouds/--no-shadows/--no-ibl`)
+  (all used for the reference images in `docs/images/`, locally and by the CI
   `docs-screenshots` job).
 
 Run: `ctest --test-dir build --output-on-failure` (add `-L gl_context` where a GL

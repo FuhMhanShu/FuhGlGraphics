@@ -52,6 +52,19 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   (`g9_scene_graph.png` all effects, `g9_no_shadows.png`, `g9_no_ibl.png`,
   `g9_upscale_scale0.6.png`, `g9_no_effects.png`). G9 tutorial in
   `docs/en/tutorials/g9_scene_graph.md` + German translation.
+- **G3 extensions — sky cubemap + god rays**: `DeferredRenderer::setSkyCubemap(&cube)`
+  renders a sky cubemap for background pixels in the lighting pass (unit
+  `kTextureUnitSkyCube` = 11) instead of the gradient; `renderer.godRays` adds god rays
+  in the tonemap pass (radial blur toward the sun's screen position, weighted toward the
+  sun end, occlusion-tested against the G-buffer depth passed as a second pass input —
+  geometry casts real light shafts; the sun disk comes from the first directional light).
+  Covered by `tests/gl_smoke_scene.cpp` (sky cubemap sampled in the background; god rays
+  strictly brighten the frame). New tool `examples/landscape_screenshot`: G9 landscape
+  (heightmap terrain + ~170 two-mesh tree nodes, procedural fBm cloud sky cubemap also
+  baked as IBL env, low warm sun, distance fog, CSM shadows, god rays) with CLI switches
+  (`--no-rays/--no-fog/--no-clouds/--no-shadows/--no-ibl`); reference images
+  `docs/images/g9_landscape_sky_sun_fog_rays.png` and `g9_landscape_no_rays.png`,
+  rendered by the CI `docs-screenshots` job too.
 - Initial skeleton with agreed requirements G1–G11 in
   [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) plus the dependency wiring:
   CMake ≥ 3.20 static library `fuhglgraphics` (alias/export
