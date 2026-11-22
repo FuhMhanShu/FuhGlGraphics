@@ -122,4 +122,19 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   `DeferredRenderer::render(..., &particleSystems)`. See `tests/test_particles.cpp`,
   `tests/gl_smoke_particles.cpp`, `examples/particles_screenshot`,
   `docs/images/g5_particles_*.png` and the [G5 tutorial](en/tutorials/g5_particles.md).
-- G2, G6–G8, G10, G11 — planned.
+- **G6 — animation/skinning** (`fuhglgraphics::anim`, `include/fuhglgraphics/anim/`,
+  `src/anim/`): `AnimationClip`/`TrsChannel` (keyframe channels per node name, lerp +
+  slerp sampling via `fuhgl::math::slerp`), `AnimationPlayer`
+  (`play(name, LoopMode::Once|Loop|PingPong, speed)`, `update(dt)`, `applyTo(scene)` /
+  node-map overload — writes TRS into the named nodes before `fillFrame()`), `Skeleton`
+  (joint nodes + inverse bind matrices, `updatePalette()` → palette = jointWorld * IBM)
+  and CPU skinning `skinMeshCpu()` (the requirement allows "CPU or GPU" — the CPU path
+  is implemented; a GPU matrix-palette SSBO in the G3 G-buffer pass on GL >= 4.3 is future
+  work). G4 extension: glTF `animations[]`/`skins[]` (incl. JOINTS_0/WEIGHTS_0) parsed into
+  `GltfAsset::{animations, skins}` and mapped by `instantiateGltf()` onto
+  `GltfGpuResources::{player, skeletons, nodePtrs, skinnedMeshes}`. G9:
+  `scene::AnimationComponent` holds a player. See `tests/test_anim.cpp`,
+  `tests/gl_smoke_anim.cpp` (fixture .glb with clip+skin; rendered frames at t=0 vs t=1
+  differ), `examples/animation_screenshot`, `docs/images/g6_animation_*.png` and the
+  [G6 tutorial](en/tutorials/g6_animation.md).
+- G2, G7, G8, G10, G11 — planned.

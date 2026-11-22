@@ -45,8 +45,13 @@ G9-Szenengraphen — siehe [G4-Tutorial](docs/de/tutorials/g4_gltf_loader.md) un
 (`particles::ParticleSystem`, Compute ab GL 4.3 mit CPU-Fallback) als
 G9-`ParticleEmitterComponent`, gerendert im G3-"particles"-Post-Pass — siehe
 [G5-Tutorial](docs/de/tutorials/g5_particles.md) und Bilder in
-[docs/images/](docs/images/g5_particles_fire.png).
-Als Nächstes: **G6** (Animation/Skinning).
+[docs/images/](docs/images/g5_particles_fire.png) — und **G6** — Animation/Skinning:
+`fuhglgraphics::anim::AnimationPlayer` (TRS-Clips, Once/Loop/PingPong) +
+`anim::Skeleton` mit CPU-Skinning (`skinMeshCpu`), glTF-Animationen/Skins über den
+G4-Loader, als G9-`AnimationComponent` — siehe
+[G6-Tutorial](docs/de/tutorials/g6_animation.md) und Bilder in
+[docs/images/](docs/images/g6_animation_bend.png).
+Als Nächstes: **G7** (Light-Probes / Lightmapping).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.
 

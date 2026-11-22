@@ -37,12 +37,20 @@ inline void putU32(std::string& s, uint32_t v) {
     s.append(b, 4);
 }
 
-// Quad buffer: positions 48B (offset 0), normals 48B (48), uvs 32B (96), indices 12B (128) = 140B.
+// Quad buffer: positions 48B (offset 0), normals 48B (48), uvs 32B (96), indices 12B (128),
+// then G6 fixture data: anim times 8B (140), anim rotations 32B (148), IBM 128B (180),
+// JOINTS_0 u8x16 (308), WEIGHTS_0 64B (324) = 388B total.
 inline std::vector<unsigned char> buildQuadBuffer() {
     const float pos[4][3] = {{-1, 0, -1}, {1, 0, -1}, {1, 0, 1}, {-1, 0, 1}};
     const float nrm[4][3] = {{0, 1, 0}, {0, 1, 0}, {0, 1, 0}, {0, 1, 0}};
     const float uv[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
-    const uint16_t idx[6] = {0, 1, 2, 0, 2, 3};
+    const uint16_t idx[6] = {0, 2, 1, 0, 3, 2}; // CCW from +Y (front face up)
+    const float animTimes[2] = {0.f, 1.f};
+    const float animRot[2][4] = {{0.f, 0.f, 0.f, 1.f}, {0.7071068f, 0.f, 0.f, 0.7071068f}}; // 90 deg around X
+    const float ibm[2][16] = {{1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1},
+                               {1,0,0,0, 0,1,0,0, 0,0,1,0, 1,0,0,1}};
+    const uint8_t joints[4][4] = {{0, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}, {0, 0, 0, 0}};
+    const float weights[4][4] = {{1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}};
     std::vector<unsigned char> b;
     auto append = [&b](const void* p, std::size_t n) {
         const auto* c = static_cast<const unsigned char*>(p);
@@ -52,6 +60,11 @@ inline std::vector<unsigned char> buildQuadBuffer() {
     append(nrm, sizeof(nrm));
     append(uv, sizeof(uv));
     append(idx, sizeof(idx));
+    append(animTimes, sizeof(animTimes));
+    append(animRot, sizeof(animRot));
+    append(ibm, sizeof(ibm));
+    append(joints, sizeof(joints));
+    append(weights, sizeof(weights));
     return b;
 }
 
@@ -67,22 +80,35 @@ inline std::string buildQuadJson(bool embedded) {
   "scenes": [{"nodes": [0], "name": "fixture"}],
   "nodes": [
     {"name": "parent", "translation": [2, 3, 4], "children": [1]},
-    {"name": "quad", "mesh": 0, "rotation": [0, 0.7071068, 0, 0.7071068], "scale": [2, 2, 2]}
+    {"name": "quad", "mesh": 0, "skin": 0, "rotation": [0, 0.7071068, 0, 0.7071068], "scale": [2, 2, 2]}
   ],
-  "meshes": [{"name": "quadMesh", "primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2}, "indices": 3, "material": 0, "mode": 4}]}],
+  "meshes": [{"name": "quadMesh", "primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2, "JOINTS_0": 7, "WEIGHTS_0": 8}, "indices": 3, "material": 0, "mode": 4}]}],
   "materials": [{"name": "mat", "pbrMetallicRoughness": {"baseColorFactor": [0.5, 0.25, 0.1, 1.0], "metallicFactor": 0.9, "roughnessFactor": 0.3}, "doubleSided": true, "alphaMode": "MASK", "alphaCutoff": 0.4}],
-  "buffers": [{"byteLength": 140@URI@}],
+  "skins": [{"name": "s", "joints": [0, 1], "inverseBindMatrices": 6, "skeleton": 0}],
+  "animations": [{"name": "spin", "samplers": [{"input": 4, "output": 5, "interpolation": "LINEAR"}],
+    "channels": [{"sampler": 0, "target": {"node": 1, "path": "rotation"}}]}],
+  "buffers": [{"byteLength": 388@URI@}],
   "bufferViews": [
     {"buffer": 0, "byteOffset": 0, "byteLength": 48},
     {"buffer": 0, "byteOffset": 48, "byteLength": 48},
     {"buffer": 0, "byteOffset": 96, "byteLength": 32},
-    {"buffer": 0, "byteOffset": 128, "byteLength": 12}
+    {"buffer": 0, "byteOffset": 128, "byteLength": 12},
+    {"buffer": 0, "byteOffset": 140, "byteLength": 8},
+    {"buffer": 0, "byteOffset": 148, "byteLength": 32},
+    {"buffer": 0, "byteOffset": 180, "byteLength": 128},
+    {"buffer": 0, "byteOffset": 308, "byteLength": 16},
+    {"buffer": 0, "byteOffset": 324, "byteLength": 64}
   ],
   "accessors": [
     {"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3", "min": [-1, 0, -1], "max": [1, 0, 1]},
     {"bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC3"},
     {"bufferView": 2, "componentType": 5126, "count": 4, "type": "VEC2"},
-    {"bufferView": 3, "componentType": 5123, "count": 6, "type": "SCALAR"}
+    {"bufferView": 3, "componentType": 5123, "count": 6, "type": "SCALAR"},
+    {"bufferView": 4, "componentType": 5126, "count": 2, "type": "SCALAR"},
+    {"bufferView": 5, "componentType": 5126, "count": 2, "type": "VEC4"},
+    {"bufferView": 6, "componentType": 5126, "count": 2, "type": "MAT4"},
+    {"bufferView": 7, "componentType": 5121, "count": 4, "type": "VEC4"},
+    {"bufferView": 8, "componentType": 5126, "count": 4, "type": "VEC4"}
   ]
 })JSON";
     const std::string placeholder = "@URI@";

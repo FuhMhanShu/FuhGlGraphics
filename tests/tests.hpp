@@ -7,3 +7,4 @@ void runRenderTests();
 void runSceneTests();
 void runIoTests();
 void runParticlesTests();
+void runAnimTests();

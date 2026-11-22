@@ -5,6 +5,7 @@ add_executable(fuhglgraphics_tests
     test_scene.cpp
     test_io.cpp
     test_particles.cpp
+    test_anim.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -45,3 +46,12 @@ add_executable(fuhglgraphics_gl_smoke_particles gl_smoke_particles.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_particles PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_particles COMMAND fuhglgraphics_gl_smoke_particles)
 set_tests_properties(fuhglgraphics_gl_smoke_particles PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G6 animation module (label "gl_context"): parses the
+# fixture's animation clip + skin, plays the clip, renders two frames at different times
+# (images must differ) and checks CPU skinning moves weighted vertices.
+# Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_anim gl_smoke_anim.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_anim PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_anim COMMAND fuhglgraphics_gl_smoke_anim)
+set_tests_properties(fuhglgraphics_gl_smoke_anim PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
