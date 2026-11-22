@@ -16,6 +16,11 @@ A Qt6 desktop tool — the **asset creator** — to **create, load and edit asse
 The tool is a separate executable on top of the library; the library core stays
 Qt-free (`-DFUHGLGRAPHICS_WITH_QT=OFF` still builds headless).
 
+Planned layout (mockup — left: scene tree + inspector + asset browser, center: G3
+renderer viewport with gizmo toolbar, right: MCP chat):
+
+![Asset creator UI mockup](images/g12_asset_creator_mockup.png)
+
 ## 2. Agreed decisions
 
 | Topic | Decision |
