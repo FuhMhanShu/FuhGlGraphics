@@ -26,7 +26,8 @@ include/fuhglgraphics/   public API (headers)
                           CPU bake + RGBA16F 3D textures, units 17..23)
   scene/                  G9 scene graph (implemented: component.hpp, effects.hpp,
                           node.hpp, scene.hpp)
-  editor/                 G2+G11 minimal Qt6 editor (planned, WITH_QT only)
+  editor/                 G2+G11 Qt6 editor code (WITH_QT only): gl_viewport_widget.hpp =
+                          GL viewport widget (fps limiter, frame stats, screenshots)
   tools/                  G12 asset creator Qt tool (planned: tools/asset_creator/,
                           design in docs/ASSET_CREATOR.md, WITH_QT + BUILD_TOOLS only)
 src/                      implementations (PIMPL targets)
@@ -38,6 +39,8 @@ src/                      implementations (PIMPL targets)
   probes/                 G7 implementation (light_probes.cpp)
   render/debug_hud.cpp    G10 HUD implementation
   scene/                  G9 implementation (component.cpp, effects.cpp, node.cpp, scene.cpp)
+editor/                   G2 editor Qt code (WITH_QT only): gl_viewport_widget.cpp (impl of
+                          include/fuhglgraphics/editor/gl_viewport_widget.hpp)
 examples/                 screenshot tools (render demo scenes headless to PNG):
                           screenshot/ = G3 demo (flat SceneView), scene_screenshot/ = G9
                           demo (scene graph + per-node effects), landscape_screenshot/ =
