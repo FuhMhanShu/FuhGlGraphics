@@ -42,3 +42,9 @@ target_link_libraries(fuhglgraphics_decals_screenshot PRIVATE fuhglgraphics)
 # G10 demo: DoF with a hexagonal bokeh kernel (Effect::Dof) + debug HUD (Effect::DebugHud).
 add_executable(fuhglgraphics_dof_screenshot dof_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_dof_screenshot PRIVATE fuhglgraphics)
+
+# G13 water demo: lake scene (terrain basin + Gerstner-wave water surface with planar
+# reflection, refraction, fresnel, crest/shore foam and sun glint) as a G9 scene graph —
+# WaterComponent -> FrameData::water -> DeferredRenderer with Effect::Water — headless to PNG.
+add_executable(fuhglgraphics_water_screenshot water_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_water_screenshot PRIVATE fuhglgraphics)

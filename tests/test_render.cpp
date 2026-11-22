@@ -13,7 +13,7 @@ using namespace fuhglgraphics::render;
 
 void runRenderTests() {
     // --- effectName / kEffectCount ---
-    CHECK(kEffectCount == 14);
+    CHECK(kEffectCount == 15);
     CHECK(std::string(effectName(Effect::Taa)) == "TAA");
     CHECK(std::string(effectName(Effect::Upscale)) == "upscaling");
     CHECK(std::string(effectName(Effect::Tonemap)) == "tonemap");
@@ -28,6 +28,7 @@ void runRenderTests() {
     CHECK(std::string(effectName(Effect::Decals)) == "decals");
     CHECK(std::string(effectName(Effect::Dof)) == "DoF");
     CHECK(std::string(effectName(Effect::DebugHud)) == "debug HUD");
+    CHECK(std::string(effectName(Effect::Water)) == "water");
 
     // --- effectSupported: pure GL-version mapping (F39) ---
     for (int e = 0; e < kEffectCount; ++e) {

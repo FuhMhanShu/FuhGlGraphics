@@ -33,6 +33,12 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   perzeptueller CI-Screenshot-Diff (`docs/screenshot_diff.py`); Bilder in
   [docs/images/](../../images/g10_dof_on.png)
 
+- [G13 — Realistisches Wasser](g13_water.md) — `water::WaterSurface` (Gerstner-Wellen) als
+  G9-`WaterComponent` → `FrameData::water` → G3-`render(..., &decals, water)` mit `Effect::Water`:
+  planarer Reflexions-Pass (gespiegelte Kamera) + Wasser-Post-Pass (Reflexion/Refraktion
+  per Fresnel, Kamm- + Uferschaum, Sonnen-Glint); See-Bilder in
+  [docs/images/](../../images/g13_water_1280x720.png)
+
 Als Nächstes: **G11** (Engine-Infrastruktur) / **G2** (Qt-Editor) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Voraussetzung für alle: Bibliothek bauen und `FuhGlGraphics::fuhglgraphics` linken

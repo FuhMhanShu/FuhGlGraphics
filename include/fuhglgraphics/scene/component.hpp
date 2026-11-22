@@ -10,6 +10,7 @@
 #include "../anim/animation.hpp"
 #include "../particles/particle_system.hpp"
 #include "../probes/light_probes.hpp"
+#include "../water/water_surface.hpp"
 #include "../render/decals.hpp"
 
 #include <fuhgl/cam/camera.hpp>
@@ -146,6 +147,19 @@ public:
 class DecalComponent : public Component {
 public:
     render::Decal decal;
+
+    void fill(const Node& node, FrameData& frame) const override; // defined in component.cpp
+};
+
+/// @brief G13 water-surface component: owns one water::WaterSurface (create() once with a
+/// GL context, then tune waves/colors and call surface.update(dt) per frame). fill()
+/// appends the surface's grid mesh as a draw item at the node's world matrix (no shadow
+/// casting) and registers the surface in FrameData::water (the first component in the
+/// graph wins); pass it to DeferredRenderer::render(..., decals, frame.water) and enable
+/// render::Effect::Water. The node's transform places the water plane (local y = 0).
+class WaterComponent : public Component {
+public:
+    water::WaterSurface surface;
 
     void fill(const Node& node, FrameData& frame) const override; // defined in component.cpp
 };

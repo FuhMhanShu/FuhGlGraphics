@@ -7,6 +7,7 @@ add_executable(fuhglgraphics_tests
     test_particles.cpp
     test_anim.cpp
     test_probes.cpp
+    test_water.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -81,3 +82,12 @@ add_executable(fuhglgraphics_gl_smoke_g10 gl_smoke_g10.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_g10 PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_g10 COMMAND fuhglgraphics_gl_smoke_g10)
 set_tests_properties(fuhglgraphics_gl_smoke_g10 PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G13 water effect (label "gl_context"): builds a small
+# scene with a water surface (Gerstner waves), renders through the G3 renderer with
+# Effect::Water on vs off and verifies that the frames differ and that the reflection
+# texture is non-black. Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_water gl_smoke_water.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_water PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_water COMMAND fuhglgraphics_gl_smoke_water)
+set_tests_properties(fuhglgraphics_gl_smoke_water PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

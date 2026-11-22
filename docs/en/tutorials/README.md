@@ -34,6 +34,12 @@ One small tutorial per feature. Each is self-contained: goal → code → result
   perceptual screenshot diff (`docs/screenshot_diff.py`); screenshots in
   [docs/images/](../../images/g10_dof_on.png)
 
+- [G13 — Realistic water](g13_water.md) — `water::WaterSurface` (Gerstner waves) as a G9
+  `WaterComponent` → `FrameData::water` → G3 `render(..., &decals, water)` with `Effect::Water`:
+  planar-reflection pass (mirrored camera) + water post pass (reflection/refraction
+  fresnel mix, crest + shore foam, sun glint); lake screenshots in
+  [docs/images/](../../images/g13_water_1280x720.png)
+
 Next: **G11** (engine infrastructure) / **G2** (Qt editor) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Prerequisite for all: build the library and link `FuhGlGraphics::fuhglgraphics`

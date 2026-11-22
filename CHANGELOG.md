@@ -7,6 +7,32 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **G13 — realistic water** (`fuhglgraphics::water`, `include/fuhglgraphics/water/water_surface.hpp`,
+  `src/water/water_surface.cpp`): `water::WaterSurface` — a Gerstner-wave grid mesh
+  (`create(resolution, size)`) with shading parameters (deep/shallow/foam colors, fresnel F0,
+  reflection strength, distortion, crest + shore foam, sun glint), animated via `update(dt)`.
+  The pure CPU twin `evalGerstner()` (displacement + analytic wave normal) and
+  `reflectionMatrix()` / `waterPlaneFromModel()` are unit-tested (`tests/test_water.cpp`).
+  G3 renderer extension (`render::Effect::Water`, `DeferredRenderer::render(..., water)`):
+  a planar-reflection pass renders the scene (without the water) from the mirrored camera,
+  clipped at the water plane, into an RGBA16F target (`reflectionTexture()`, resolution =
+  internal size * `waterReflectionScale`); the water mesh stays out of the G-buffer and is
+  shaded in a new "water" post pass of the HDR chain (lighting → water → particles → TAA →
+  upscale → tonemap): Gerstner displacement + analytic normal in the vertex shader,
+  fresnel mix of the planar reflection and the refraction (scene HDR, normal-distorted,
+  depth-absorbed), wave-crest foam ("Gicht") + G-buffer-depth shore foam, sun glint, fog,
+  manual depth test against the G-buffer depth. G9 integration: `scene::WaterComponent` →
+  `FrameData::water` → `render(..., frame.water)`; the node transform places the water
+  plane and the node AABB is padded by the max wave height. With the effect off, the water
+  mesh falls back to plain G-buffer PBR. Tests: `tests/test_water.cpp` (unit) +
+  `tests/gl_smoke_water.cpp` (headless GL, label `gl_context`, skips with 77 without GL).
+  Demo: `examples/water_screenshot` (lake scene: terrain basin, rocks, shore trees, cloud
+  sky + IBL, sun, fog) headless to PNG; reference images `docs/images/g13_water_*.png`.
+  Tutorial: `docs/en/tutorials/g13_water.md` + German translation. Requirement entry G13
+  in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 ### Planned
 
 - **G12 — asset creator Qt tool** — design agreed, implementation in phases after review:

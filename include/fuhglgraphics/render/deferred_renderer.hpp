@@ -45,6 +45,10 @@ namespace fuhglgraphics::probes {
 class LightProbeGrid;
 }
 
+namespace fuhglgraphics::water {
+class WaterSurface;
+}
+
 namespace fuhglgraphics::render {
 
 /// @brief Texture unit of the optional sky cubemap in the lighting pass. 16 because the
@@ -94,7 +98,8 @@ public:
                 const std::vector<bool>* castShadow = nullptr,
                 const std::vector<const particles::ParticleSystem*>* particleSystems = nullptr,
                 const probes::LightProbeGrid* lightProbes = nullptr,
-                const std::vector<Decal>* decals = nullptr);
+                const std::vector<Decal>* decals = nullptr,
+                const water::WaterSurface* water = nullptr); // G13 water surface (FrameData::water)
 
     /// @brief LDR output target (RGBA8, tonemapped when Effect::Tonemap is on).
     fuhgl::Framebuffer& output();
@@ -115,6 +120,9 @@ public:
     const fuhgl::Texture& texDepth() const;      ///< depth attachment as texture
     /// @brief Lit HDR scene before the post chain (graph resource "hdr").
     const fuhgl::Texture& hdrTexture() const;
+    /// @brief G13: planar-reflection target (RGBA16F, internal size * waterReflectionScale),
+    /// rendered from the mirrored camera before the G-buffer when a water surface is active.
+    const fuhgl::Texture& reflectionTexture() const;
     /// @brief The post-processing render graph (passes "lighting", "taa", "upscale", "tonemap").
     fuhgl::render::RenderGraph& postGraph();
 
@@ -213,6 +221,12 @@ public:
     /// (Effect::LightProbes). Set per frame via scene::EffectParams::lightProbeStrength.
     float lightProbeStrength = 1.f;
 
+    /// @brief G13: resolution scale of the planar-reflection target relative to the
+    /// internal render size (0, 1]; applied on the next create()/resize()/setWaterReflectionScale().
+    float waterReflectionScale = 0.5f;
+    /// @brief Recreates the reflection target at the new scale.
+    void setWaterReflectionScale(float scale);
+
     // --- G10 DoF (Effect::Dof): bokeh depth of field, post pass after the upscale --------
     float dofFocusDist = 8.f;   ///< world-space focus distance (view depth)
     float dofStrength = 12.f;   ///< CoC scale: blur radius per unit of focus error
@@ -239,7 +253,12 @@ private:
                        const std::vector<std::uint32_t>* materialIds);
     void drawDecals(const fuhgl::render::SceneView& scene);
     void drawFs(fuhgl::render::Material& mat, const std::function<void(fuhgl::Program&)>& setUniforms);
+    /// @brief G13: planar reflection of the scene (without the water mesh) from the
+    /// mirrored camera into the reflection FBO, clipped at the water plane.
+    void renderReflection(const fuhgl::render::SceneView& scene, const fuhgl::math::Mat4& reflViewProj,
+                          const fuhgl::math::Vec4& clipPlane, const fuhgl::math::Vec3& reflEye);
     void drawLighting(fuhgl::render::RenderGraph::PassContext& ctx);
+    void drawWater(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawParticles(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawTaa(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawUpscale(fuhgl::render::RenderGraph::PassContext& ctx);
@@ -264,6 +283,11 @@ private:
     const std::vector<const particles::ParticleSystem*>* curParticles_ = nullptr;
     bool lightProbesEnabled_ = true; ///< Effect::LightProbes
     const probes::LightProbeGrid* curProbes_ = nullptr;
+    bool waterEnabled_ = true;       ///< Effect::Water
+    const water::WaterSurface* curWater_ = nullptr; ///< G13: active water surface this frame
+    fuhgl::math::Mat4 waterModel_{};                 ///< its draw item's model matrix
+    fuhgl::math::Vec4 waterClipPlane_{0.f, 1.f, 0.f, 0.f}; ///< world plane (n, d) for clipping
+    fuhgl::math::Vec3 waterPlaneN_{0.f, 1.f, 0.f};
     bool decalsEnabled_ = true; ///< Effect::Decals
     const std::vector<Decal>* curDecals_ = nullptr;
     bool dofEnabled_ = false;    ///< Effect::Dof (off by default: costs a fullscreen pass)

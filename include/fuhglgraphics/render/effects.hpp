@@ -30,10 +30,11 @@ enum class Effect {
     Decals,         ///< G8 deferred decals projected into the G-buffer (material-ID gated)
     Dof,            ///< G10 depth of field with a hexagonal bokeh kernel (post pass after upscale)
     DebugHud,       ///< G10 mini debug HUD (fps, frame time, effect toggles) on FuhGLCore TextRenderer
+    Water,          ///< G13 water surface: Gerstner waves + planar reflection + foam pass
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 14;
+constexpr int kEffectCount = 15;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -52,6 +53,7 @@ inline const char* effectName(Effect e) {
         case Effect::Decals: return "decals";
         case Effect::Dof: return "DoF";
         case Effect::DebugHud: return "debug HUD";
+        case Effect::Water: return "water";
     }
     return "unknown";
 }

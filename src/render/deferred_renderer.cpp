@@ -2,6 +2,7 @@
 
 #include <fuhglgraphics/particles/particle_system.hpp>
 #include <fuhglgraphics/probes/light_probes.hpp>
+#include <fuhglgraphics/water/water_surface.hpp>
 
 #include "deferred_glsl.hpp"
 
@@ -49,6 +50,12 @@ struct DeferredRenderer::Impl {
 
     fuhgl::render::Material gbufferMat, lightingMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
     fuhgl::render::Mesh decalBox; ///< G8: unit box for the decal projection pass
+    // G13 water: planar-reflection target + cheap forward materials + the water surface pass
+    fuhgl::Framebuffer reflFbo;
+    fuhgl::Texture reflColor{fuhgl::Texture::Target::Tex2D};
+    fuhgl::Texture reflDepth{fuhgl::Texture::Target::Tex2D};
+    int reflW = 0, reflH = 0;
+    fuhgl::render::Material reflSkyMat, reflMat, waterMat;
     fuhgl::UniformBuffer lightsUbo;
     fuhgl::VertexArray fsVao;
     fuhgl::render::RenderGraph post;
@@ -148,6 +155,28 @@ bool DeferredRenderer::createInternal() {
         return false;
     }
 
+    // --- G13: planar-reflection target (internal size * waterReflectionScale) ---
+    im.reflW = std::max(1, static_cast<int>(static_cast<float>(iw) * waterReflectionScale));
+    im.reflH = std::max(1, static_cast<int>(static_cast<float>(ih) * waterReflectionScale));
+    makeTarget(im.reflColor, fuhgl::gl::GL_RGBA16F, im.reflW, im.reflH, 0);
+    im.reflColor.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_LINEAR);
+    im.reflColor.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_LINEAR);
+    im.reflDepth.bind();
+    im.reflDepth.texStorage2D(1, fuhgl::gl::GL_DEPTH_COMPONENT24, im.reflW, im.reflH);
+    im.reflDepth.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_NEAREST);
+    im.reflDepth.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_NEAREST);
+    im.reflDepth.setParameteri(fuhgl::gl::GL_TEXTURE_WRAP_S, fuhgl::gl::GL_CLAMP_TO_EDGE);
+    im.reflDepth.setParameteri(fuhgl::gl::GL_TEXTURE_WRAP_T, fuhgl::gl::GL_CLAMP_TO_EDGE);
+    im.reflFbo.create();
+    im.reflFbo.setSize(im.reflW, im.reflH);
+    im.reflFbo.bind();
+    im.reflFbo.attachTexture2D(0, im.reflColor);
+    im.reflFbo.attachTexture2D(fuhgl::Framebuffer::Attachment::Depth, im.reflDepth);
+    if (!im.reflFbo.isComplete()) {
+        std::fprintf(stderr, "fuhglgraphics::DeferredRenderer: reflection FBO incomplete (0x%x)\n", im.reflFbo.status());
+        return false;
+    }
+
     // --- resolve target (MSAA only) ---
     if (msaa_ > 0) {
         makeTarget(im.rAlbedo, fuhgl::gl::GL_RGBA8, iw, ih, 0);
@@ -228,6 +257,29 @@ bool DeferredRenderer::createInternal() {
         !compilePostFs(im.dofMat, kDofFrag, "dof") ||
         !compilePostFs(im.tonemapMat, kTonemapFrag, "tonemap") ||
         !compilePostFs(im.copyMat, kCopyFrag, "copy")) {
+        return false;
+    }
+    // G13 water shaders: reflection background/geometry (fullscreen + mesh) + water surface
+    {
+        fuhgl::Shader vs(fuhgl::Shader::Type::Vertex), fs(fuhgl::Shader::Type::Fragment);
+        if (!im.reflMat.create()) return false;
+        if (!vs.compile(kReflVert)) {
+            std::fprintf(stderr, "DeferredRenderer: reflection VS: %s\n", vs.infoLog().c_str());
+            return false;
+        }
+        if (!fs.compile(kReflFrag)) {
+            std::fprintf(stderr, "DeferredRenderer: reflection FS: %s\n", fs.infoLog().c_str());
+            return false;
+        }
+        im.reflMat.program().attach(vs);
+        im.reflMat.program().attach(fs);
+        if (!im.reflMat.program().link()) {
+            std::fprintf(stderr, "DeferredRenderer: reflection link: %s\n", im.reflMat.program().infoLog().c_str());
+            return false;
+        }
+    }
+    if (!compilePostFs(im.reflSkyMat, kReflSkyFrag, "reflection sky") ||
+        !compileWaterMat(im.waterMat)) {
         return false;
     }
     hud_.create(); // G10 HUD (best effort — the hud pass checks isCreated())
@@ -311,13 +363,16 @@ bool DeferredRenderer::createInternal() {
     im.post.addExternal("gMatId", &(msaa_ > 0 ? im.rMatId : im.texMatId), iw, ih);
     im.post.addExternal("gDepth", &im.texDepth, iw, ih);
     im.post.addResource("hdr", iw, ih, fuhgl::gl::GL_RGBA16F);
-    im.post.addResource("hdrP", iw, ih, fuhgl::gl::GL_RGBA16F); // hdr + G5 particles
+    im.post.addResource("hdrW", iw, ih, fuhgl::gl::GL_RGBA16F); // hdr + G13 water
+    im.post.addResource("hdrP", iw, ih, fuhgl::gl::GL_RGBA16F); // hdrW + G5 particles
     im.post.addResource("taa", iw, ih, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("up", width_, height_, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("dof", width_, height_, fuhgl::gl::GL_RGBA16F); // G10 DoF at output res
     im.post.addPass("lighting", {"gAlbedo", "gNormal", "gPbr", "gEmissive", "gDepth"}, {"hdr"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawLighting(ctx); });
-    im.post.addPass("particles", {"hdr", "gDepth"}, {"hdrP"},
+    im.post.addPass("water", {"hdr", "gDepth"}, {"hdrW"},
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawWater(ctx); });
+    im.post.addPass("particles", {"hdrW", "gDepth"}, {"hdrP"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawParticles(ctx); });
     im.post.addPass("taa", {"hdrP", "gMotion", "taa"}, {"taa"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTaa(ctx); }, /*feedback=*/true);
@@ -378,6 +433,7 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
                                                       static_cast<float>(internalHeight_)));
     for (std::size_t i = 0; i < scene.items.size(); ++i) {
         const fuhgl::render::DrawItem& item = scene.items[i];
+        if (curWater_ && item.mesh == &curWater_->mesh()) continue; // G13: water leaves the G-buffer
         int lodLevel = -1;
         const fuhgl::render::Mesh* mesh =
             fuhgl::render::resolveLodMesh(item, scene.camera->eye(), scene.lodEnabled, &lodLevel);
@@ -534,12 +590,100 @@ void DeferredRenderer::drawDecals(const fuhgl::render::SceneView& scene) {
     fuhgl::Framebuffer::unbind();
 }
 
+// G13: planar reflection pass — sky cubemap background (seen by the mirrored camera) plus
+// cheap forward shading (lambert + blinn + fog, no shadows) of all non-water items. Items
+// below the water plane are clipped in the reflection vertex shader; the mirrored camera
+// flips the winding, so frontFace is inverted for this pass.
+void DeferredRenderer::renderReflection(const fuhgl::render::SceneView& s,
+                                        const fuhgl::math::Mat4& reflViewProj,
+                                        const fuhgl::math::Vec4& clipPlane,
+                                        const fuhgl::math::Vec3& reflEye) {
+    Impl& im = *impl_;
+    auto& f = fuhgl::gl::functions();
+    im.reflFbo.bind();
+    const fuhgl::gl::GLenum buf[1] = {fuhgl::gl::GL_COLOR_ATTACHMENT0};
+    fuhgl::gl::drawBuffers(1, buf);
+    fuhgl::gl::viewport(0, 0, im.reflW, im.reflH);
+    const float clear[4] = {s.fogColor.x, s.fogColor.y, s.fogColor.z, 1.f};
+    fuhgl::gl::clearBufferfv(fuhgl::gl::GL_COLOR, 0, clear);
+    fuhgl::gl::clear(fuhgl::gl::ClearBit::Depth);
+    fuhgl::gl::enable(fuhgl::gl::Cap::DepthTest);
+    fuhgl::gl::depthFunc(fuhgl::gl::CompareFunc::Less);
+    fuhgl::gl::depthMask(true);
+    fuhgl::gl::disable(fuhgl::gl::Cap::Blend);
+
+    // sun = first directional light (sky disk + geometry shading)
+    fuhgl::math::Vec3 sunDir{0.f, 1.f, 0.f};
+    fuhgl::math::Vec3 sunIrr{0.f, 0.f, 0.f};
+    for (const fuhgl::render::Light& l : s.lights)
+        if (l.type == fuhgl::render::LightType::Directional) {
+            sunDir = -fuhgl::math::normalize(l.direction);
+            sunIrr = l.color * l.intensity;
+            break;
+        }
+
+    // sky cubemap + sun disk for the reflection background (unit kTextureUnitSkyCube)
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + kTextureUnitSkyCube);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_CUBE_MAP, skyCube_ ? skyCube_->id() : im.dummyCube.id());
+    drawFs(im.reflSkyMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uSkyCube"), kTextureUnitSkyCube);
+        p.setUniform(p.uniformLocation("uUseSkyCube"), skyCube_ ? 1 : 0);
+        p.setUniform("uInvViewProj", reflViewProj.inverse());
+        p.setUniform("uCamPos", reflEye);
+        p.setUniform("uSkyTop", skyTop);
+        p.setUniform("uSkyBottom", skyBottom);
+        p.setUniform("uSunDir", sunDir);
+        p.setUniform("uSunColor", sunIrr * 4.f);
+        p.setUniform("uSunCos", s.sunCos);
+    });
+
+    // scene geometry, mirrored
+    fuhgl::gl::enable(fuhgl::gl::Cap::CullFace);
+    fuhgl::gl::cullFace(fuhgl::gl::Face::Back);
+    fuhgl::gl::frontFace(false); // mirrored camera flips the winding
+    fuhgl::Program& prog = im.reflMat.program();
+    prog.use();
+    prog.setUniform("uViewProj", reflViewProj);
+    prog.setUniform("uClipPlane", clipPlane);
+    prog.setUniform("uCamPos", reflEye);
+    prog.setUniform("uAmbient", s.ambient);
+    prog.setUniform("uSunDir", sunDir);
+    prog.setUniform("uSunIrradiance", sunIrr);
+    prog.setUniform("uFogColor", s.fogColor);
+    prog.setUniform("uFogDensity", s.fogDensity);
+    for (const fuhgl::render::DrawItem& item : s.items) {
+        if (curWater_ && item.mesh == &curWater_->mesh()) continue; // no water in its own reflection
+        const fuhgl::render::Mesh* mesh = fuhgl::render::resolveLodMesh(item, s.camera->eye(), s.lodEnabled);
+        if (!mesh) continue;
+        prog.setUniform("uModel", item.model);
+        const fuhgl::render::Material* preset =
+            (item.material && item.material->builtinShader) ? item.material : nullptr;
+        if (preset) {
+            prog.setUniform("uAlbedo", preset->albedo);
+            prog.setUniform(prog.uniformLocation("uUseTex"), preset->albedoTexture ? 1 : 0);
+            if (preset->albedoTexture) {
+                fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitAlbedo);
+                f.glBindTexture(static_cast<fuhgl::gl::GLenum>(preset->albedoTexture->target()),
+                                preset->albedoTexture->id());
+                prog.setUniform(prog.uniformLocation("uMatTex"), fuhgl::render::kTextureUnitAlbedo);
+            }
+        } else {
+            prog.setUniform("uAlbedo", fuhgl::math::Vec3{1.f, 1.f, 1.f});
+            prog.setUniform(prog.uniformLocation("uUseTex"), 0);
+        }
+        mesh->draw();
+    }
+    fuhgl::gl::frontFace(true);
+    fuhgl::Framebuffer::unbind();
+}
+
 void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
                               const std::vector<std::uint32_t>* materialIds,
                               const std::vector<bool>* castShadow,
                               const std::vector<const particles::ParticleSystem*>* particleSystems,
                               const probes::LightProbeGrid* lightProbes,
-                              const std::vector<Decal>* decals) {
+                              const std::vector<Decal>* decals,
+                              const water::WaterSurface* water) {
     if (!scene.camera || width_ <= 0) return;
     const auto t0 = std::chrono::steady_clock::now();
     fuhgl::render::SceneView s = scene;
@@ -548,6 +692,26 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     curProbes_ = lightProbes;
     curDecals_ = decals;
 
+    // --- G13 water: resolve the active surface + its world plane, render the planar
+    // reflection from the mirrored camera (clipped at the plane) before the G-buffer ---
+    curWater_ = (water && water->isReady() && effectEnabled(Effect::Water)) ? water : nullptr;
+    waterModel_ = fuhgl::math::Mat4{};
+    if (curWater_) {
+        for (const fuhgl::render::DrawItem& item : s.items)
+            if (item.mesh == &curWater_->mesh()) {
+                waterModel_ = item.model;
+                break;
+            }
+        float planeD = 0.f;
+        water::waterPlaneFromModel(waterModel_, waterPlaneN_, planeD);
+        waterClipPlane_ = {waterPlaneN_.x, waterPlaneN_.y, waterPlaneN_.z, planeD};
+        const fuhgl::math::Mat4 refl = water::reflectionMatrix(waterPlaneN_, planeD);
+        const fuhgl::math::Mat4 reflViewProj = s.camera->projection(s.aspect) * s.camera->view() * refl;
+        const fuhgl::math::Vec3 eye = s.camera->eye();
+        const fuhgl::math::Vec4 reflEye = refl * fuhgl::math::Vec4{eye.x, eye.y, eye.z, 1.f};
+        renderReflection(s, reflViewProj, waterClipPlane_, {reflEye.x, reflEye.y, reflEye.z});
+    }
+
     if (s.env && !effectEnabled(Effect::Ibl)) {
         s.env = nullptr; // gated in applyCapabilities() with a one-time warning
     }
@@ -555,12 +719,15 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     // per-item shadow casting (G9): the depth pass only draws items flagged castShadow
     fuhgl::render::SceneView shadowScene;
     const fuhgl::render::SceneView* shadowView = &s;
-    if (castShadow && !castShadow->empty()) {
+    if ((castShadow && !castShadow->empty()) || curWater_) {
         shadowScene = s;
         std::vector<fuhgl::render::DrawItem> items;
         items.reserve(s.items.size());
-        for (std::size_t i = 0; i < s.items.size(); ++i)
-            if (i >= castShadow->size() || (*castShadow)[i]) items.push_back(s.items[i]);
+        for (std::size_t i = 0; i < s.items.size(); ++i) {
+            if (curWater_ && s.items[i].mesh == &curWater_->mesh()) continue; // water: no shadow
+            if (castShadow && !castShadow->empty() && (i >= castShadow->size() || !(*castShadow)[i])) continue;
+            items.push_back(s.items[i]);
+        }
         shadowScene.items = std::move(items);
         shadowView = &shadowScene;
     }
@@ -643,12 +810,86 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     curParticles_ = nullptr;
     curProbes_ = nullptr;
     curDecals_ = nullptr;
+    curWater_ = nullptr;
 }
 
 // G5 particles post pass: copy hdr -> hdrP, then draw each system's instanced billboards
 // (blended, depth-tested against the G-buffer depth) into hdrP.
-void DeferredRenderer::drawParticles(fuhgl::render::RenderGraph::PassContext& ctx) {
+// G13 water post pass: hdr -> hdrW. Always starts from the lighting result; with an active
+// water surface the mesh is shaded on top (Gerstner waves + planar reflection + refraction +
+// foam). The post FBO has no depth attachment, so the fragment shader does the occlusion
+// test manually against the G-buffer depth (uGDepth).
+void DeferredRenderer::drawWater(fuhgl::render::RenderGraph::PassContext& ctx) {
     ctx.bindInput(0, "hdr");
+    ctx.bindInput(1, "gDepth");
+    Impl& im = *impl_;
+    drawFs(im.copyMat, [&](fuhgl::Program& p) { p.setUniform(p.uniformLocation("uSrc"), 0); });
+    if (!curWater_ || !curScene_) return;
+    auto& f = fuhgl::gl::functions();
+    const fuhgl::render::SceneView& s = *curScene_;
+    const water::WaterSurface& w = *curWater_;
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + 2);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, im.reflColor.id());
+    fuhgl::gl::disable(fuhgl::gl::Cap::DepthTest);
+    fuhgl::gl::disable(fuhgl::gl::Cap::Blend);
+    fuhgl::gl::enable(fuhgl::gl::Cap::CullFace);
+    fuhgl::gl::cullFace(fuhgl::gl::Face::Back);
+    fuhgl::gl::frontFace(true);
+    fuhgl::Program& p = im.waterMat.program();
+    p.use();
+    p.setUniform(p.uniformLocation("uSceneHdr"), 0);
+    p.setUniform(p.uniformLocation("uGDepth"), 1);
+    p.setUniform(p.uniformLocation("uReflTex"), 2);
+    p.setUniform("uModel", waterModel_);
+    // one uViewProj for VS (position) and FS (depth test): the G-buffer was rendered with
+    // the same jittered viewProj, so the depth comparison uses the same quantization
+    p.setUniform("uViewProj", fuhgl::math::jitterViewProj(s.camera->viewProj(s.aspect), s.jitter));
+    p.setUniform("uInvViewProj", s.camera->viewProj(s.aspect).inverse());
+    p.setUniform("uCamPos", s.camera->eye());
+    p.setUniform("uResolution", fuhgl::math::Vec2(static_cast<float>(internalWidth_),
+                                                   static_cast<float>(internalHeight_)));
+    p.setUniform("uTime", w.time);
+    p.setUniform("uPlaneN", waterPlaneN_);
+    p.setUniform("uDeepColor", w.deepColor);
+    p.setUniform("uShallowColor", w.shallowColor);
+    p.setUniform("uFoamColor", w.foamColor);
+    p.setUniform("uFresnelF0", w.fresnelF0);
+    p.setUniform("uReflectionStrength", w.reflectionStrength);
+    p.setUniform("uDistortion", w.distortion);
+    p.setUniform("uRefractionDistortion", w.refractionDistortion);
+    p.setUniform("uFoamCrestStart", w.foamCrestStart);
+    p.setUniform("uFoamCrestSoftness", w.foamCrestSoftness);
+    p.setUniform("uShoreFoamWidth", w.shoreFoamWidth);
+    p.setUniform("uFoamStrength", w.foamStrength);
+    p.setUniform("uGlintPower", w.glintPower);
+    p.setUniform("uDetailScale", w.detailNormalScale);
+    p.setUniform("uSunDir", s.sunDirection);
+    p.setUniform("uSunColor", s.sunColor);
+    p.setUniform("uFogColor", s.fogColor);
+    p.setUniform("uFogDensity", s.fogDensity);
+    const int waveCount = std::min(static_cast<int>(w.waves.size()), water::WaterSurface::kMaxWaves);
+    p.setUniform(p.uniformLocation("uWaveCount"), waveCount);
+    for (int i = 0; i < water::WaterSurface::kMaxWaves; ++i) {
+        char nameA[16], nameB[16];
+        std::snprintf(nameA, sizeof(nameA), "uWaveA[%d]", i);
+        std::snprintf(nameB, sizeof(nameB), "uWaveB[%d]", i);
+        if (i < waveCount) {
+            const water::GerstnerWave& g = w.waves[static_cast<std::size_t>(i)];
+            const fuhgl::math::Vec2 d = fuhgl::math::normalize(g.direction);
+            const float k = 2.f * fuhgl::math::kPi / std::max(g.wavelength, 1e-3f);
+            const float q = g.steepness / std::max(k * g.amplitude * static_cast<float>(waveCount), 1e-6f);
+            p.setUniform(p.uniformLocation(nameA), fuhgl::math::Vec4{d.x, d.y, g.amplitude, k});
+            p.setUniform(p.uniformLocation(nameB), fuhgl::math::Vec4{k * g.speed, q, 0.f, 0.f});
+        } else {
+            p.setUniform(p.uniformLocation(nameA), fuhgl::math::Vec4{0.f, 0.f, 0.f, 0.f});
+            p.setUniform(p.uniformLocation(nameB), fuhgl::math::Vec4{0.f, 0.f, 0.f, 0.f});
+        }
+    }
+    w.mesh().draw();
+}
+
+void DeferredRenderer::drawParticles(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "hdrW"); // lighting + G13 water
     ctx.bindInput(1, "gDepth");
     Impl& im = *impl_;
     drawFs(im.copyMat, [&](fuhgl::Program& p) { p.setUniform(p.uniformLocation("uSrc"), 0); });
@@ -943,7 +1184,20 @@ const fuhgl::Texture& DeferredRenderer::texMotion() const { return msaa_ > 0 ? i
 const fuhgl::Texture& DeferredRenderer::texMaterialId() const { return msaa_ > 0 ? impl_->rMatId : impl_->texMatId; }
 const fuhgl::Texture& DeferredRenderer::texDepth() const { return impl_->texDepth; }
 const fuhgl::Texture& DeferredRenderer::hdrTexture() const { return *impl_->post.texture("hdr"); }
+const fuhgl::Texture& DeferredRenderer::reflectionTexture() const { return impl_->reflColor; }
 fuhgl::render::RenderGraph& DeferredRenderer::postGraph() { return impl_->post; }
+
+void DeferredRenderer::setWaterReflectionScale(float scale) {
+    const float s = scale < 0.1f ? 0.1f : (scale > 1.f ? 1.f : scale);
+    if (s == waterReflectionScale || width_ <= 0) {
+        waterReflectionScale = s;
+        return;
+    }
+    waterReflectionScale = s;
+    frameIndex_ = 0;
+    prevViewProj_ = fuhgl::math::Mat4{};
+    createInternal();
+}
 
 // --- effects (F39/F40-style gating) ---------------------------------------------------
 void DeferredRenderer::gate(Effect e, bool& flag) {
@@ -971,6 +1225,7 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::Decals, decalsEnabled_);
     gate(Effect::Dof, dofEnabled_);
     gate(Effect::DebugHud, hudEnabled_);
+    gate(Effect::Water, waterEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -991,6 +1246,7 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::Decals: decalsEnabled_ = on; break;
         case Effect::Dof: dofEnabled_ = on; break;
         case Effect::DebugHud: hudEnabled_ = on; break;
+        case Effect::Water: waterEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -1021,13 +1277,14 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::Decals: return decalsEnabled_;
         case Effect::Dof: return dofEnabled_;
         case Effect::DebugHud: return hudEnabled_;
+        case Effect::Water: return waterEnabled_;
     }
     return false;
 }
 
 void DeferredRenderer::setAllEffects(bool on) {
     taaEnabled_ = upscaleEnabled_ = tonemapEnabled_ = iblEnabled_ = shadows_ = csmEnabled_ = on;
-    pointShadows_ = contactShadowsEnabled = particlesEnabled_ = lightProbesEnabled_ = decalsEnabled_ = on;
+    pointShadows_ = contactShadowsEnabled = particlesEnabled_ = lightProbesEnabled_ = decalsEnabled_ = waterEnabled_ = on;
     dofEnabled_ = hudEnabled_ = on;
     applyCapabilities();
 }

@@ -48,6 +48,7 @@ add_library(fuhglgraphics STATIC
     src/particles/particle_system.cpp
     src/anim/animation.cpp
     src/probes/light_probes.cpp
+    src/water/water_surface.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 

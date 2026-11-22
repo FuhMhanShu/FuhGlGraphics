@@ -10,6 +10,7 @@
 //   particles/ G5  GPU particle system, compute on GL >= 4.3 + CPU fallback (implemented)
 //   anim/     G6   keyframe AnimationPlayer + skeletal skinning (CPU palette) (implemented)
 //   probes/   G7   SH L2 light-probe grid, CPU bake + 3D-texture sampling (implemented)
+//   water/    G13  realistic water: Gerstner waves + planar reflection + foam (implemented)
 //   editor/   G2+G11  minimal Qt6 editor (only built with FUHGLGRAPHICS_WITH_QT=1)
 // Additionally planned: G10 quick upgrades, G11 engine infrastructure.
 //
@@ -37,3 +38,5 @@
 #include <fuhglgraphics/anim/animation.hpp>
 
 #include <fuhglgraphics/probes/light_probes.hpp>
+
+#include <fuhglgraphics/water/water_surface.hpp>

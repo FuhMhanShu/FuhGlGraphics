@@ -187,6 +187,29 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   [G10 tutorial](en/tutorials/g10_upgrades.md), demo `examples/dof_screenshot`,
   screenshots: [DoF on](images/g10_dof_on.png), [off](images/g10_dof_off.png),
   [HUD](images/g10_hud.png).
+- **Water (G13).** `water::WaterSurface` — a Gerstner-wave grid mesh with shading
+  parameters (colors, fresnel, reflection strength, crest/shore foam, glint), animated via
+  `surface.update(dt)`. As a G9 component (`scene::WaterComponent` → `FrameData::water`),
+  rendered by the G3 renderer with `render::Effect::Water`: a planar-reflection pass
+  (mirrored camera, clipped at the water plane) into `renderer.reflectionTexture()`, then a
+  "water" post pass in the HDR chain (waves + fresnel mix of reflection/refraction + foam +
+  sun glint + fog). Quick start: [G13 tutorial](en/tutorials/g13_water.md), demo
+  `examples/water_screenshot`, screenshots: [lake](images/g13_water_1280x720.png),
+  [close-up](images/g13_water_closeup.png),
+  [no reflection/foam](images/g13_water_nofx.png).
+
+  ```cpp
+  auto& wc = waterNode.attach<fuhglgraphics::scene::WaterComponent>();
+  wc.surface.create(160, 220.f);        // needs a current GL context; node translation = water level
+  wc.surface.setDefaultWaves();          // or tune wc.surface.waves / colors / foam yourself
+  // per frame:
+  wc.surface.update(dt);                 // advance the waves
+  scene.fillFrame(frame, nullptr, 1280, 720);   // frame.water = &wc.surface
+  frame.effects.enable(fuhglgraphics::render::Effect::Water);
+  frame.effects.applyTo(renderer);
+  renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
+                  frame.lightProbes, &frame.decals, frame.water);
+  ```
   hardening, temporal upscaling, bokeh DoF, screenshot diffs in CI, debug HUD.
 - **Infrastructure (G11).** On-disk asset cache keyed by content hash, JSON config system
   (same minimal in-repo JSON parser as the glTF loader), minimal Qt editor.
