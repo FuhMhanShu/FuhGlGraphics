@@ -67,4 +67,16 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   F39/F40-style gating). See `include/fuhglgraphics/render/`, `src/render/`,
   `tests/gl_smoke_render.cpp`, `examples/screenshot`, `docs/images/` and the
   [G3 tutorial](en/tutorials/g3_deferred_renderer.md).
-- G2, G4–G11 — planned.
+- **G9** — implemented: `fuhglgraphics::scene::Scene` / `Node` / components
+  (`include/fuhglgraphics/scene/`, `src/scene/`): local TRS + world matrices, children,
+  polymorphic component list (`MeshComponent` with several `MeshEntry` meshes per node —
+  each with local offset, material params, albedo/normal-map textures, `castShadow`,
+  material ID; `LightComponent`; `CameraComponent`), per-node `Effects` (list of
+  `render::Effect` + `EffectParams`, union-merged per frame, `applyTo(DeferredRenderer)`),
+  per-node `instancing` property (grid/random), world AABBs + frustum culling in
+  `Scene::fillFrame()` → `FrameData` → G3 `render()` (with per-item `castShadow`).
+  G-buffer normal-map support added in G3's G-buffer pass (unit `kTextureUnitNormalMap`).
+  See `tests/test_scene.cpp`, `tests/gl_smoke_scene.cpp`, `examples/scene_screenshot`,
+  `docs/images/g9_*.png` and the [G9 tutorial](en/tutorials/g9_scene_graph.md).
+  glTF node mapping comes with G4.
+- G2, G4–G8, G10, G11 — planned.

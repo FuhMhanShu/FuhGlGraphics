@@ -48,6 +48,8 @@ uniform vec3 uAlbedo;
 uniform vec3 uEmissive;
 uniform int uUseTex;
 uniform sampler2D uMatTex;      // unit kTextureUnitAlbedo (3)
+uniform int uUseNormalMap;
+uniform sampler2D uNormalTex;   // unit kTextureUnitNormalMap (4)
 uniform float uMetallic;
 uniform float uRoughness;
 uniform float uAo;
@@ -63,8 +65,20 @@ layout(location = 5) out vec4 oMatId;
 void main() {
     vec3 albedo = uAlbedo * vColor;
     if (uUseTex == 1) albedo *= texture(uMatTex, vUV).rgb;
+    vec3 N = normalize(vNormal);
+    if (uUseNormalMap == 1) {
+        // tangent frame from screen-space derivatives (no tangent attribute needed)
+        vec3 dp1 = dFdx(vWorldPos);
+        vec3 dp2 = dFdy(vWorldPos);
+        vec2 duv1 = dFdx(vUV);
+        vec2 duv2 = dFdy(vUV);
+        vec3 T = normalize(dp1 * duv2.y - dp2 * duv1.y);
+        vec3 B = normalize(-dp1 * duv2.x + dp2 * duv1.x);
+        vec3 nTS = texture(uNormalTex, vUV).rgb * 2.0 - 1.0;
+        N = normalize(T * nTS.x + B * nTS.y + N * nTS.z);
+    }
     oAlbedo = vec4(albedo, 1.0);
-    oNormal = vec4(normalize(vNormal) * 0.5 + 0.5, 1.0);
+    oNormal = vec4(N * 0.5 + 0.5, 1.0);
     oPbr = vec4(uMetallic, uRoughness, uAo, 1.0);
     oEmissive = vec4(uEmissive, 1.0);
     vec2 curUV = gl_FragCoord.xy / uResolution;

@@ -27,13 +27,18 @@ requirements [G1–G11](docs/REQUIREMENTS.md).
 ## Status
 
 Requirements G1–G11 are in place ([docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)).
-Implemented so far: **G1** (FuhGLCore dependency wiring) and **G3** — the deferred renderer
+Implemented so far: **G1** (FuhGLCore dependency wiring), **G3** — the deferred renderer
 `fuhglgraphics::render::DeferredRenderer` with an extended G-buffer (albedo+normal,
 metallic/roughness/AO, emissive, motion vectors, material ID), PBR lighting reusing FuhGLCore
 lights/shadows/IBL, and a post chain (TAA → FSR1-style upscale → ACES tonemap) with
 per-effect toggles — see the [G3 tutorial](docs/en/tutorials/g3_deferred_renderer.md) and
-screenshots in [docs/images/](docs/images/g3_deferred_1280x720.png).
-Next up: **G9** (scene graph), then **G4** (glTF 2.0 asset loading).
+screenshots in [docs/images/](docs/images/g3_deferred_1280x720.png) — and **G9** — the scene
+graph `fuhglgraphics::scene::Scene` (nodes with a polymorphic component list, several meshes
++ albedo/normal-map textures per node, light/camera components, per-node effect lists +
+parameters, per-node instancing, world AABBs + frustum culling; `Scene::fillFrame()` feeds
+the G3 renderer) — see the [G9 tutorial](docs/en/tutorials/g9_scene_graph.md) and
+effect-comparison screenshots in [docs/images/](docs/images/g9_scene_graph.png).
+Next up: **G4** (glTF 2.0 asset loading).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.
 

@@ -13,12 +13,16 @@ include/fuhglgraphics/   public API (headers)
   render/                 G3 deferred renderer (implemented: deferred_renderer.hpp,
                           effects.hpp, gbuffer.hpp)
   io/                     G4 glTF 2.0 loader (planned)
-  scene/                  G9 scene graph + components (planned)
+  scene/                  G9 scene graph (implemented: component.hpp, effects.hpp,
+                          node.hpp, scene.hpp)
   editor/                 G2+G11 minimal Qt6 editor (planned, WITH_QT only)
 src/                      implementations (PIMPL targets)
   version.cpp
   render/                 G3 implementation + GLSL (deferred_renderer.cpp, deferred_glsl.hpp)
-examples/                 screenshot tool (renders the G3 demo scene headless to PNG)
+  scene/                  G9 implementation (component.cpp, effects.cpp, node.cpp, scene.cpp)
+examples/                 screenshot tools (render demo scenes headless to PNG):
+                          screenshot/ = G3 demo (flat SceneView), scene_screenshot/ = G9
+                          demo (scene graph + per-node effects)
 tests/                    unit tests + gl smoke tests (own mini runner, no framework)
 cmake/                    package config template
 FuhGlGraphics.pro         qmake project (static library, alternative to CMake)
@@ -93,8 +97,13 @@ nothing on some Qt6 qmake versions).
   `gl_context` (headless surfaceless EGL via `FUHGL_BACKEND=surfaceless`; skips visibly
   with exit code 77 — `SKIP_RETURN_CODE 77` — when no GL context is available).
   G3: `gl_smoke_render.cpp` (extended G-buffer, material IDs, MSAA path, render scale).
-- `examples/screenshot` — renders the G3 demo scene headless into a PNG (used for the
-  reference images in `docs/images/`, locally and by the CI `docs-screenshots` job).
+  G9: `gl_smoke_scene.cpp` (scene graph → FrameData → renderer: frame contents, instancing
+  upload, material-ID readback, normal-map path, effect params changing the output).
+  Unit tests for the pure parts live in `tests/test_render.cpp` / `tests/test_scene.cpp`.
+- `examples/screenshot` — renders the G3 demo scene headless into a PNG;
+  `examples/scene_screenshot` — the G9 demo scene (scene graph) with CLI effect switches
+  (used for the reference images in `docs/images/`, locally and by the CI
+  `docs-screenshots` job).
 
 Run: `ctest --test-dir build --output-on-failure` (add `-L gl_context` where a GL
 implementation is installed, e.g. `libegl1 libgl1 libgl1-mesa-dri` + Mesa llvmpipe,
@@ -110,7 +119,8 @@ with `-DFUHGL_LINUX_BACKEND=EGL` so the surfaceless backend is compiled in).
   (the EGL backend provides the surfaceless headless mode) and runs `ctest -L unit` and
   `FUHGL_BACKEND=surfaceless ctest -L gl_context` on llvmpipe.
 - `docs-screenshots` (ubuntu-latest): same Mesa setup, builds `fuhglgraphics_screenshot`
-  and renders the G3 reference images into `docs/images/ci/`, uploaded as the artifact
+  + `fuhglgraphics_scene_screenshot` and renders the G3 reference images and the G9
+  scene-graph effect comparisons into `docs/images/ci/`, uploaded as the artifact
   `g3-screenshots` (the reviewed copies are checked in under `docs/images/`).
 - Workflow-level hardening: top-level `permissions: contents: read` (least privilege),
   `concurrency` with `cancel-in-progress`, and all third-party actions pinned to

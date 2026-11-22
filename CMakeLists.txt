@@ -38,6 +38,10 @@ endif()
 add_library(fuhglgraphics STATIC
     src/version.cpp
     src/render/deferred_renderer.cpp
+    src/scene/component.cpp
+    src/scene/effects.cpp
+    src/scene/node.cpp
+    src/scene/scene.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 

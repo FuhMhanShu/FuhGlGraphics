@@ -35,9 +35,31 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   (core + `KHR_materials_pbrMetallicRoughness`, embedded base64 and external `.bin`
   buffers, PNG/JPEG via Qt when available) into FuhGLCore `render::MeshData` + materials.
   Errors are reported as `bool` + log, never exceptions.
-- **Scene graph (G9).** On top of FuhGLCore's flat `DrawItem` list: `Node` with
-  local/world transforms, children and components (mesh, light, camera, decal, particle
-  emitter, probe), world AABBs for culling, glTF node mapping.
+- **Scene graph (G9).** On top of FuhGLCore's flat `DrawItem` list: `scene::Node` with local
+  TRS + world transform, children and a polymorphic component list — `MeshComponent` (several
+  `MeshEntry` meshes per node, each with its own local offset, material parameters, albedo +
+  normal-map textures, `castShadow` flag and material ID), `LightComponent`, `CameraComponent`
+  (decal / particle-emitter / probe components attach the same way once G8/G5/G7 land) — plus
+  per-node `Effects` (a list of `render::Effect` + `EffectParams`, merged as a union over all
+  nodes per frame, parameters of the last-visited node win) and an `instancing` property
+  (grid/random layouts, one instanced draw call per node). `Scene::fillFrame()` updates world
+  transforms + world AABBs, frustum-culls and fills a `FrameData` (SceneView + parallel
+  `materialIds`/`castShadow` + merged `Effects`) for the G3 renderer. Quick start:
+  [G9 tutorial](en/tutorials/g9_scene_graph.md), screenshots:
+  [docs/images/](images/g9_scene_graph.png).
+
+  ```cpp
+  fuhglgraphics::scene::Scene scene;
+  auto& mc = scene.root().createChild("hero").attach<fuhglgraphics::scene::MeshComponent>();
+  auto& e = mc.addMesh(&mesh);                 // several meshes per node: mc.addMesh(&other)
+  e.albedo = {0.9f, 0.4f, 0.2f}; e.albedoTexture = &tex; e.normalMap = &nrm;
+  e.materialId = 7; e.castShadow = true;
+  scene.root().effects.enable(fuhglgraphics::render::Effect::Taa);
+  fuhglgraphics::scene::FrameData frame;
+  scene.fillFrame(frame, nullptr, 1280, 720);  // camera from a CameraComponent
+  frame.effects.applyTo(renderer);             // merged effects -> G3 DeferredRenderer
+  renderer.render(frame.view, &frame.materialIds, &frame.castShadow);
+  ```
 - **Effects (G5–G8, G10).** GPU particles (GL 4.3, CPU fallback), skeletal animation,
   SH light probes / lightmaps, deferred decals, plus quick upgrades: MSAA, CSM
   hardening, temporal upscaling, bokeh DoF, screenshot diffs in CI, debug HUD.

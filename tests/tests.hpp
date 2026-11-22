@@ -4,3 +4,4 @@
 
 void runVersionTests();
 void runRenderTests();
+void runSceneTests();

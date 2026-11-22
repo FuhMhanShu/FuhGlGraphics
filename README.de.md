@@ -27,13 +27,18 @@ Qt6-Editor) — siehe die vereinbarten Anforderungen [G1–G11](docs/REQUIREMENT
 ## Status
 
 Requirements G1–G11 liegen vor ([docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)).
-Bereits umgesetzt: **G1** (FuhGLCore-Anbindung) und **G3** — der Deferred-Renderer
+Bereits umgesetzt: **G1** (FuhGLCore-Anbindung), **G3** — der Deferred-Renderer
 `fuhglgraphics::render::DeferredRenderer` mit erweitertem G-Buffer (Albedo+Normal,
 Metallic/Roughness/AO, Emissive, Motion-Vectors, Material-ID), PBR-Lighting über die
 FuhGLCore-Lights/Shadows/IBL und einer Post-Chain (TAA → FSR1-artiges Upscaling →
 ACES-Tonemapping) mit Einzelschaltern — siehe [G3-Tutorial](docs/de/tutorials/g3_deferred_renderer.md)
-und Screenshots in [docs/images/](docs/images/g3_deferred_1280x720.png).
-Als Nächstes: **G9** (Szenengraph), dann **G4** (glTF-2.0-Asset-Loading).
+und Screenshots in [docs/images/](docs/images/g3_deferred_1280x720.png) — sowie **G9** — der
+Szenengraph `fuhglgraphics::scene::Scene` (Nodes mit polymorpher Komponentenliste, mehrere
+Meshes + Albedo-/Normalmap-Texturen pro Node, Licht-/Kamera-Komponenten, Effektliste +
+Parameter pro Node, Instancing pro Node, World-AABBs + Frustum-Culling; `Scene::fillFrame()`
+füttert den G3-Renderer) — siehe [G9-Tutorial](docs/de/tutorials/g9_scene_graph.md) und
+Effekt-Vergleichsbilder in [docs/images/](docs/images/g9_scene_graph.png).
+Als Nächstes: **G4** (glTF-2.0-Asset-Loading).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.
 

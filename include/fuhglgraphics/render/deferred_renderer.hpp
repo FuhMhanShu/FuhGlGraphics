@@ -58,8 +58,12 @@ public:
     /// -> G-buffer -> MSAA resolve -> post graph (lighting -> TAA -> upscale -> tonemap).
     /// @param materialIds optional, parallel to scene.items: per-item material ID
     /// written into the G-buffer MaterialId attachment (default 0) — used by G8 decals.
+    /// @param castShadow optional, parallel to scene.items: per-item flag whether the
+    /// item is drawn into the shadow depth pass (G9 scene graph sets this per node;
+    /// missing entries default to true).
     void render(const fuhgl::render::SceneView& scene,
-                const std::vector<std::uint32_t>* materialIds = nullptr);
+                const std::vector<std::uint32_t>* materialIds = nullptr,
+                const std::vector<bool>* castShadow = nullptr);
 
     /// @brief LDR output target (RGBA8, tonemapped when Effect::Tonemap is on).
     fuhgl::Framebuffer& output();

@@ -26,6 +26,32 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   (`g3_deferred_1280x720.png`, `g3_deferred_upscale_0.6.png`, `g3_deferred_nofx.png`).
   G3 tutorial in `docs/en/tutorials/g3_deferred_renderer.md` + German translation.
   New CMake option `FUHGLGRAPHICS_BUILD_EXAMPLES` (default ON).
+- **G9 — scene graph** (`fuhglgraphics::scene`, `include/fuhglgraphics/scene/`,
+  `src/scene/`): `Scene` owns the root `Node`; nodes have a local TRS transform, children
+  and a polymorphic component list (`attach<T>` / `find<T>` / `findAll<T>` / `detach`).
+  `MeshComponent` holds **several `MeshEntry` meshes per node** — each with its own local
+  offset, LOD, `castShadow` flag, material ID and material parameters incl. **albedo +
+  normal-map textures per mesh** (explicit preset material or inline fields synced into an
+  owned preset). `LightComponent` places a `fuhgl::render::Light` at the node's world
+  transform; `CameraComponent` provides the camera for `fillFrame(frame, nullptr, w, h)`.
+  Every node carries an **`Effects` object** (`std::vector<render::Effect>` +
+  `EffectParams`): `Scene::fillFrame()` merges them per frame (union of the lists, the
+  last-visited node's parameters win) and `Effects::applyTo(renderer)` pushes them onto the
+  G3 `DeferredRenderer`. **Instancing is a node property** (`Node::instancing`:
+  grid/random layouts via `makeLocalInstances()`, one instanced draw call per mesh entry).
+  World matrices + world AABBs are maintained for **frustum culling**. `Scene::fillFrame()`
+  produces a `FrameData` (SceneView + parallel `materialIds` / `castShadow` + merged
+  `Effects`) that is rendered via `renderer.render(frame.view, &frame.materialIds,
+  &frame.castShadow)` — the G3 renderer gained the per-item `castShadow` filter for the
+  shadow depth pass and normal-map support in the G-buffer pass (derivative-based tangent
+  frame, unit `kTextureUnitNormalMap`).
+  Tests: `tests/test_scene.cpp` (unit: TRS/world matrices, effects merge, instancing
+  layouts, components, fillFrame incl. culling) + `tests/gl_smoke_scene.cpp` (label
+  `gl_context`, skips with 77). New tool `examples/scene_screenshot` renders the G9 demo
+  scene headless to PNG with CLI effect switches; reference images `docs/images/g9_*.png`
+  (`g9_scene_graph.png` all effects, `g9_no_shadows.png`, `g9_no_ibl.png`,
+  `g9_upscale_scale0.6.png`, `g9_no_effects.png`). G9 tutorial in
+  `docs/en/tutorials/g9_scene_graph.md` + German translation.
 - Initial skeleton with agreed requirements G1–G11 in
   [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) plus the dependency wiring:
   CMake ≥ 3.20 static library `fuhglgraphics` (alias/export

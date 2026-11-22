@@ -321,6 +321,13 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
                                 preset->albedoTexture->id());
                 prog.setUniform("uMatTex", fuhgl::render::kTextureUnitAlbedo);
             }
+            prog.setUniform("uUseNormalMap", preset->normalMap ? 1 : 0);
+            if (preset->normalMap) {
+                fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitNormalMap);
+                f.glBindTexture(static_cast<fuhgl::gl::GLenum>(preset->normalMap->target()),
+                                preset->normalMap->id());
+                prog.setUniform("uNormalTex", fuhgl::render::kTextureUnitNormalMap);
+            }
             prog.setUniform("uMetallic", preset->metallic);
             prog.setUniform("uRoughness", preset->roughness);
             prog.setUniform("uAo", preset->ao);
@@ -328,6 +335,7 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
             prog.setUniform("uAlbedo", fuhgl::math::Vec3{1.f, 1.f, 1.f});
             prog.setUniform("uEmissive", fuhgl::math::Vec3{0.f, 0.f, 0.f});
             prog.setUniform("uUseTex", 0);
+            prog.setUniform("uUseNormalMap", 0);
             prog.setUniform("uMetallic", 0.f);
             prog.setUniform("uRoughness", 0.5f);
             prog.setUniform("uAo", 1.f);
@@ -355,7 +363,8 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
 }
 
 void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
-                              const std::vector<std::uint32_t>* materialIds) {
+                              const std::vector<std::uint32_t>* materialIds,
+                              const std::vector<bool>* castShadow) {
     if (!scene.camera || width_ <= 0) return;
     fuhgl::render::SceneView s = scene;
     applyCapabilities();
@@ -364,11 +373,24 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
         s.env = nullptr; // gated in applyCapabilities() with a one-time warning
     }
 
+    // per-item shadow casting (G9): the depth pass only draws items flagged castShadow
+    fuhgl::render::SceneView shadowScene;
+    const fuhgl::render::SceneView* shadowView = &s;
+    if (castShadow && !castShadow->empty()) {
+        shadowScene = s;
+        std::vector<fuhgl::render::DrawItem> items;
+        items.reserve(s.items.size());
+        for (std::size_t i = 0; i < s.items.size(); ++i)
+            if (i >= castShadow->size() || (*castShadow)[i]) items.push_back(s.items[i]);
+        shadowScene.items = std::move(items);
+        shadowView = &shadowScene;
+    }
+
     // --- shadow depth pass: CSM (first directional light) or single map ---
     if (csmEnabled_ && impl_->csm.cascadeCount() > 0) {
         for (std::size_t i = 0; i < s.lights.size(); ++i) {
             if (s.lights[i].type == fuhgl::render::LightType::Directional) {
-                impl_->csm.render(s, *s.camera, s.lights[i], shadowCenter_, shadowRadius_, shadowZNear_, shadowZFar_);
+                impl_->csm.render(*shadowView, *s.camera, s.lights[i], shadowCenter_, shadowRadius_, shadowZNear_, shadowZFar_);
                 s.cascades = &impl_->csm;
                 s.shadowLightIndex = static_cast<int>(i);
                 s.shadowStrength = shadowStrength_;
@@ -380,7 +402,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
             if (s.lights[i].type == fuhgl::render::LightType::Directional ||
                 s.lights[i].type == fuhgl::render::LightType::Spot) {
                 s.lightVP = fuhgl::render::lightViewProj(s.lights[i], shadowCenter_, shadowRadius_);
-                impl_->shadowMap.render(s, s.lightVP);
+                impl_->shadowMap.render(*shadowView, s.lightVP);
                 s.shadowMap = &impl_->shadowMap;
                 s.shadowLightIndex = static_cast<int>(i);
                 s.shadowStrength = shadowStrength_;
