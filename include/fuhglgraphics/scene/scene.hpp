@@ -29,6 +29,10 @@ namespace fuhglgraphics::probes {
 class LightProbeGrid;
 }
 
+namespace fuhglgraphics::water {
+class WaterSurface;
+}
+
 namespace fuhglgraphics::scene {
 
 /// @brief Everything one frame needs: the FuhGLCore SceneView plus the parallel per-item
@@ -43,6 +47,7 @@ struct FrameData {
     Effects effects;                        ///< merged union of all node effects
     std::vector<const particles::ParticleSystem*> particleSystems; ///< G5 emitters
     const probes::LightProbeGrid* lightProbes = nullptr;           ///< G7 probe grid
+    const water::WaterSurface* water = nullptr;                    ///< G13 water surface (first wins)
 };
 
 /// @brief The G9 scene graph (root node + frame filling with frustum culling).

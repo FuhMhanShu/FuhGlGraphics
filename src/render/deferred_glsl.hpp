@@ -586,12 +586,261 @@ inline bool compilePostFs(fuhgl::render::Material& mat, const std::string& fragS
     return true;
 }
 
-// --- plain fullscreen copy (particles pass: hdr -> hdrP before the blended billboards) --
+// --- plain fullscreen copy (water-off fallback + particles pass: src -> target) --------
 constexpr const char* kCopyFrag = R"GLSL(#version 330 core
 in vec2 vUV;
 uniform sampler2D uSrc;
 out vec4 FragColor;
 void main() { FragColor = texture(uSrc, vUV); }
 )GLSL";
+
+// --- G13 water: planar-reflection pass -------------------------------------------------
+// The reflection pass renders the scene (without the water mesh) from the mirrored camera
+// into a small RGBA16F target. Background pixels get the sky cubemap + sun disk (same
+// pattern as the lighting pass), geometry gets cheap lambert+blinn shading (no shadows in
+// the reflection — at reflection resolution + wave distortion this is not visible).
+// Geometry below the water plane is clipped by pushing its clip-space z below -w.
+constexpr const char* kReflVert = R"GLSL(#version 330 core
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec3 aColor;
+layout(location = 3) in vec2 aUV;
+uniform mat4 uModel;
+uniform mat4 uViewProj;    // mirrored camera view-projection
+uniform vec4 uClipPlane;   // xyz = water plane normal (world), w = d; keep dot(p,n)+d >= 0
+out vec3 vWorldPos;
+out vec3 vNormal;
+out vec3 vColor;
+out vec2 vUV;
+void main() {
+    vec4 wp = uModel * vec4(aPos, 1.0);
+    vWorldPos = wp.xyz;
+    vNormal = mat3(uModel) * aNormal;
+    vColor = aColor;
+    vUV = aUV;
+    gl_Position = uViewProj * wp;
+    if (dot(wp.xyz, uClipPlane.xyz) + uClipPlane.w < 0.0)
+        gl_Position.z = -2.0 * gl_Position.w; // below the water plane: clipped
+}
+)GLSL";
+
+constexpr const char* kReflSkyFrag = R"GLSL(#version 330 core
+in vec2 vUV;
+uniform samplerCube uSkyCube;   // unit kTextureUnitSkyCube (16)
+uniform int uUseSkyCube;
+uniform mat4 uInvViewProj;      // mirrored camera viewProj inverse
+uniform vec3 uCamPos;           // mirrored eye
+uniform vec3 uSkyTop;
+uniform vec3 uSkyBottom;
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
+uniform float uSunCos;
+out vec4 FragColor;
+void main() {
+    vec4 fp = uInvViewProj * vec4(vUV * 2.0 - 1.0, 1.0, 1.0);
+    vec3 ray = normalize(fp.xyz / fp.w - uCamPos);
+    vec3 sky = (uUseSkyCube == 1) ? texture(uSkyCube, ray).rgb
+                                  : mix(uSkyBottom, uSkyTop, clamp(vUV.y, 0.0, 1.0));
+    sky += uSunColor * smoothstep(uSunCos, 1.0, dot(ray, uSunDir));
+    FragColor = vec4(sky, 1.0);
+}
+)GLSL";
+
+constexpr const char* kReflFrag = R"GLSL(#version 330 core
+in vec3 vWorldPos;
+in vec3 vNormal;
+in vec3 vColor;
+in vec2 vUV;
+uniform vec3 uAlbedo;
+uniform int uUseTex;
+uniform sampler2D uMatTex;   // unit kTextureUnitAlbedo (3)
+uniform vec3 uCamPos;        // mirrored eye
+uniform vec3 uAmbient;
+uniform vec3 uSunDir;        // direction TO the sun
+uniform vec3 uSunIrradiance; // sun color * intensity
+uniform vec3 uFogColor;
+uniform float uFogDensity;
+out vec4 FragColor;
+void main() {
+    vec3 albedo = uAlbedo * vColor;
+    if (uUseTex == 1) albedo *= texture(uMatTex, vUV).rgb;
+    vec3 N = normalize(vNormal);
+    vec3 V = normalize(uCamPos - vWorldPos);
+    vec3 L = normalize(uSunDir);
+    vec3 col = albedo * (uAmbient + uSunIrradiance * max(dot(N, L), 0.0));
+    vec3 H = normalize(L + V);
+    col += uSunIrradiance * pow(max(dot(N, H), 0.0), 64.0) * 0.6;
+    if (uFogDensity > 0.0)
+        col = mix(col, uFogColor, 1.0 - exp(-uFogDensity * length(vWorldPos - uCamPos)));
+    FragColor = vec4(col, 1.0);
+}
+)GLSL";
+
+// --- G13 water pass: Gerstner-wave surface shaded into the HDR image -------------------
+// Vertex: displace the flat grid by the Gerstner sum, derive the wave normal analytically
+// (same math as water::evalGerstner on the CPU). Fragment: fresnel mix of the planar
+// reflection texture and the refraction (scene HDR distorted by the normal, absorbed with
+// water depth), crest foam ("Gicht") + depth-based shore foam, sun glint, fog. The post FBO
+// has no depth attachment, so the scene-occlusion test is done manually against gDepth.
+constexpr const char* kWaterVert = R"GLSL(#version 330 core
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec3 aColor;
+layout(location = 3) in vec2 aUV;
+uniform mat4 uModel;
+uniform mat4 uViewProj;
+uniform float uTime;
+uniform int uWaveCount;
+uniform vec4 uWaveA[8]; // xy = direction, z = amplitude, w = k (2*pi/wavelength)
+uniform vec4 uWaveB[8]; // x = omega, y = Q (horizontal coefficient)
+out vec3 vWorldPos;
+out vec3 vNormal;
+out float vCrest;   // wave height / maxWaveHeight, ~[-1, 1]
+out vec2 vLocalXZ;
+void main() {
+    vec2 xz = aPos.xz;
+    vec3 p = vec3(xz.x, 0.0, xz.y);
+    vec3 dPdx = vec3(1.0, 0.0, 0.0);
+    vec3 dPdz = vec3(0.0, 0.0, 1.0);
+    float height = 0.0, maxA = 1e-5;
+    for (int i = 0; i < 8; ++i) {
+        if (i >= uWaveCount) break;
+        vec2 d = normalize(uWaveA[i].xy);
+        float a = uWaveA[i].z;
+        float k = uWaveA[i].w;
+        float omega = uWaveB[i].x;
+        float q = uWaveB[i].y;
+        float ph = k * dot(d, xz) - omega * uTime;
+        float s = sin(ph), c = cos(ph);
+        p.x += q * a * d.x * c;
+        p.z += q * a * d.y * c;
+        p.y += a * s;
+        height += a * s;
+        maxA += a;
+        float wa = k * a;
+        dPdx += vec3(-q * d.x * d.x * wa * s, d.x * wa * c, -q * d.x * d.y * wa * s);
+        dPdz += vec3(-q * d.x * d.y * wa * s, d.y * wa * c, -q * d.y * d.y * wa * s);
+    }
+    vec3 n = normalize(cross(dPdz, dPdx));
+    vec4 wp = uModel * vec4(p, 1.0);
+    vWorldPos = wp.xyz;
+    vNormal = normalize(mat3(uModel) * n);
+    vCrest = height / maxA;
+    vLocalXZ = xz;
+    gl_Position = uViewProj * wp;
+}
+)GLSL";
+
+constexpr const char* kWaterFrag = R"GLSL(#version 330 core
+in vec3 vWorldPos;
+in vec3 vNormal;
+in float vCrest;
+in vec2 vLocalXZ;
+uniform sampler2D uSceneHdr; // unit 0: lighting output without the water (refraction)
+uniform sampler2D uGDepth;   // unit 1: G-buffer depth (occlusion + shore foam)
+uniform sampler2D uReflTex;  // unit 2: planar reflection target
+uniform mat4 uInvViewProj;
+uniform mat4 uViewProj;      // camera viewProj (un-jittered): water fragment -> depth value
+uniform vec3 uCamPos;
+uniform vec2 uResolution;    // internal resolution in pixels
+uniform float uTime;
+uniform vec3 uPlaneN;        // world water-plane normal (for the depth below the surface)
+uniform vec3 uDeepColor;
+uniform vec3 uShallowColor;
+uniform vec3 uFoamColor;
+uniform float uFresnelF0;
+uniform float uReflectionStrength;
+uniform float uDistortion;
+uniform float uRefractionDistortion;
+uniform float uFoamCrestStart;
+uniform float uFoamCrestSoftness;
+uniform float uShoreFoamWidth;
+uniform float uFoamStrength;
+uniform float uGlintPower;
+uniform float uDetailScale;
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
+uniform vec3 uFogColor;
+uniform float uFogDensity;
+out vec4 FragColor;
+// procedural ripple heightfield (two scrolling directional sines + one diagonal)
+float rippleH(vec2 p, float t) {
+    return sin(p.x * 2.1 + t * 1.1) * sin(p.y * 1.7 - t * 0.9) * 0.6
+         + sin(dot(p, vec2(4.3, 3.1)) - t * 1.9) * 0.4
+         + sin(dot(p, vec2(-7.7, 5.9)) + t * 2.6) * 0.25;
+}
+void main() {
+    vec2 uv = gl_FragCoord.xy / uResolution;
+    // manual depth test: the post-pass FBO has no depth attachment, so the water fragment's
+    // own depth value (projected with the camera viewProj) is compared against the G-buffer
+    // depth — both live in the same depth-texture quantization
+    float sceneDepth = texture(uGDepth, uv).r;
+    bool hasScene = sceneDepth < 0.99999;
+    vec4 swp = uInvViewProj * vec4(uv * 2.0 - 1.0, sceneDepth * 2.0 - 1.0, 1.0);
+    vec3 sceneWorld = swp.xyz / swp.w;
+    vec4 waterClip = uViewProj * vec4(vWorldPos, 1.0);
+    float waterDepthTex = waterClip.z / max(waterClip.w, 1e-6) * 0.5 + 0.5;
+    if (hasScene && waterDepthTex > sceneDepth + 0.0002) discard; // scene in front of the water
+    // detail ripple normal on top of the Gerstner wave normal
+    vec2 p = vLocalXZ * uDetailScale;
+    float e = 0.35;
+    float t = uTime;
+    float hx = rippleH(p + vec2(e, 0.0), t) - rippleH(p - vec2(e, 0.0), t);
+    float hz = rippleH(p + vec2(0.0, e), t) - rippleH(p - vec2(0.0, e), t);
+    vec3 detailN = normalize(vec3(-hx / (2.0 * e), 1.0, -hz / (2.0 * e)));
+    vec3 N = normalize(vec3(vNormal.xz + detailN.xz * 0.6, vNormal.y));
+    vec3 V = normalize(uCamPos - vWorldPos);
+    // water depth below this fragment (scene point under the surface) for shore foam + absorption
+    float waterDepth = hasScene ? max(-dot(sceneWorld - vWorldPos, uPlaneN), 0.0) : 0.0;
+    // smoothstep needs edge0 < edge1: foam fades in as the water gets shallower
+    float shoreFoam = hasScene ? (1.0 - smoothstep(0.0, uShoreFoamWidth, waterDepth)) : 0.0;
+    float crestFoam = smoothstep(uFoamCrestStart, uFoamCrestStart + uFoamCrestSoftness, vCrest);
+    float foam = clamp(max(shoreFoam, crestFoam) * uFoamStrength, 0.0, 1.0);
+    // fresnel (dielectric)
+    float fres = uFresnelF0 + (1.0 - uFresnelF0) * pow(1.0 - max(dot(N, V), 0.0), 5.0);
+    // planar reflection: the mirrored camera shares the projection, so screen uv maps 1:1
+    vec2 reflUV = clamp(uv + N.xz * uDistortion, vec2(0.001), vec2(0.999));
+    vec3 refl = texture(uReflTex, reflUV).rgb * uReflectionStrength;
+    // refraction: scene HDR distorted by the normal, absorbed with depth, tinted by the body color
+    vec2 refrUV = clamp(uv + N.xz * uRefractionDistortion, vec2(0.001), vec2(0.999));
+    vec3 refr = texture(uSceneHdr, refrUV).rgb;
+    vec3 absorb = exp(-vec3(1.8, 0.60, 0.40) * waterDepth);
+    vec3 body = mix(uShallowColor, uDeepColor, clamp(waterDepth * 0.25, 0.0, 1.0));
+    vec3 refrCol = refr * absorb + body * (1.0 - absorb) * 0.8;
+    vec3 col = mix(refrCol, refl, clamp(fres, 0.0, 1.0));
+    // sun glint on the wave normals
+    vec3 R = reflect(-V, N);
+    col += uSunColor * pow(max(dot(R, uSunDir), 0.0), uGlintPower) * 2.0;
+    // foam on top ("Gicht" at the crests + shore foam)
+    col = mix(col, uFoamColor, foam);
+    // distance fog
+    if (uFogDensity > 0.0)
+        col = mix(col, uFogColor, 1.0 - exp(-uFogDensity * length(vWorldPos - uCamPos)));
+    FragColor = vec4(col, 1.0);
+}
+)GLSL";
+
+/// @brief Compiles the G13 water-surface material (kWaterVert + kWaterFrag) — a mesh pass,
+/// not a fullscreen one.
+inline bool compileWaterMat(fuhgl::render::Material& mat) {
+    if (!mat.create()) return false;
+    fuhgl::Shader vs(fuhgl::Shader::Type::Vertex), fs(fuhgl::Shader::Type::Fragment);
+    if (!vs.compile(kWaterVert)) {
+        std::fprintf(stderr, "water VS: %s\n", vs.infoLog().c_str());
+        return false;
+    }
+    if (!fs.compile(kWaterFrag)) {
+        std::fprintf(stderr, "water FS: %s\n", fs.infoLog().c_str());
+        return false;
+    }
+    mat.program().attach(vs);
+    mat.program().attach(fs);
+    if (!mat.program().link()) {
+        std::fprintf(stderr, "water link: %s\n", mat.program().infoLog().c_str());
+        return false;
+    }
+    return true;
+}
+
 
 } // namespace fuhglgraphics::render

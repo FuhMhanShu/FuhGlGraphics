@@ -50,6 +50,13 @@ void LightProbeComponent::fill(const Node& /*node*/, FrameData& frame) const {
     if (grid.valid() && !frame.lightProbes) frame.lightProbes = &grid;
 }
 
+void WaterComponent::fill(const Node& node, FrameData& frame) const {
+    frame.view.items.push_back(fuhgl::render::DrawItem{&surface.mesh(), nullptr, node.worldMatrix()});
+    frame.materialIds.push_back(0);
+    frame.castShadow.push_back(false); // the water surface never casts a shadow
+    if (!frame.water) frame.water = &surface; // the first water component in the graph wins
+}
+
 void LightComponent::fill(const Node& node, FrameData& frame) const {
     fuhgl::render::Light l = light;
     const fuhgl::math::Mat4& w = node.worldMatrix();

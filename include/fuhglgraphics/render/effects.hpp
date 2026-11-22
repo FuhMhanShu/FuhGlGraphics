@@ -27,10 +27,11 @@ enum class Effect {
     ContactShadows, ///< screen-space raymarched contact shadows on the shadow light (F46)
     Particles,      ///< G5 particle systems (compute on GL >= 4.3, CPU fallback below)
     LightProbes,    ///< G7 SH-irradiance light-probe grid (diffuse indirect light, 3D textures)
+    Water,          ///< G13 water surface: Gerstner waves + planar reflection + foam pass
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 11;
+constexpr int kEffectCount = 12;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -46,6 +47,7 @@ inline const char* effectName(Effect e) {
         case Effect::ContactShadows: return "contact shadows";
         case Effect::Particles: return "particles";
         case Effect::LightProbes: return "light probes";
+        case Effect::Water: return "water";
     }
     return "unknown";
 }

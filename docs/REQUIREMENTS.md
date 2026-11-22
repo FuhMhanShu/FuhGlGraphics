@@ -40,6 +40,7 @@ FuhGLCore.
 | G10 | Smaller quickly-visible upgrades (roadmap 7) | MSAA wiring+test in G3 (DeferredRenderer has msaaSamples already), CSM contact hardening (penumbra), temporal upscaling (FSR1-style EASU+RCAS) after TAA, DoF bokeh shape instead of circular, CI screenshot perceptual diff (reference PNGs in docs/images/, PSNR/perceptual threshold), mini debug HUD (ImGui-like panel on FuhGLCore TextRenderer: fps, frame-time, effect toggles) |
 | G11 | Engine infrastructure (roadmap 8) | on-disk asset cache keyed by content hash (imported meshes/textures + baked IBL/env persist); JSON config system for F40 effect toggles/window/renderer (same minimal JSON parser as G4); minimal Qt editor (G2): gizmo+camera+scene tree+viewport |
 | G12 | Asset creator Qt tool | `tools/asset_creator/` executable `fuhglgraphics_asset_creator` (built with `FUHGLGRAPHICS_WITH_QT=ON` + new option `FUHGLGRAPHICS_BUILD_TOOLS`): create/load/edit assets with a data-structures panel (scene tree + inspector + asset browser), a viewport with editing tools on the G3 `DeferredRenderer`, and an LLM chat over MCP (stdio JSON-RPC 2.0, configurable server command). Project file = own `.fasset` JSON (`io::Json` + new `io::writeJson`, scene serialization in `scene/serialize.hpp`, MCP message helpers in `mcp/jsonrpc.hpp` — all Qt-free + unit tests). MVC, PIMPL, UI multilingual (English default, German first translation). Design: [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) |
+| G13 | Realistic water (sea/lake) | new `water/` module: `water::WaterSurface` (Gerstner-wave grid mesh + shading params) as a G9 `WaterComponent` -> `FrameData::water` -> G3 `DeferredRenderer::render(..., water)` with `render::Effect::Water`: planar reflection pass (mirrored camera + clip plane at the water plane into an RGBA16F target at `waterReflectionScale`), water post pass in the HDR chain (Gerstner displacement + analytic wave normal in the vertex shader, fresnel mix of reflection/refraction, depth-based shore foam + crest foam, sun glint, fog); GL 3.3-capable, toggleable |
 
 ## 4. Non-functional requirements
 
@@ -153,6 +154,7 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   upload in render). See `tests/test_probes.cpp`, `tests/gl_smoke_probes.cpp`,
   `examples/probes_screenshot`, `docs/images/g7_probes_*.png` and the
   [G7 tutorial](en/tutorials/g7_light_probes.md).
+- **G13 — water rendering** (`fuhglgraphics::water`, `include/fuhglgraphics/water/`, `src/water/`, G3 renderer extension in `src/render/`): implemented — see `tests/test_water.cpp`, `tests/gl_smoke_water.cpp`, `examples/water_screenshot`, `docs/images/g13_water_*.png` and the [G13 tutorial](en/tutorials/g13_water.md).
 - G2, G8, G10, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON

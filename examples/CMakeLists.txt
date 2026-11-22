@@ -33,3 +33,9 @@ target_link_libraries(fuhglgraphics_animation_screenshot PRIVATE fuhglgraphics)
 # in the G3 lighting pass (Effect::LightProbes) — color bleeding in the shadows.
 add_executable(fuhglgraphics_probes_screenshot probes_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_probes_screenshot PRIVATE fuhglgraphics)
+
+# G13 water demo: lake scene (terrain basin + Gerstner-wave water surface with planar
+# reflection, refraction, fresnel, crest/shore foam and sun glint) as a G9 scene graph —
+# WaterComponent -> FrameData::water -> DeferredRenderer with Effect::Water — headless to PNG.
+add_executable(fuhglgraphics_water_screenshot water_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_water_screenshot PRIVATE fuhglgraphics)

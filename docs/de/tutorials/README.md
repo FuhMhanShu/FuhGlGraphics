@@ -26,6 +26,12 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   `LightProbeComponent`; Color-Bleeding von farbigen Wänden in die Schatten, Bilder in
   [docs/images/](../../images/g7_probes_on.png)
 
+- [G13 — Realistisches Wasser](g13_water.md) — `water::WaterSurface` (Gerstner-Wellen) als
+  G9-`WaterComponent` → `FrameData::water` → G3-`render(..., water)` mit `Effect::Water`:
+  planarer Reflexions-Pass (gespiegelte Kamera) + Wasser-Post-Pass (Reflexion/Refraktion
+  per Fresnel, Kamm- + Uferschaum, Sonnen-Glint); See-Bilder in
+  [docs/images/](../../images/g13_water_1280x720.png)
+
 Als Nächstes: **G8** (Decals) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Voraussetzung für alle: Bibliothek bauen und `FuhGlGraphics::fuhglgraphics` linken

@@ -105,6 +105,16 @@ void Node::computeAabb() {
             }
         }
     }
+    // G13: a water surface contributes its grid AABB padded by the max wave height
+    for (const auto& comp : components_) {
+        const WaterComponent* wc = dynamic_cast<const WaterComponent*>(comp.get());
+        if (!wc) continue;
+        const float margin = wc->surface.maxWaveHeight();
+        const fuhgl::math::Vec4 s =
+            fuhgl::math::transformSphere(worldMatrix_, wc->surface.mesh().boundingSphere());
+        unionPoint({s.x - s.w, s.y - s.w - margin, s.z - s.w});
+        unionPoint({s.x + s.w, s.y + s.w + margin, s.z + s.w});
+    }
     for (const auto& ch : children_) {
         if (ch->hasAabb()) {
             unionPoint(ch->aabbMin_);
