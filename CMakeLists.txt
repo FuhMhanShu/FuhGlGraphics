@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(FuhGlGraphics VERSION 0.1.0 LANGUAGES CXX)
 
 option(FUHGLGRAPHICS_BUILD_TESTS "Build FuhGlGraphics tests" ON)
+option(FUHGLGRAPHICS_BUILD_EXAMPLES "Build FuhGlGraphics examples (screenshot tool)" ON)
 option(FUHGLGRAPHICS_WITH_QT "Use Qt6 for editors/tools (OFF = Qt-free headless core)" ON)
 option(FUHGLGRAPHICS_ENABLE_HARDENING "Compiler/linker hardening (stack protector, FORTIFY, RELRO) for GNU/Clang" ON)
 
@@ -36,6 +37,7 @@ endif()
 # --- library ----------------------------------------------------------------------
 add_library(fuhglgraphics STATIC
     src/version.cpp
+    src/render/deferred_renderer.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 
@@ -126,4 +128,9 @@ install(FILES
 if(FUHGLGRAPHICS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# --- examples -----------------------------------------------------------------------
+if(FUHGLGRAPHICS_BUILD_EXAMPLES)
+    add_subdirectory(examples)
 endif()

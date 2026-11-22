@@ -13,11 +13,24 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   `OpenGLWidgets`) is only used by `editor/` — a minimal editor with viewport
   (`QOpenGLWidget`), scene tree, inspector and asset browser. Build headless with
   `-DFUHGLGRAPHICS_WITH_QT=OFF`.
-- **Deferred renderer (G3).** `fuhglgraphics::render::DeferredRenderer` sits on FuhGLCore's
-  `DeferredPipeline`/`RenderGraph`/`PostChain` with an extended G-buffer (albedo+normal,
-  rough/metal/AO, emissive, motion vectors, material ID), lighting reusing FuhGLCore
-  lights/shadows/IBL, and its own post chain (TAA → upscaling → tonemap) with per-effect
-  toggles and capability gating.
+- **Deferred renderer (G3).** `fuhglgraphics::render::DeferredRenderer` builds on FuhGLCore's
+  `RenderGraph` + `ShadowMap`/`CascadeShadowMap`/`Environment` with an extended G-buffer
+  (albedo+normal, metallic/roughness/AO, emissive, motion vectors, material ID — see
+  `render/gbuffer.hpp`), PBR lighting reusing FuhGLCore lights/shadows/IBL, and its own post
+  chain on a `render::RenderGraph` (TAA → FSR1-style EASU+RCAS upscaling → ACES tonemap) with
+  per-effect toggles (`setEffectEnabled(render::Effect::Taa, ...)`) and F39/F40-style
+  capability gating. Quick start: [G3 tutorial](en/tutorials/g3_deferred_renderer.md),
+  result: [screenshot](images/g3_deferred_1280x720.png).
+
+  ```cpp
+  fuhglgraphics::render::DeferredRenderer renderer;
+  renderer.create(1280, 720, /*msaaSamples=*/0);   // needs a current GL >= 3.3 context
+  renderer.enableCsmShadows(2048, 4);              // shadows via FuhGLCore CascadeShadowMap
+  renderer.setRenderScale(0.75f);                  // internal res 75%, FSR1-style upscale
+  // per frame:
+  renderer.render(scene);                          // fuhgl::render::SceneView
+  // renderer.output() is the LDR frame; renderer.texMotion()/texMaterialId()/... the G-buffer
+  ```
 - **glTF import (G4).** `fuhglgraphics::io::loadGltf(path)` loads glTF 2.0 files
   (core + `KHR_materials_pbrMetallicRoughness`, embedded base64 and external `.bin`
   buffers, PNG/JPEG via Qt when available) into FuhGLCore `render::MeshData` + materials.

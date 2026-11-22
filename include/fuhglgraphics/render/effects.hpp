@@ -1,0 +1,74 @@
+#pragma once
+
+/// @file effects.hpp
+/// @brief G3 effect registry + capability mapping (F39/F40-style): which features of
+/// fuhglgraphics::render::DeferredRenderer the current GPU can run, plus a uniform
+/// on/off API. The mapping effectSupported() is a pure function of the GL version,
+/// so it is unit-testable without a GL context.
+
+#include <fuhgl/gl/info.hpp>
+#include <fuhgl/math/func.hpp>
+#include <fuhgl/math/vec.hpp>
+
+#include <cstdio>
+
+namespace fuhglgraphics::render {
+
+/// @brief Toggleable features owned by the G3 deferred renderer.
+enum class Effect {
+    Taa = 0,    ///< temporal anti-aliasing: Halton subpixel jitter + motion-vector history blend
+    Upscale,    ///< FSR1-style EASU+RCAS upscaling when renderScale < 1
+    Tonemap,    ///< ACES tonemap + gamma in the final pass (off = raw clamped HDR)
+    Msaa,       ///< multisampled G-buffer + resolve (create() parameter, not runtime-toggleable)
+    Shadows,    ///< single depth shadow map (FuhGLCore ShadowMap, F15)
+    CsmShadows, ///< cascaded shadow maps (FuhGLCore CascadeShadowMap, F30)
+    Ibl,        ///< image-based lighting from SceneView::env (F29)
+};
+
+/// @brief Number of Effect values.
+constexpr int kEffectCount = 7;
+
+/// @brief Human-readable name of an Effect (for logs/warnings).
+inline const char* effectName(Effect e) {
+    switch (e) {
+        case Effect::Taa: return "TAA";
+        case Effect::Upscale: return "upscaling";
+        case Effect::Tonemap: return "tonemap";
+        case Effect::Msaa: return "MSAA";
+        case Effect::Shadows: return "shadows";
+        case Effect::CsmShadows: return "CSM shadows";
+        case Effect::Ibl: return "IBL";
+    }
+    return "unknown";
+}
+
+/// @brief Pure capability mapping (F39): can a GPU with the given GL version run the effect?
+/// All G3 shaders are GLSL 330 and multisample textures are core since GL 3.2, so every
+/// effect needs GL >= 3.3. Kept as a pure function so unit tests need no GL context.
+inline bool effectSupported(Effect e, int glMajor, int glMinor) {
+    (void)e;
+    return glMajor > 3 || (glMajor == 3 && glMinor >= 3);
+}
+
+/// @brief Same mapping from a queried DeviceInfo (call with a current GL context).
+inline bool effectSupported(Effect e, const fuhgl::gl::DeviceInfo& info) {
+    return effectSupported(e, info.version.major, info.version.minor);
+}
+
+/// @brief Prints a warning that an effect was disabled because the GPU does not
+/// support it (graceful degradation, F39).
+inline void warnUnsupported(const char* rendererName, Effect e, int glMajor, int glMinor) {
+    std::fprintf(stderr, "%s: effect '%s' disabled — not supported by this GPU (GL %d.%d)\n",
+                 rendererName, effectName(e), glMajor, glMinor);
+}
+
+/// @brief TAA subpixel jitter in NDC units for `frameIndex` at the given internal
+/// resolution (Halton(2,3) sequence, centered). Pure/deterministic — unit-testable.
+inline fuhgl::math::Vec2 taaJitterNdc(unsigned frameIndex, int width, int height) {
+    const fuhgl::math::Vec2 h = fuhgl::math::halton(frameIndex);
+    const float w = width > 0 ? static_cast<float>(width) : 1.f;
+    const float hgt = height > 0 ? static_cast<float>(height) : 1.f;
+    return {(h.x - 0.5f) * 2.f / w, (h.y - 0.5f) * 2.f / hgt};
+}
+
+} // namespace fuhglgraphics::render

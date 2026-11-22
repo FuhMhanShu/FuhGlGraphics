@@ -57,3 +57,14 @@ FuhGLCore.
 Same as FuhGLCore: OpenGL 3.3 core baseline (macOS ≤ 4.1); GL 4.3 gates G5 and
 GPU skinning (G6); GL 4.5 DSA/bindless used opportunistically. Windows WGL /
 Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
+
+## 6. Implementation status
+
+- **G1** — implemented (CMake/qmake dependency wiring, skeleton commit).
+- **G3** — implemented: `fuhglgraphics::render::DeferredRenderer` (extended G-buffer with
+  motion vectors + material ID, PBR lighting on FuhGLCore lights/shadows/IBL, post chain
+  TAA → FSR1-style upscale → ACES tonemap on `render::RenderGraph`, per-effect toggles with
+  F39/F40-style gating). See `include/fuhglgraphics/render/`, `src/render/`,
+  `tests/gl_smoke_render.cpp`, `examples/screenshot`, `docs/images/` and the
+  [G3 tutorial](en/tutorials/g3_deferred_renderer.md).
+- G2, G4–G11 — planned.
