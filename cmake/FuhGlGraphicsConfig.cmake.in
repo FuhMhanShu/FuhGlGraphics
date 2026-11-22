@@ -1,0 +1,9 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(FuhGLCore)
+if(@FUHGLGRAPHICS_WITH_QT@)
+    find_dependency(Qt6 COMPONENTS Widgets OpenGLWidgets)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/FuhGlGraphicsTargets.cmake")

@@ -1,0 +1,26 @@
+# Doxygen configuration for FuhGlGraphics public API (include/).
+# Run from this directory:  doxygen Doxyfile   -> output in ./doxygen/html
+
+PROJECT_NAME           = "FuhGlGraphics"
+PROJECT_NUMBER         = 0.1.0
+PROJECT_BRIEF          = "Cross-platform 2D/3D graphics framework with asset importer on top of FuhGLCore"
+
+OUTPUT_DIRECTORY       = doxygen
+INPUT                  = ../include
+FILE_PATTERNS          = *.hpp
+RECURSIVE              = YES
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+SOURCE_BROWSER         = NO
+HAVE_DOT               = NO
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+
+USE_MATHJAX            = NO
+GENERATE_TREEVIEW      = YES
