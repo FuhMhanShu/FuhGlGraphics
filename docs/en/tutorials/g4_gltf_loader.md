@@ -83,13 +83,30 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_gltf_demo \
 # flags: --no-shadows --no-ibl --no-rays --no-sky --no-tex, --azimuth/--elevation/--sun-*
 ```
 
-## Result (docs/images, rendered headless on Mesa llvmpipe)
+## Result
 
-- [g4_gltf_ship.png](../../images/g4_gltf_ship.png) — ship, all effects (CSM shadows + IBL +
-  TAA + tonemap)
-- [g4_gltf_ship_no_shadows.png](../../images/g4_gltf_ship_no_shadows.png) — shadows off
-- [g4_gltf_ship_no_ibl.png](../../images/g4_gltf_ship_no_ibl.png) — IBL off
-- [g4_gltf_chest.png](../../images/g4_gltf_chest.png) — second model (chest.glb), close-up
+Rendered headless (surfaceless EGL, Mesa llvmpipe) with `examples/gltf_demo` — the Kenney
+pirate ship (`ship-pirate-medium.glb`, colormap texture) on a plaza, with all effects on
+(CSM shadows, IBL from the gradient sky cubemap, TAA, ACES tonemap):
+
+![G4 glTF ship, all effects](../../images/g4_gltf_ship.png)
+
+The same model with shadows off (`--no-shadows`) — the plaza is evenly lit:
+
+![G4 glTF ship without shadows](../../images/g4_gltf_ship_no_shadows.png)
+
+… with IBL off (`--no-ibl`) — flat ambient instead of the environment:
+
+![G4 glTF ship without IBL](../../images/g4_gltf_ship_no_ibl.png)
+
+… and a second model (`chest.glb`, `--size 1.6 --distance 4.2`) up close:
+
+![G4 glTF chest, close-up](../../images/g4_gltf_chest.png)
+
+Reproduce (needs a `WITH_QT=ON` build for the texture decode):
+`cmake --build build-qt --target fuhglgraphics_gltf_demo` then
+`FUHGL_BACKEND=surfaceless QT_QPA_PLATFORM=offscreen ./build-qt/examples/fuhglgraphics_gltf_demo --model /tmp/kenney/3d/pirate/ship-pirate-medium.glb --out ship.png --width 1280 --height 720 --frames 24 [--no-shadows] [--no-ibl]`
+(exit code 2 when no headless GL is available).
 
 ## Tests
 
