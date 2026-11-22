@@ -1,0 +1,680 @@
+#include "fuhglgraphics/render/deferred_renderer.hpp"
+
+#include "deferred_glsl.hpp"
+
+#include <fuhgl/fuhgl.hpp>
+#include <fuhgl/render/lod.hpp>
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+
+namespace fuhglgraphics::render {
+namespace {
+
+void makeTarget(fuhgl::Texture& tex, fuhgl::gl::GLenum internal, int w, int h, int msaa) {
+    if (msaa > 0) {
+        tex = fuhgl::Texture(fuhgl::Texture::Target::Tex2DMultisample);
+        tex.bind();
+        tex.storageMultisample2D(msaa, internal, w, h);
+    } else {
+        tex = fuhgl::Texture(fuhgl::Texture::Target::Tex2D);
+        tex.bind();
+        tex.texStorage2D(1, internal, w, h);
+        tex.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_NEAREST);
+        tex.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_NEAREST);
+        tex.setParameteri(fuhgl::gl::GL_TEXTURE_WRAP_S, fuhgl::gl::GL_CLAMP_TO_EDGE);
+        tex.setParameteri(fuhgl::gl::GL_TEXTURE_WRAP_T, fuhgl::gl::GL_CLAMP_TO_EDGE);
+    }
+}
+
+} // namespace
+
+struct DeferredRenderer::Impl {
+    fuhgl::Framebuffer gbuffer, resolve, output;
+    fuhgl::Renderbuffer depthMsaa;
+    fuhgl::Texture texAlbedo{fuhgl::Texture::Target::Tex2D}, texNormal{fuhgl::Texture::Target::Tex2D},
+        texPbr{fuhgl::Texture::Target::Tex2D}, texEmissive{fuhgl::Texture::Target::Tex2D},
+        texMotion{fuhgl::Texture::Target::Tex2D}, texMatId{fuhgl::Texture::Target::Tex2D},
+        texDepth{fuhgl::Texture::Target::Tex2D};
+    fuhgl::Texture rAlbedo{fuhgl::Texture::Target::Tex2D}, rNormal{fuhgl::Texture::Target::Tex2D},
+        rPbr{fuhgl::Texture::Target::Tex2D}, rEmissive{fuhgl::Texture::Target::Tex2D},
+        rMotion{fuhgl::Texture::Target::Tex2D}, rMatId{fuhgl::Texture::Target::Tex2D};
+    fuhgl::Texture texOutput{fuhgl::Texture::Target::Tex2D};
+
+    fuhgl::render::Material gbufferMat, lightingMat, taaMat, upscaleMat, tonemapMat;
+    fuhgl::UniformBuffer lightsUbo;
+    fuhgl::VertexArray fsVao;
+    fuhgl::render::RenderGraph post;
+    fuhgl::render::ShadowMap shadowMap;
+    fuhgl::render::CascadeShadowMap csm;
+    fuhgl::Texture dummyShadowTex{fuhgl::Texture::Target::Tex2D};
+    fuhgl::Texture dummyShadowArrayTex{fuhgl::Texture::Target::Tex2DArray};
+    fuhgl::Texture dummyCube{fuhgl::Texture::Target::Cube};
+    fuhgl::Texture dummy2D{fuhgl::Texture::Target::Tex2D};
+};
+
+DeferredRenderer::DeferredRenderer() : impl_(std::make_unique<Impl>()) {}
+DeferredRenderer::~DeferredRenderer() = default;
+DeferredRenderer::DeferredRenderer(DeferredRenderer&&) noexcept = default;
+DeferredRenderer& DeferredRenderer::operator=(DeferredRenderer&&) noexcept = default;
+
+bool DeferredRenderer::create(int width, int height, int msaaSamples) {
+    width_ = width;
+    height_ = height;
+    msaa_ = msaaSamples > 0 ? msaaSamples : 0;
+    const fuhgl::gl::Version v = fuhgl::gl::version();
+    glMajor_ = v.major;
+    glMinor_ = v.minor;
+    frameIndex_ = 0;
+    prevViewProj_ = fuhgl::math::Mat4{};
+    return createInternal();
+}
+
+void DeferredRenderer::resize(int width, int height) {
+    if (width == width_ && height == height_) return;
+    width_ = width;
+    height_ = height;
+    frameIndex_ = 0;
+    prevViewProj_ = fuhgl::math::Mat4{};
+    createInternal();
+}
+
+void DeferredRenderer::setRenderScale(float scale) {
+    const float s = clampedRenderScale(scale);
+    if (s == renderScale_ || width_ <= 0) {
+        renderScale_ = s;
+        return;
+    }
+    renderScale_ = s;
+    frameIndex_ = 0;
+    prevViewProj_ = fuhgl::math::Mat4{};
+    createInternal();
+}
+
+bool DeferredRenderer::createInternal() {
+    impl_ = std::make_unique<Impl>();
+    Impl& im = *impl_;
+    internalSize(width_, height_, renderScale_, internalWidth_, internalHeight_);
+    if (internalWidth_ <= 0 || internalHeight_ <= 0 || width_ <= 0 || height_ <= 0) return false;
+    const int iw = internalWidth_, ih = internalHeight_;
+
+    // --- G-buffer targets (multisampled when requested) ---
+    makeTarget(im.texAlbedo, fuhgl::gl::GL_RGBA8, iw, ih, msaa_);
+    makeTarget(im.texNormal, fuhgl::gl::GL_RGBA8, iw, ih, msaa_);
+    makeTarget(im.texPbr, fuhgl::gl::GL_RGBA8, iw, ih, msaa_);
+    makeTarget(im.texEmissive, fuhgl::gl::GL_RGBA16F, iw, ih, msaa_);
+    makeTarget(im.texMotion, fuhgl::gl::GL_RG16F, iw, ih, msaa_);
+    makeTarget(im.texMatId, fuhgl::gl::GL_RGBA8, iw, ih, msaa_);
+    im.texDepth = fuhgl::Texture(fuhgl::Texture::Target::Tex2D);
+    im.texDepth.bind();
+    im.texDepth.texStorage2D(1, fuhgl::gl::GL_DEPTH_COMPONENT24, iw, ih);
+    im.texDepth.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_NEAREST);
+    im.texDepth.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_NEAREST);
+    im.texDepth.setParameteri(fuhgl::gl::GL_TEXTURE_WRAP_S, fuhgl::gl::GL_CLAMP_TO_EDGE);
+    im.texDepth.setParameteri(fuhgl::gl::GL_TEXTURE_WRAP_T, fuhgl::gl::GL_CLAMP_TO_EDGE);
+
+    im.gbuffer.create();
+    im.gbuffer.setSize(iw, ih);
+    im.gbuffer.bind();
+    im.gbuffer.attachTexture2D(0, im.texAlbedo);
+    im.gbuffer.attachTexture2D(1, im.texNormal);
+    im.gbuffer.attachTexture2D(2, im.texPbr);
+    im.gbuffer.attachTexture2D(3, im.texEmissive);
+    im.gbuffer.attachTexture2D(4, im.texMotion);
+    im.gbuffer.attachTexture2D(5, im.texMatId);
+    if (msaa_ > 0) {
+        im.depthMsaa.create();
+        im.depthMsaa.bind();
+        im.depthMsaa.storageMultisample(msaa_, fuhgl::gl::GL_DEPTH24_STENCIL8, iw, ih);
+        im.gbuffer.attachRenderbuffer(fuhgl::Framebuffer::Attachment::Depth, im.depthMsaa);
+    } else {
+        im.gbuffer.attachTexture2D(fuhgl::Framebuffer::Attachment::Depth, im.texDepth);
+    }
+    if (!im.gbuffer.isComplete()) {
+        std::fprintf(stderr, "fuhglgraphics::DeferredRenderer: G-buffer incomplete (0x%x)\n", im.gbuffer.status());
+        return false;
+    }
+
+    // --- resolve target (MSAA only) ---
+    if (msaa_ > 0) {
+        makeTarget(im.rAlbedo, fuhgl::gl::GL_RGBA8, iw, ih, 0);
+        makeTarget(im.rNormal, fuhgl::gl::GL_RGBA8, iw, ih, 0);
+        makeTarget(im.rPbr, fuhgl::gl::GL_RGBA8, iw, ih, 0);
+        makeTarget(im.rEmissive, fuhgl::gl::GL_RGBA16F, iw, ih, 0);
+        makeTarget(im.rMotion, fuhgl::gl::GL_RG16F, iw, ih, 0);
+        makeTarget(im.rMatId, fuhgl::gl::GL_RGBA8, iw, ih, 0);
+        im.resolve.create();
+        im.resolve.setSize(iw, ih);
+        im.resolve.bind();
+        im.resolve.attachTexture2D(0, im.rAlbedo);
+        im.resolve.attachTexture2D(1, im.rNormal);
+        im.resolve.attachTexture2D(2, im.rPbr);
+        im.resolve.attachTexture2D(3, im.rEmissive);
+        im.resolve.attachTexture2D(4, im.rMotion);
+        im.resolve.attachTexture2D(5, im.rMatId);
+        im.resolve.attachTexture2D(fuhgl::Framebuffer::Attachment::Depth, im.texDepth);
+        if (!im.resolve.isComplete()) {
+            std::fprintf(stderr, "fuhglgraphics::DeferredRenderer: resolve FBO incomplete (0x%x)\n", im.resolve.status());
+            return false;
+        }
+    }
+
+    // --- LDR output target ---
+    makeTarget(im.texOutput, fuhgl::gl::GL_RGBA8, width_, height_, 0);
+    im.output.create();
+    im.output.setSize(width_, height_);
+    im.output.bind();
+    im.output.attachTexture2D(0, im.texOutput);
+    if (!im.output.isComplete()) {
+        std::fprintf(stderr, "fuhglgraphics::DeferredRenderer: output FBO incomplete (0x%x)\n", im.output.status());
+        return false;
+    }
+    fuhgl::Framebuffer::unbind();
+
+    // --- shaders ---
+    if (!im.gbufferMat.create()) return false;
+    {
+        fuhgl::Shader vs(fuhgl::Shader::Type::Vertex), fs(fuhgl::Shader::Type::Fragment);
+        if (!vs.compile(kGBufferVert)) {
+            std::fprintf(stderr, "DeferredRenderer: gbuffer VS: %s\n", vs.infoLog().c_str());
+            return false;
+        }
+        if (!fs.compile(kGBufferFrag)) {
+            std::fprintf(stderr, "DeferredRenderer: gbuffer FS: %s\n", fs.infoLog().c_str());
+            return false;
+        }
+        im.gbufferMat.program().attach(vs);
+        im.gbufferMat.program().attach(fs);
+        if (!im.gbufferMat.program().link()) {
+            std::fprintf(stderr, "DeferredRenderer: gbuffer link: %s\n", im.gbufferMat.program().infoLog().c_str());
+            return false;
+        }
+    }
+    const std::string lightFrag = std::string(kLightFragHead) + kLightFragPbr + kLightFragTail;
+    if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
+        !compilePostFs(im.taaMat, kTaaFrag, "taa") ||
+        !compilePostFs(im.upscaleMat, kUpscaleFrag, "upscale") ||
+        !compilePostFs(im.tonemapMat, kTonemapFrag, "tonemap")) {
+        return false;
+    }
+    im.lightingMat.program().bindUniformBlock("LightBlock", 0);
+
+    if (!im.lightsUbo.create()) return false;
+    im.lightsUbo.bindBase(0);
+    if (!im.fsVao.create()) return false;
+    im.fsVao.bind();
+
+    // --- recreate shadow maps when they were enabled before a (re)create ---
+    if (shadows_ && shadowSize_ > 0) impl_->shadowMap.create(shadowSize_);
+    if (csmEnabled_ && csmSize_ > 0) impl_->csm.create(csmSize_, csmCascades_);
+
+    // --- dummy samplers keep the lighting pass complete when shadows/IBL are off ---
+    im.dummyShadowTex.bind();
+    im.dummyShadowTex.texStorage2D(1, fuhgl::gl::GL_DEPTH_COMPONENT24, 1, 1);
+    im.dummyShadowTex.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_NEAREST);
+    im.dummyShadowTex.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_NEAREST);
+    im.dummyShadowArrayTex.bind();
+    im.dummyShadowArrayTex.texStorage3D(1, fuhgl::gl::GL_DEPTH_COMPONENT24, 1, 1, 1);
+    im.dummyShadowArrayTex.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_NEAREST);
+    im.dummyShadowArrayTex.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_NEAREST);
+    im.dummyCube.bind();
+    for (int face = 0; face < 6; ++face)
+        im.dummyCube.setImageCubeFace(static_cast<fuhgl::Texture::CubeFace>(face), 0, fuhgl::gl::GL_RGBA8, 1,
+                                      fuhgl::gl::GL_RGBA, fuhgl::gl::GL_UNSIGNED_BYTE, nullptr);
+    im.dummyCube.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_NEAREST);
+    im.dummyCube.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_NEAREST);
+    im.dummy2D.bind();
+    im.dummy2D.texStorage2D(1, fuhgl::gl::GL_RG16F, 1, 1);
+    im.dummy2D.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_NEAREST);
+    im.dummy2D.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_NEAREST);
+
+    // --- post graph: lighting -> TAA -> upscale -> tonemap ---
+    const fuhgl::Texture& gAlbedo = msaa_ > 0 ? im.rAlbedo : im.texAlbedo;
+    const fuhgl::Texture& gNormal = msaa_ > 0 ? im.rNormal : im.texNormal;
+    const fuhgl::Texture& gPbr = msaa_ > 0 ? im.rPbr : im.texPbr;
+    const fuhgl::Texture& gEmissive = msaa_ > 0 ? im.rEmissive : im.texEmissive;
+    const fuhgl::Texture& gMotion = msaa_ > 0 ? im.rMotion : im.texMotion;
+    im.post.addExternal("gAlbedo", &gAlbedo, iw, ih);
+    im.post.addExternal("gNormal", &gNormal, iw, ih);
+    im.post.addExternal("gPbr", &gPbr, iw, ih);
+    im.post.addExternal("gEmissive", &gEmissive, iw, ih);
+    im.post.addExternal("gMotion", &gMotion, iw, ih);
+    im.post.addExternal("gMatId", &(msaa_ > 0 ? im.rMatId : im.texMatId), iw, ih);
+    im.post.addExternal("gDepth", &im.texDepth, iw, ih);
+    im.post.addResource("hdr", iw, ih, fuhgl::gl::GL_RGBA16F);
+    im.post.addResource("taa", iw, ih, fuhgl::gl::GL_RGBA16F);
+    im.post.addResource("up", width_, height_, fuhgl::gl::GL_RGBA16F);
+    im.post.addPass("lighting", {"gAlbedo", "gNormal", "gPbr", "gEmissive", "gDepth"}, {"hdr"},
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawLighting(ctx); });
+    im.post.addPass("taa", {"hdr", "gMotion", "taa"}, {"taa"},
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTaa(ctx); }, /*feedback=*/true);
+    im.post.addPass("upscale", {"taa"}, {"up"},
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawUpscale(ctx); });
+    im.post.addPass("tonemap", {"up", "gDepth"}, {},
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTonemap(ctx); });
+    if (!im.post.compile()) {
+        std::fprintf(stderr, "fuhglgraphics::DeferredRenderer: post graph compile failed\n");
+        return false;
+    }
+    return true;
+}
+
+void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
+                                     const std::vector<std::uint32_t>* materialIds) {
+    Impl& im = *impl_;
+    auto& f = fuhgl::gl::functions();
+    fuhgl::gl::enable(fuhgl::gl::Cap::DepthTest);
+    fuhgl::gl::depthFunc(fuhgl::gl::CompareFunc::Less);
+    fuhgl::gl::depthMask(true);
+    fuhgl::gl::enable(fuhgl::gl::Cap::CullFace);
+    fuhgl::gl::cullFace(fuhgl::gl::Face::Back);
+    fuhgl::gl::frontFace(true);
+    fuhgl::gl::disable(fuhgl::gl::Cap::Blend);
+
+    fuhgl::render::LightBlock block{};
+    packLightBlock(scene.lights, block);
+    im.lightsUbo.upload(block);
+    im.lightsUbo.bindBase(0);
+
+    im.gbuffer.bind();
+    const fuhgl::gl::GLenum drawBufs[6] = {fuhgl::gl::GL_COLOR_ATTACHMENT0, fuhgl::gl::GL_COLOR_ATTACHMENT1,
+                                            fuhgl::gl::GL_COLOR_ATTACHMENT2, fuhgl::gl::GL_COLOR_ATTACHMENT3,
+                                            fuhgl::gl::GL_COLOR_ATTACHMENT4, fuhgl::gl::GL_COLOR_ATTACHMENT5};
+    fuhgl::gl::drawBuffers(6, drawBufs);
+    fuhgl::gl::viewport(0, 0, internalWidth_, internalHeight_);
+    const float clearZero[4] = {0.f, 0.f, 0.f, 0.f};
+    const float clearAlbedo[4] = {scene.clearColor.x, scene.clearColor.y, scene.clearColor.z, 1.f};
+    fuhgl::gl::clearBufferfv(fuhgl::gl::GL_COLOR, 0, clearAlbedo);
+    for (int i = 1; i < 6; ++i) fuhgl::gl::clearBufferfv(fuhgl::gl::GL_COLOR, i, clearZero);
+    fuhgl::gl::clear(fuhgl::gl::ClearBit::Depth);
+
+    const fuhgl::math::Mat4 viewProj =
+        fuhgl::math::jitterViewProj(scene.camera->viewProj(scene.aspect), scene.jitter);
+    const fuhgl::math::Mat4 prevViewProj = prevViewProj_;
+
+    fuhgl::Program& prog = im.gbufferMat.program();
+    prog.use();
+    prog.setUniform("uViewProj", viewProj);
+    prog.setUniform("uPrevViewProj", prevViewProj);
+    prog.setUniform("uResolution", fuhgl::math::Vec2(static_cast<float>(internalWidth_),
+                                                      static_cast<float>(internalHeight_)));
+    for (std::size_t i = 0; i < scene.items.size(); ++i) {
+        const fuhgl::render::DrawItem& item = scene.items[i];
+        int lodLevel = -1;
+        const fuhgl::render::Mesh* mesh =
+            fuhgl::render::resolveLodMesh(item, scene.camera->eye(), scene.lodEnabled, &lodLevel);
+        if (!mesh) continue;
+        if (lodLevel >= 0) scene.lastLodLevel = lodLevel;
+        prog.setUniform("uModel", item.model);
+        prog.setUniform("uInstanced", mesh->instanceCount() > 0 ? 1 : 0);
+        prog.setUniform("uMaterialId", materialIds && i < materialIds->size() ? (*materialIds)[i] : 0u);
+        const fuhgl::render::Material* preset =
+            (item.material && item.material->builtinShader) ? item.material : nullptr;
+        if (preset) {
+            prog.setUniform("uAlbedo", preset->albedo);
+            prog.setUniform("uEmissive", preset->emissive);
+            prog.setUniform("uUseTex", preset->albedoTexture ? 1 : 0);
+            if (preset->albedoTexture) {
+                fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitAlbedo);
+                f.glBindTexture(static_cast<fuhgl::gl::GLenum>(preset->albedoTexture->target()),
+                                preset->albedoTexture->id());
+                prog.setUniform("uMatTex", fuhgl::render::kTextureUnitAlbedo);
+            }
+            prog.setUniform("uUseNormalMap", preset->normalMap ? 1 : 0);
+            if (preset->normalMap) {
+                fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitNormalMap);
+                f.glBindTexture(static_cast<fuhgl::gl::GLenum>(preset->normalMap->target()),
+                                preset->normalMap->id());
+                prog.setUniform("uNormalTex", fuhgl::render::kTextureUnitNormalMap);
+            }
+            prog.setUniform("uMetallic", preset->metallic);
+            prog.setUniform("uRoughness", preset->roughness);
+            prog.setUniform("uAo", preset->ao);
+        } else {
+            prog.setUniform("uAlbedo", fuhgl::math::Vec3{1.f, 1.f, 1.f});
+            prog.setUniform("uEmissive", fuhgl::math::Vec3{0.f, 0.f, 0.f});
+            prog.setUniform("uUseTex", 0);
+            prog.setUniform("uUseNormalMap", 0);
+            prog.setUniform("uMetallic", 0.f);
+            prog.setUniform("uRoughness", 0.5f);
+            prog.setUniform("uAo", 1.f);
+        }
+        mesh->draw();
+    }
+
+    // --- MSAA resolve: one blit per color attachment + one depth blit ---
+    if (msaa_ > 0) {
+        f.glBindFramebuffer(fuhgl::gl::GL_READ_FRAMEBUFFER, im.gbuffer.id());
+        f.glBindFramebuffer(fuhgl::gl::GL_DRAW_FRAMEBUFFER, im.resolve.id());
+        for (int i = 0; i < 6; ++i) {
+            const fuhgl::gl::GLenum att = fuhgl::gl::GL_COLOR_ATTACHMENT0 + i;
+            f.glReadBuffer(att); // applies to the bound READ framebuffer (gbuffer)
+            const fuhgl::gl::GLenum dst[1] = {att};
+            fuhgl::gl::drawBuffers(1, dst); // applies to the bound DRAW framebuffer (resolve)
+            f.glBlitFramebuffer(0, 0, internalWidth_, internalHeight_, 0, 0, internalWidth_, internalHeight_,
+                                fuhgl::gl::GL_COLOR_BUFFER_BIT, fuhgl::gl::GL_NEAREST);
+        }
+        f.glBlitFramebuffer(0, 0, internalWidth_, internalHeight_, 0, 0, internalWidth_, internalHeight_,
+                            fuhgl::gl::GL_DEPTH_BUFFER_BIT, fuhgl::gl::GL_NEAREST);
+        f.glBindFramebuffer(fuhgl::gl::GL_READ_FRAMEBUFFER, 0);
+        f.glBindFramebuffer(fuhgl::gl::GL_DRAW_FRAMEBUFFER, 0);
+    }
+}
+
+void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
+                              const std::vector<std::uint32_t>* materialIds,
+                              const std::vector<bool>* castShadow) {
+    if (!scene.camera || width_ <= 0) return;
+    fuhgl::render::SceneView s = scene;
+    applyCapabilities();
+
+    if (s.env && !effectEnabled(Effect::Ibl)) {
+        s.env = nullptr; // gated in applyCapabilities() with a one-time warning
+    }
+
+    // per-item shadow casting (G9): the depth pass only draws items flagged castShadow
+    fuhgl::render::SceneView shadowScene;
+    const fuhgl::render::SceneView* shadowView = &s;
+    if (castShadow && !castShadow->empty()) {
+        shadowScene = s;
+        std::vector<fuhgl::render::DrawItem> items;
+        items.reserve(s.items.size());
+        for (std::size_t i = 0; i < s.items.size(); ++i)
+            if (i >= castShadow->size() || (*castShadow)[i]) items.push_back(s.items[i]);
+        shadowScene.items = std::move(items);
+        shadowView = &shadowScene;
+    }
+
+    // --- shadow depth pass: CSM (first directional light) or single map ---
+    if (csmEnabled_ && impl_->csm.cascadeCount() > 0) {
+        for (std::size_t i = 0; i < s.lights.size(); ++i) {
+            if (s.lights[i].type == fuhgl::render::LightType::Directional) {
+                impl_->csm.render(*shadowView, *s.camera, s.lights[i], shadowCenter_, shadowRadius_, shadowZNear_, shadowZFar_);
+                s.cascades = &impl_->csm;
+                s.shadowLightIndex = static_cast<int>(i);
+                s.shadowStrength = shadowStrength_;
+                break;
+            }
+        }
+    } else if (shadows_ && impl_->shadowMap.size() > 0) {
+        for (std::size_t i = 0; i < s.lights.size(); ++i) {
+            if (s.lights[i].type == fuhgl::render::LightType::Directional ||
+                s.lights[i].type == fuhgl::render::LightType::Spot) {
+                s.lightVP = fuhgl::render::lightViewProj(s.lights[i], shadowCenter_, shadowRadius_);
+                impl_->shadowMap.render(*shadowView, s.lightVP);
+                s.shadowMap = &impl_->shadowMap;
+                s.shadowLightIndex = static_cast<int>(i);
+                s.shadowStrength = shadowStrength_;
+                break;
+            }
+        }
+    }
+
+    // sky sun disk from the first directional light
+    for (const fuhgl::render::Light& l : s.lights) {
+        if (l.type == fuhgl::render::LightType::Directional) {
+            s.sunDirection = -fuhgl::math::normalize(l.direction);
+            s.sunColor = l.color * (l.intensity * 4.f);
+            break;
+        }
+    }
+
+    // TAA: Halton subpixel jitter in NDC units, applied by the G-buffer pass
+    const bool taaOn = effectEnabled(Effect::Taa);
+    if (taaOn) {
+        s.jitter = taaJitterNdc(frameIndex_, internalWidth_, internalHeight_);
+    } else {
+        s.jitter = {0.f, 0.f};
+        if (frameIndex_ != 0) {
+            frameIndex_ = 0;
+            prevViewProj_ = fuhgl::math::Mat4{};
+        }
+    }
+
+    curScene_ = &s;
+    renderGBuffer(s, materialIds);
+    // remember this frame's (jittered) viewProj for next frame's motion vectors
+    prevViewProj_ = fuhgl::math::jitterViewProj(s.camera->viewProj(s.aspect), s.jitter);
+    impl_->post.execute();
+    if (taaOn) ++frameIndex_;
+    curScene_ = nullptr;
+}
+
+void DeferredRenderer::drawFs(fuhgl::render::Material& mat,
+                              const std::function<void(fuhgl::Program&)>& setUniforms) {
+    fuhgl::gl::disable(fuhgl::gl::Cap::DepthTest);
+    fuhgl::gl::disable(fuhgl::gl::Cap::Blend);
+    mat.bind();
+    if (setUniforms) setUniforms(mat.program());
+    impl_->fsVao.bind();
+    fuhgl::gl::drawArrays(fuhgl::gl::Primitive::Triangles, 0, 3);
+}
+
+void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx) {
+    const fuhgl::render::SceneView& s = *curScene_;
+    Impl& im = *impl_;
+    auto& f = fuhgl::gl::functions();
+    ctx.bindInput(0, "gAlbedo");
+    ctx.bindInput(1, "gNormal");
+    ctx.bindInput(2, "gPbr");
+    ctx.bindInput(3, "gEmissive");
+    ctx.bindInput(5, "gDepth");
+    // shadow samplers (units 4 / 10; dummies when off)
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitShadowMap);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, s.shadowMap ? s.shadowMap->textureId() : im.dummyShadowTex.id());
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitShadowMapArray);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D_ARRAY,
+                    s.cascades ? s.cascades->textureId() : im.dummyShadowArrayTex.id());
+    // IBL samplers (units 7/8/9; dummies when off)
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitIrradiance);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_CUBE_MAP, s.env ? s.env->irradianceMap().id() : im.dummyCube.id());
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitPrefilter);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_CUBE_MAP, s.env ? s.env->prefilterMap().id() : im.dummyCube.id());
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitBrdfLut);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, s.env ? s.env->brdfLut().id() : im.dummy2D.id());
+    // sky cubemap (unit 11; dummy when off)
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + kTextureUnitSkyCube);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_CUBE_MAP, skyCube_ ? skyCube_->id() : im.dummyCube.id());
+
+    drawFs(im.lightingMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uGAlbedo"), 0);
+        p.setUniform(p.uniformLocation("uGNormal"), 1);
+        p.setUniform(p.uniformLocation("uGPbr"), 2);
+        p.setUniform(p.uniformLocation("uGEmissive"), 3);
+        p.setUniform(p.uniformLocation("uGDepth"), 5);
+        p.setUniform(p.uniformLocation("uShadowMap"), fuhgl::render::kTextureUnitShadowMap);
+        p.setUniform(p.uniformLocation("uShadowMapArray"), fuhgl::render::kTextureUnitShadowMapArray);
+        p.setUniform(p.uniformLocation("uIrradianceMap"), fuhgl::render::kTextureUnitIrradiance);
+        p.setUniform(p.uniformLocation("uPrefilterMap"), fuhgl::render::kTextureUnitPrefilter);
+        p.setUniform(p.uniformLocation("uBrdfLut"), fuhgl::render::kTextureUnitBrdfLut);
+        p.setUniform(p.uniformLocation("uSkyCube"), kTextureUnitSkyCube);
+        p.setUniform(p.uniformLocation("uUseSkyCube"), skyCube_ ? 1 : 0);
+        p.setUniform("uInvViewProj", s.camera->viewProj(s.aspect).inverse());
+        p.setUniform("uCamPos", s.camera->eye());
+        p.setUniform("uAmbient", s.ambient);
+        p.setUniform("uLightCount", static_cast<int>(std::min(s.lights.size(), static_cast<std::size_t>(fuhgl::render::kMaxLights))));
+        p.setUniform("uSkyTop", skyTop);
+        p.setUniform("uSkyBottom", skyBottom);
+        p.setUniform("uFogColor", s.fogColor);
+        p.setUniform("uFogDensity", s.fogDensity);
+        p.setUniform("uSunDir", s.sunDirection);
+        p.setUniform("uSunColor", s.sunColor);
+        p.setUniform("uSunCos", s.sunCos);
+        p.setUniform(p.uniformLocation("uEnvEnabled"), (s.env && effectEnabled(Effect::Ibl)) ? 1 : 0);
+        p.setUniform("uPrefilterMaxLod", s.env ? static_cast<float>(s.env->prefilterMaxLod()) : 0.f);
+        p.setUniform("uEnvIntensity", s.env ? s.env->intensity : 1.f);
+        const bool csm = s.cascades && s.cascades->cascadeCount() > 0;
+        if (s.shadowMap || csm) {
+            p.setUniform(p.uniformLocation("uShadowEnabled"), 1);
+            p.setUniform(p.uniformLocation("uShadowLightIndex"), s.shadowLightIndex);
+            p.setUniform("uShadowStrength", s.shadowStrength);
+            p.setUniform("uView", s.camera->view());
+            if (csm) {
+                p.setUniform(p.uniformLocation("uShadowMode"), 1);
+                p.setUniform(p.uniformLocation("uCascadeCount"), s.cascades->cascadeCount());
+                p.setUniform(p.uniformLocation("uCascadeSplits"), s.cascades->cascadeCount() + 1,
+                             s.cascades->splits().data());
+                p.setUniform(p.uniformLocation("uLightVPs"), s.cascades->cascadeCount(), &s.cascades->cascadeVP(0));
+            } else {
+                p.setUniform(p.uniformLocation("uShadowMode"), 0);
+                p.setUniform("uLightVP", s.lightVP);
+            }
+        } else {
+            p.setUniform(p.uniformLocation("uShadowEnabled"), 0);
+            p.setUniform(p.uniformLocation("uShadowMode"), 0);
+        }
+    });
+}
+
+void DeferredRenderer::drawTaa(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "hdr");
+    ctx.bindInput(1, "gMotion");
+    ctx.bindInput(2, "taa");
+    const bool taaOn = effectEnabled(Effect::Taa);
+    const float alpha = (frameIndex_ == 0 || !taaOn) ? 1.f : taaBlend;
+    drawFs(impl_->taaMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uCur"), 0);
+        p.setUniform(p.uniformLocation("uMotion"), 1);
+        p.setUniform(p.uniformLocation("uHist"), 2);
+        p.setUniform("uAlpha", alpha);
+        p.setUniform("uTexel", fuhgl::math::Vec2(1.f / static_cast<float>(internalWidth_),
+                                                  1.f / static_cast<float>(internalHeight_)));
+    });
+}
+
+void DeferredRenderer::drawUpscale(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "taa");
+    const bool active = effectEnabled(Effect::Upscale) && renderScale_ < 1.f;
+    drawFs(impl_->upscaleMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uSrc"), 0);
+        p.setUniform("uSrcSize", fuhgl::math::Vec2(static_cast<float>(internalWidth_),
+                                                   static_cast<float>(internalHeight_)));
+        p.setUniform("uSharpen", upscaleSharpness);
+        p.setUniform(p.uniformLocation("uMode"), active ? 1 : 0);
+    });
+}
+
+void DeferredRenderer::drawTonemap(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "up");
+    ctx.bindInput(1, "gDepth"); // for the god-ray occlusion
+    fuhgl::Framebuffer& out = impl_->output;
+    out.bind();
+    const fuhgl::gl::GLenum buf[1] = {fuhgl::gl::GL_COLOR_ATTACHMENT0};
+    fuhgl::gl::drawBuffers(1, buf);
+    fuhgl::gl::viewport(0, 0, width_, height_);
+    // sun screen position for the god rays (behind the camera -> rays off)
+    float rayStrength = 0.f;
+    fuhgl::math::Vec2 sunScreen{-10.f, -10.f};
+    if (godRays.enabled && curScene_ && curScene_->camera) {
+        const fuhgl::render::SceneView& s = *curScene_;
+        const fuhgl::math::Vec4 clip =
+            s.camera->viewProj(s.aspect) * fuhgl::math::Vec4{s.sunDirection.x, s.sunDirection.y, s.sunDirection.z, 0.f};
+        if (clip.w > 0.f) {
+            sunScreen = {clip.x / clip.w * 0.5f + 0.5f, clip.y / clip.w * 0.5f + 0.5f};
+            rayStrength = godRays.strength;
+        }
+    }
+    drawFs(impl_->tonemapMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uHdr"), 0);
+        p.setUniform(p.uniformLocation("uGDepth"), 1);
+        p.setUniform("uExposure", exposure);
+        p.setUniform(p.uniformLocation("uUseTonemap"), effectEnabled(Effect::Tonemap) ? 1 : 0);
+        p.setUniform("uSunScreen", sunScreen);
+        p.setUniform("uRayStrength", rayStrength);
+        p.setUniform("uRayDecay", godRays.decay);
+        p.setUniform("uRaySamples", godRays.samples);
+    });
+    fuhgl::Framebuffer::unbind();
+}
+
+// --- accessors -----------------------------------------------------------------------
+fuhgl::Framebuffer& DeferredRenderer::output() { return impl_->output; }
+const fuhgl::Texture& DeferredRenderer::texAlbedo() const { return msaa_ > 0 ? impl_->rAlbedo : impl_->texAlbedo; }
+const fuhgl::Texture& DeferredRenderer::texNormal() const { return msaa_ > 0 ? impl_->rNormal : impl_->texNormal; }
+const fuhgl::Texture& DeferredRenderer::texPbr() const { return msaa_ > 0 ? impl_->rPbr : impl_->texPbr; }
+const fuhgl::Texture& DeferredRenderer::texEmissive() const { return msaa_ > 0 ? impl_->rEmissive : impl_->texEmissive; }
+const fuhgl::Texture& DeferredRenderer::texMotion() const { return msaa_ > 0 ? impl_->rMotion : impl_->texMotion; }
+const fuhgl::Texture& DeferredRenderer::texMaterialId() const { return msaa_ > 0 ? impl_->rMatId : impl_->texMatId; }
+const fuhgl::Texture& DeferredRenderer::texDepth() const { return impl_->texDepth; }
+const fuhgl::Texture& DeferredRenderer::hdrTexture() const { return *impl_->post.texture("hdr"); }
+fuhgl::render::RenderGraph& DeferredRenderer::postGraph() { return impl_->post; }
+
+// --- effects (F39/F40-style gating) ---------------------------------------------------
+void DeferredRenderer::gate(Effect e, bool& flag) {
+    if (flag && !effectSupported(e)) {
+        const unsigned bit = 1u << static_cast<int>(e);
+        if (!(warnedMask_ & bit)) {
+            warnUnsupported("fuhglgraphics::DeferredRenderer", e, glMajor_, glMinor_);
+            warnedMask_ |= bit;
+        }
+        flag = false;
+    }
+}
+
+void DeferredRenderer::applyCapabilities() {
+    gate(Effect::Taa, taaEnabled_);
+    gate(Effect::Upscale, upscaleEnabled_);
+    gate(Effect::Tonemap, tonemapEnabled_);
+    gate(Effect::Shadows, shadows_);
+    gate(Effect::CsmShadows, csmEnabled_);
+    gate(Effect::Ibl, iblEnabled_);
+}
+
+void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
+    switch (e) {
+        case Effect::Taa: taaEnabled_ = on; break;
+        case Effect::Upscale: upscaleEnabled_ = on; break;
+        case Effect::Tonemap: tonemapEnabled_ = on; break;
+        case Effect::Ibl: iblEnabled_ = on; break;
+        case Effect::Shadows: shadows_ = on; break;
+        case Effect::CsmShadows: csmEnabled_ = on; break;
+        case Effect::Msaa:
+            // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
+            if (on != (msaa_ > 0))
+                std::fprintf(stderr, "fuhglgraphics::DeferredRenderer: MSAA is set via create(w, h, msaaSamples)\n");
+            break;
+    }
+    if (on && e != Effect::Msaa && !effectSupported(e) && !((warnedMask_ >> static_cast<int>(e)) & 1u)) {
+        warnUnsupported("fuhglgraphics::DeferredRenderer", e, glMajor_, glMinor_);
+        warnedMask_ |= 1u << static_cast<int>(e);
+    }
+    applyCapabilities();
+}
+
+bool DeferredRenderer::effectEnabled(Effect e) const {
+    if (!effectSupported(e)) return false;
+    switch (e) {
+        case Effect::Taa: return taaEnabled_;
+        case Effect::Upscale: return upscaleEnabled_;
+        case Effect::Tonemap: return tonemapEnabled_;
+        case Effect::Msaa: return msaa_ > 0;
+        case Effect::Shadows: return shadows_;
+        case Effect::CsmShadows: return csmEnabled_;
+        case Effect::Ibl: return iblEnabled_;
+    }
+    return false;
+}
+
+void DeferredRenderer::setAllEffects(bool on) {
+    taaEnabled_ = upscaleEnabled_ = tonemapEnabled_ = iblEnabled_ = shadows_ = csmEnabled_ = on;
+    applyCapabilities();
+}
+
+// --- shadows --------------------------------------------------------------------------
+void DeferredRenderer::enableShadows(int mapSize) {
+    if (mapSize <= 0) return;
+    shadowSize_ = mapSize;
+    impl_->shadowMap.create(mapSize);
+    shadows_ = true;
+}
+
+void DeferredRenderer::enableCsmShadows(int mapSize, int cascades) {
+    if (mapSize <= 0 || cascades <= 0) return;
+    csmSize_ = mapSize;
+    csmCascades_ = cascades;
+    impl_->csm.create(mapSize, cascades);
+    csmEnabled_ = true;
+}
+
+} // namespace fuhglgraphics::render

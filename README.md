@@ -26,8 +26,19 @@ requirements [G1–G11](docs/REQUIREMENTS.md).
 
 ## Status
 
-Skeleton + requirements are in place ([docs/REQUIREMENTS.md](docs/REQUIREMENTS.md), G1–G11);
-implementation starts with **G3** (deferred renderer) and **G4** (glTF 2.0 asset loading).
+Requirements G1–G11 are in place ([docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)).
+Implemented so far: **G1** (FuhGLCore dependency wiring), **G3** — the deferred renderer
+`fuhglgraphics::render::DeferredRenderer` with an extended G-buffer (albedo+normal,
+metallic/roughness/AO, emissive, motion vectors, material ID), PBR lighting reusing FuhGLCore
+lights/shadows/IBL, and a post chain (TAA → FSR1-style upscale → ACES tonemap) with
+per-effect toggles — see the [G3 tutorial](docs/en/tutorials/g3_deferred_renderer.md) and
+screenshots in [docs/images/](docs/images/g3_deferred_1280x720.png) — and **G9** — the scene
+graph `fuhglgraphics::scene::Scene` (nodes with a polymorphic component list, several meshes
++ albedo/normal-map textures per node, light/camera components, per-node effect lists +
+parameters, per-node instancing, world AABBs + frustum culling; `Scene::fillFrame()` feeds
+the G3 renderer) — see the [G9 tutorial](docs/en/tutorials/g9_scene_graph.md) and
+effect-comparison screenshots in [docs/images/](docs/images/g9_scene_graph.png).
+Next up: **G4** (glTF 2.0 asset loading).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.
 
@@ -42,7 +53,8 @@ cmake --install build --prefix <prefix>   # provides find_package(FuhGlGraphics)
 ```
 
 Options: `-DFUHGLGRAPHICS_WITH_QT=ON|OFF` (default ON),
-`-DFUHGLGRAPHICS_BUILD_TESTS=ON` (default), `-DFUHGLGRAPHICS_ENABLE_HARDENING=ON` (default;
+`-DFUHGLGRAPHICS_BUILD_TESTS=ON` (default), `-DFUHGLGRAPHICS_BUILD_EXAMPLES=ON` (default;
+screenshot tool in `examples/`), `-DFUHGLGRAPHICS_ENABLE_HARDENING=ON` (default;
 compiler/linker hardening flags, see [DEVELOPMENT.md](docs/DEVELOPMENT.md)),
 `-DFUHGLGRAPHICS_FUHGLCORE_DIR=<path>`, `-DFUHGLGRAPHICS_FUHGLCORE_GIT_TAG=<ref>`.
 
