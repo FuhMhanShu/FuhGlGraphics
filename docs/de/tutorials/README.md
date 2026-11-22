@@ -21,8 +21,12 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   Once/Loop/PingPong) + `anim::Skeleton` mit CPU-Skinning (`skinMeshCpu`), glTF-Animationen/
   Skins über den G4-Loader, G9-`AnimationComponent`; geskinnter Roboterarm + winkende
   Flagge in [docs/images/](../../images/g6_animation_bend.png)
+- [G7 — Light-Probes (SH-Irradiance-GI)](g7_light_probes.md) — `probes::LightProbeGrid`
+  (CPU-Bake, 3D-Textur-Trilinear-Sampling in der G3-Lighting-Pass) als G9-
+  `LightProbeComponent`; Color-Bleeding von farbigen Wänden in die Schatten, Bilder in
+  [docs/images/](../../images/g7_probes_on.png)
 
-Als Nächstes: **G7** (Light-Probes / Lightmapping) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
+Als Nächstes: **G8** (Decals) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Voraussetzung für alle: Bibliothek bauen und `FuhGlGraphics::fuhglgraphics` linken
 (siehe [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).

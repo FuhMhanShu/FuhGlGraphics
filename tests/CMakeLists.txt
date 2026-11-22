@@ -6,6 +6,7 @@ add_executable(fuhglgraphics_tests
     test_io.cpp
     test_particles.cpp
     test_anim.cpp
+    test_probes.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -55,3 +56,12 @@ add_executable(fuhglgraphics_gl_smoke_anim gl_smoke_anim.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_anim PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_anim COMMAND fuhglgraphics_gl_smoke_anim)
 set_tests_properties(fuhglgraphics_gl_smoke_anim PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G7 light probes (label "gl_context"): bakes an SH probe
+# grid over a colored-wall room on the CPU, uploads it, renders through the G3 renderer
+# with Effect::LightProbes on vs off and verifies the frames differ and the shadowed
+# corner gets brighter with probes. Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_probes gl_smoke_probes.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_probes PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_probes COMMAND fuhglgraphics_gl_smoke_probes)
+set_tests_properties(fuhglgraphics_gl_smoke_probes PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

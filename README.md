@@ -52,8 +52,12 @@ in [docs/images/](docs/images/g4_gltf_ship.png) — and **G5** — GPU particles
 `anim::Skeleton` with CPU skinning (`skinMeshCpu`), glTF animations/skins via the G4
 loader, as a G9 `AnimationComponent` — see the
 [G6 tutorial](docs/en/tutorials/g6_animation.md) and screenshots in
-[docs/images/](docs/images/g6_animation_bend.png).
-Next up: **G7** (light probes / lightmapping).
+[docs/images/](docs/images/g6_animation_bend.png) — and **G7** — SH light probes
+(`probes::LightProbeGrid`, CPU bake + 3D-texture sampling in the G3 lighting pass) for
+diffuse indirect light / color bleeding, as a G9 `LightProbeComponent` — see the
+[G7 tutorial](docs/en/tutorials/g7_light_probes.md) and screenshots in
+[docs/images/](docs/images/g7_probes_on.png).
+Next up: **G8** (decals).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.
 

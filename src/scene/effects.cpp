@@ -29,6 +29,8 @@ void Effects::applyTo(render::DeferredRenderer& renderer) const {
     renderer.shadowMinVariance = params.shadowMinVariance;
     renderer.shadowNormalOffset = params.shadowNormalOffset;
     renderer.shadowPcfRadius = params.shadowPcfRadius;
+    // G7 light probes
+    renderer.lightProbeStrength = params.lightProbeStrength;
     // (width() > 0: the renderer was create()d, so a GL context is current and the
     //  cube map can be allocated)
     if (enabled(render::Effect::PointShadows) && !renderer.pointShadowEnabled() && renderer.width() > 0)

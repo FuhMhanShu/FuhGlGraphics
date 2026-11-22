@@ -4,11 +4,13 @@
 /// @brief G9 components: polymorphic Component list attached to a scene Node.
 /// Implemented now: MeshComponent (a node can hold *several* meshes — one MeshEntry each,
 /// with its own local offset, material parameters, textures, castShadow flag and material
-/// ID), LightComponent, CameraComponent. Decal / particle-emitter / probe components attach
-/// the same way once G8 / G5 / G7 land.
+/// ID), LightComponent, CameraComponent, ParticleEmitterComponent (G5),
+/// AnimationComponent (G6), LightProbeComponent (G7). Decal components attach the same
+/// way once G8 lands.
 
 #include "../anim/animation.hpp"
 #include "../particles/particle_system.hpp"
+#include "../probes/light_probes.hpp"
 
 #include <fuhgl/cam/camera.hpp>
 #include <fuhgl/math.hpp>
@@ -123,6 +125,18 @@ public:
 class AnimationComponent : public Component {
 public:
     anim::AnimationPlayer player;
+};
+
+/// @brief G7 light-probe component: owns one probes::LightProbeGrid (create() + bake() on
+/// the CPU — no GL needed for the bake; the renderer uploads the 3D textures lazily).
+/// fill() registers the grid in FrameData::lightProbes (the first component in the graph
+/// wins); pass it to DeferredRenderer::render(..., frame.lightProbes) and enable
+/// render::Effect::LightProbes.
+class LightProbeComponent : public Component {
+public:
+    probes::LightProbeGrid grid;
+
+    void fill(const Node& node, FrameData& frame) const override; // defined in component.cpp
 };
 
 } // namespace fuhglgraphics::scene

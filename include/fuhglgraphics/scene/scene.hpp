@@ -25,17 +25,24 @@ namespace fuhglgraphics::particles {
 class ParticleSystem;
 }
 
+namespace fuhglgraphics::probes {
+class LightProbeGrid;
+}
+
 namespace fuhglgraphics::scene {
 
 /// @brief Everything one frame needs: the FuhGLCore SceneView plus the parallel per-item
-/// vectors for the G3 renderer, the merged Effects of the whole graph and the G5 particle
-/// systems collected from ParticleEmitterComponents (rendered when Effect::Particles is on).
+/// vectors for the G3 renderer, the merged Effects of the whole graph, the G5 particle
+/// systems collected from ParticleEmitterComponents (rendered when Effect::Particles is
+/// on) and the G7 light-probe grid of the first LightProbeComponent (rendered when
+/// Effect::LightProbes is on).
 struct FrameData {
     fuhgl::render::SceneView view;          ///< items + lights + camera + size
     std::vector<std::uint32_t> materialIds; ///< parallel to view.items (G-buffer MaterialId)
     std::vector<bool> castShadow;           ///< parallel to view.items (shadow depth pass)
     Effects effects;                        ///< merged union of all node effects
     std::vector<const particles::ParticleSystem*> particleSystems; ///< G5 emitters
+    const probes::LightProbeGrid* lightProbes = nullptr;           ///< G7 probe grid
 };
 
 /// @brief The G9 scene graph (root node + frame filling with frustum culling).

@@ -1,6 +1,7 @@
 #include "fuhglgraphics/render/deferred_renderer.hpp"
 
 #include <fuhglgraphics/particles/particle_system.hpp>
+#include <fuhglgraphics/probes/light_probes.hpp>
 
 #include "deferred_glsl.hpp"
 
@@ -60,6 +61,7 @@ struct DeferredRenderer::Impl {
     fuhgl::Texture dummyMomentsArrayTex{fuhgl::Texture::Target::Tex2DArray}; // RGBA32F array (unit 12)
     fuhgl::Texture dummyShadowCubeTex{fuhgl::Texture::Target::Cube};       // depth cube (unit 13)
     fuhgl::Texture dummyCubeMomentsTex{fuhgl::Texture::Target::Cube};      // RGBA32F cube (unit 14)
+    fuhgl::Texture dummy3D{fuhgl::Texture::Target::Tex3D};                 // G7 probe dummy (units 17..23)
 };
 
 DeferredRenderer::DeferredRenderer() : impl_(std::make_unique<Impl>()) {}
@@ -200,7 +202,7 @@ bool DeferredRenderer::createInternal() {
         }
     }
     const std::string lightFrag = std::string(kLightFragHead) + kLightFragKit +
-                                  fuhgl::render::kSkFuncs + kLightFragPbr + kLightFragTail;
+                                  fuhgl::render::kSkFuncs + kLightFragProbes + kLightFragPbr + kLightFragTail;
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
         !compilePostFs(im.taaMat, kTaaFrag, "taa") ||
         !compilePostFs(im.upscaleMat, kUpscaleFrag, "upscale") ||
@@ -268,6 +270,11 @@ bool DeferredRenderer::createInternal() {
                                                 nullptr);
     im.dummyCubeMomentsTex.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_LINEAR);
     im.dummyCubeMomentsTex.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_LINEAR);
+    // G7: dummy 3D texture keeps the lighting pass complete when probes are off
+    im.dummy3D.bind();
+    im.dummy3D.setImage3D(0, fuhgl::gl::GL_RGBA16F, 1, 1, 1, fuhgl::gl::GL_RGBA, fuhgl::gl::GL_HALF_FLOAT, nullptr);
+    im.dummy3D.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_LINEAR);
+    im.dummy3D.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_LINEAR);
 
     // --- post graph: lighting -> TAA -> upscale -> tonemap ---
     const fuhgl::Texture& gAlbedo = msaa_ > 0 ? im.rAlbedo : im.texAlbedo;
@@ -408,11 +415,13 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
 void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
                               const std::vector<std::uint32_t>* materialIds,
                               const std::vector<bool>* castShadow,
-                              const std::vector<const particles::ParticleSystem*>* particleSystems) {
+                              const std::vector<const particles::ParticleSystem*>* particleSystems,
+                              const probes::LightProbeGrid* lightProbes) {
     if (!scene.camera || width_ <= 0) return;
     fuhgl::render::SceneView s = scene;
     applyCapabilities();
     curParticles_ = particleSystems;
+    curProbes_ = lightProbes;
 
     if (s.env && !effectEnabled(Effect::Ibl)) {
         s.env = nullptr; // gated in applyCapabilities() with a one-time warning
@@ -502,6 +511,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     if (taaOn) ++frameIndex_;
     curScene_ = nullptr;
     curParticles_ = nullptr;
+    curProbes_ = nullptr;
 }
 
 // G5 particles post pass: copy hdr -> hdrP, then draw each system's instanced billboards
@@ -576,9 +586,18 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
     f.glBindTexture(fuhgl::gl::GL_TEXTURE_CUBE_MAP, s.env ? s.env->prefilterMap().id() : im.dummyCube.id());
     fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitBrdfLut);
     f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, s.env ? s.env->brdfLut().id() : im.dummy2D.id());
-    // sky cubemap (unit 11; dummy when off)
+    // sky cubemap (unit 16; dummy when off)
     fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + kTextureUnitSkyCube);
     f.glBindTexture(fuhgl::gl::GL_TEXTURE_CUBE_MAP, skyCube_ ? skyCube_->id() : im.dummyCube.id());
+    // G7 light probes: seven RGBA16F 3D textures on units 17..23 (lazy upload, needs
+    // the current GL context — render() guarantees one); a dummy when off
+    bool probesOn = effectEnabled(Effect::LightProbes) && curProbes_ && curProbes_->valid();
+    if (probesOn) probesOn = curProbes_->ensureUploaded();
+    for (int i = 0; i < probes::LightProbeGrid::kTextureCount; ++i) {
+        fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + probes::LightProbeGrid::kFirstTextureUnit + i);
+        f.glBindTexture(fuhgl::gl::GL_TEXTURE_3D,
+                        probesOn ? curProbes_->texture(i).id() : im.dummy3D.id());
+    }
 
     drawFs(im.lightingMat, [&](fuhgl::Program& p) {
         p.setUniform(p.uniformLocation("uGAlbedo"), 0);
@@ -598,6 +617,23 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
         p.setUniform(p.uniformLocation("uBrdfLut"), fuhgl::render::kTextureUnitBrdfLut);
         p.setUniform(p.uniformLocation("uSkyCube"), kTextureUnitSkyCube);
         p.setUniform(p.uniformLocation("uUseSkyCube"), skyCube_ ? 1 : 0);
+        // G7 light probes
+        for (int i = 0; i < probes::LightProbeGrid::kTextureCount; ++i) {
+            char name[16];
+            std::snprintf(name, sizeof(name), "uProbe%d", i);
+            p.setUniform(p.uniformLocation(name), probes::LightProbeGrid::kFirstTextureUnit + i);
+        }
+        p.setUniform(p.uniformLocation("uProbesEnabled"), probesOn ? 1 : 0);
+        if (probesOn) {
+            const fuhgl::math::Vec3 c = curProbes_->cell();
+            p.setUniform("uProbeMin", curProbes_->min());
+            p.setUniform("uProbeCellInv", fuhgl::math::Vec3{1.f / c.x, 1.f / c.y, 1.f / c.z});
+            p.setUniform("uProbeMaxCoord",
+                         fuhgl::math::Vec3{static_cast<float>(curProbes_->nx() - 1),
+                                           static_cast<float>(curProbes_->ny() - 1),
+                                           static_cast<float>(curProbes_->nz() - 1)});
+        }
+        p.setUniform("uProbeStrength", lightProbeStrength);
         p.setUniform("uInvViewProj", s.camera->viewProj(s.aspect).inverse());
         p.setUniform("uCamPos", s.camera->eye());
         p.setUniform("uAmbient", s.ambient);
@@ -761,6 +797,7 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::PointShadows, pointShadows_);
     gate(Effect::ContactShadows, contactShadowsEnabled);
     gate(Effect::Particles, particlesEnabled_);
+    gate(Effect::LightProbes, lightProbesEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -777,6 +814,7 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
             break;
         case Effect::ContactShadows: contactShadowsEnabled = on; break;
         case Effect::Particles: particlesEnabled_ = on; break;
+        case Effect::LightProbes: lightProbesEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -803,13 +841,14 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::PointShadows: return pointShadows_;
         case Effect::ContactShadows: return contactShadowsEnabled;
         case Effect::Particles: return particlesEnabled_;
+        case Effect::LightProbes: return lightProbesEnabled_;
     }
     return false;
 }
 
 void DeferredRenderer::setAllEffects(bool on) {
     taaEnabled_ = upscaleEnabled_ = tonemapEnabled_ = iblEnabled_ = shadows_ = csmEnabled_ = on;
-    pointShadows_ = contactShadowsEnabled = particlesEnabled_ = on;
+    pointShadows_ = contactShadowsEnabled = particlesEnabled_ = lightProbesEnabled_ = on;
     applyCapabilities();
 }
 

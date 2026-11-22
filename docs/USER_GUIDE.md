@@ -137,7 +137,36 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   skinnedMesh.setMeshData(skinned);         // dynamic mesh, rendered by G3
   renderer.render(frame.view, &frame.materialIds, &frame.castShadow);
   ```
-- **Effects (G7, G8, G10).** SH light probes / lightmaps, deferred decals, plus quick
+- **Light probes (G7).** `fuhglgraphics::probes::LightProbeGrid`: a regular grid of SH (L2)
+  irradiance probes over an AABB, baked on the CPU (`bake()` — fibonacci-sphere rays against
+  a world-space triangle soup, one bounce: sky radiance + direct lights with shadow-ray
+  occlusion) and sampled with hardware-trilinear interpolation in the G3 lighting pass
+  (seven RGBA16F 3D textures on units 17–23, GL 3.3-capable). The diffuse ambient term is
+  replaced by `albedo/π * E(n)` from the probes (IBL keeps its specular part) — color
+  bleeding from colored walls into shadows. Toggle: `render::Effect::LightProbes`, scale:
+  `EffectParams::lightProbeStrength`. As a G9 component: attach
+  `scene::LightProbeComponent` (owns the grid) — `fillFrame()` puts it into
+  `FrameData::lightProbes`, pass it to
+  `renderer.render(view, &materialIds, &castShadow, &particleSystems, frame.lightProbes)`.
+  Quick start: [G7 tutorial](en/tutorials/g7_light_probes.md), demo
+  `examples/probes_screenshot`, screenshots: [probes on](images/g7_probes_on.png),
+  [off](images/g7_probes_off.png), [no effects](images/g7_probes_nofx.png).
+
+  ```cpp
+  fuhglgraphics::probes::BakeInput bake;
+  bake.triangles = /* world-space soup */; bake.lights = frame.view.lights;
+  bake.skyRadiance = [](const fuhgl::math::Vec3& d) { return skyColor(d); };
+  auto& pc = node.attach<fuhglgraphics::scene::LightProbeComponent>();
+  pc.grid.create(9, 4, 9, {-11.5f, 0.05f, -11.5f}, {11.5f, 3.8f, 11.5f});
+  pc.grid.bake(bake);                       // CPU; GL textures upload lazily in render()
+  // per frame:
+  scene.fillFrame(frame, nullptr, 1280, 720);   // frame.lightProbes = &pc.grid
+  frame.effects.enable(fuhglgraphics::render::Effect::LightProbes);
+  frame.effects.applyTo(renderer);
+  renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
+                  frame.lightProbes);
+  ```
+- **Effects (G8, G10).** deferred decals, plus quick
   upgrades: MSAA, CSM
   hardening, temporal upscaling, bokeh DoF, screenshot diffs in CI, debug HUD.
 - **Infrastructure (G11).** On-disk asset cache keyed by content hash, JSON config system

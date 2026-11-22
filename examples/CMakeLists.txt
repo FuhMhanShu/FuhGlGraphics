@@ -28,3 +28,8 @@ target_link_libraries(fuhglgraphics_particles_screenshot PRIVATE fuhglgraphics)
 # (TRS clip) through the G3 renderer, headless to PNG.
 add_executable(fuhglgraphics_animation_screenshot animation_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_animation_screenshot PRIVATE fuhglgraphics)
+
+# G7 light-probe demo: colored-wall courtyard, SH probe grid baked on the CPU and sampled
+# in the G3 lighting pass (Effect::LightProbes) — color bleeding in the shadows.
+add_executable(fuhglgraphics_probes_screenshot probes_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_probes_screenshot PRIVATE fuhglgraphics)

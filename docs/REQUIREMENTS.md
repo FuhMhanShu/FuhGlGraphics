@@ -138,7 +138,22 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   `tests/gl_smoke_anim.cpp` (fixture .glb with clip+skin; rendered frames at t=0 vs t=1
   differ), `examples/animation_screenshot`, `docs/images/g6_animation_*.png` and the
   [G6 tutorial](en/tutorials/g6_animation.md).
-- G2, G7, G8, G10, G11 — planned.
+- **G7 — light probes / SH irradiance GI** (`fuhglgraphics::probes`,
+  `include/fuhglgraphics/probes/light_probes.hpp`, `src/probes/light_probes.cpp`):
+  `LightProbeGrid` — a regular grid of SH L2 irradiance probes over an AABB
+  (GL 3.3-capable: seven RGBA16F 3D textures on units 17–23, hardware-trilinear
+  interpolation in the G3 lighting pass). CPU bake (`bake()`): fibonacci-sphere rays
+  against a world-space triangle soup, one bounce (sky radiance via a
+  `skyRadiance(dir)` callback + direct lights with shadow-ray occlusion), projected onto
+  SH L2 (`shProject`/`shBasis`/`shIrradiance`, pure + unit-tested). The lighting pass
+  replaces the diffuse ambient with `albedo/π * E(n)` from the probes when
+  `Effect::LightProbes` is on (IBL keeps its specular part; `lightProbeStrength` scales
+  it) — diffuse indirect light / color bleeding. G9: `scene::LightProbeComponent` →
+  `FrameData::lightProbes` → `DeferredRenderer::render(..., lightProbes)` (lazy texture
+  upload in render). See `tests/test_probes.cpp`, `tests/gl_smoke_probes.cpp`,
+  `examples/probes_screenshot`, `docs/images/g7_probes_*.png` and the
+  [G7 tutorial](en/tutorials/g7_light_probes.md).
+- G2, G8, G10, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON
   project files, MCP stdio chat). Implementation in phases P1–P5 after review.

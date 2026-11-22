@@ -132,6 +132,13 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_animation_screenshot --out docs/images/ci/g6_animation_straight.png --time 1.2 --frames 1 --width 1280 --height 720
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_animation_screenshot --out docs/images/ci/g6_animation_nofx.png --time 0.55 --width 1280 --height 720 --frames 16 --no-shadows --no-rays
 
+      - name: Build + render G7 light-probe screenshots (SH grid, color bleeding)
+        run: |
+          cmake --build build -j --target fuhglgraphics_probes_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_probes_screenshot --out docs/images/ci/g7_probes_on.png --width 1280 --height 720 --frames 16
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_probes_screenshot --out docs/images/ci/g7_probes_off.png --width 1280 --height 720 --frames 16 --no-probes
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_probes_screenshot --out docs/images/ci/g7_probes_nofx.png --width 1280 --height 720 --frames 16 --no-probes --no-shadows --no-rays
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)
