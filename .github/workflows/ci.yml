@@ -139,6 +139,20 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_probes_screenshot --out docs/images/ci/g7_probes_off.png --width 1280 --height 720 --frames 16 --no-probes
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_probes_screenshot --out docs/images/ci/g7_probes_nofx.png --width 1280 --height 720 --frames 16 --no-probes --no-shadows --no-rays
 
+      - name: Build + render G8 decal screenshots (bullet holes + marking, material-ID gated)
+        run: |
+          cmake --build build -j --target fuhglgraphics_decals_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_decals_screenshot --out docs/images/ci/g8_decals_on.png --width 1280 --height 720 --frames 16
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_decals_screenshot --out docs/images/ci/g8_decals_off.png --width 1280 --height 720 --frames 16 --no-decals
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_decals_screenshot --out docs/images/ci/g8_decals_nofx.png --width 1280 --height 720 --frames 16 --no-decals --no-shadows --no-rays
+
+      - name: Build + render G10 screenshots (DoF bokeh + debug HUD)
+        run: |
+          cmake --build build -j --target fuhglgraphics_dof_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_dof_screenshot --out docs/images/ci/g10_dof_on.png --width 1280 --height 720 --frames 16 --focus 9
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_dof_screenshot --out docs/images/ci/g10_dof_off.png --width 1280 --height 720 --frames 16 --focus 9 --no-dof
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_dof_screenshot --out docs/images/ci/g10_hud.png --width 1280 --height 720 --frames 16 --focus 9 --hud
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)
@@ -164,6 +178,12 @@ jobs:
           FUHGL_BACKEND=surfaceless QT_QPA_PLATFORM=offscreen ./build-qt/examples/fuhglgraphics_gltf_demo --model /tmp/kenney/3d/pirate/ship-pirate-medium.glb --out docs/images/ci/g4_gltf_ship_no_shadows.png --width 1280 --height 720 --frames 24 --azimuth 35 --elevation 14 --sun-azimuth 120 --sun-elevation 32 --no-shadows
           FUHGL_BACKEND=surfaceless QT_QPA_PLATFORM=offscreen ./build-qt/examples/fuhglgraphics_gltf_demo --model /tmp/kenney/3d/pirate/ship-pirate-medium.glb --out docs/images/ci/g4_gltf_ship_no_ibl.png --width 1280 --height 720 --frames 24 --azimuth 35 --elevation 14 --sun-azimuth 120 --sun-elevation 32 --no-ibl
           FUHGL_BACKEND=surfaceless QT_QPA_PLATFORM=offscreen ./build-qt/examples/fuhglgraphics_gltf_demo --model /tmp/kenney/3d/pirate/chest.glb --out docs/images/ci/g4_gltf_chest.png --width 1280 --height 720 --frames 24 --size 1.6 --distance 4.2 --azimuth -35 --elevation 20 --sun-azimuth 145 --sun-elevation 38
+
+      # G10: perceptual diff of the CI renders against the checked-in references
+      # (docs/screenshot_diff.py, pure python3; PSNR threshold tolerates minor driver
+      # differences — llvmpipe renders are deterministic).
+      - name: Screenshot perceptual diff (CI renders vs docs/images references)
+        run: python3 docs/screenshot_diff.py docs/images docs/images/ci --min-psnr 28
 
       - name: Upload screenshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

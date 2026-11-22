@@ -154,8 +154,37 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   upload in render). See `tests/test_probes.cpp`, `tests/gl_smoke_probes.cpp`,
   `examples/probes_screenshot`, `docs/images/g7_probes_*.png` and the
   [G7 tutorial](en/tutorials/g7_light_probes.md).
+- **G8 — decals / projected textures** (`render::Decal` in
+  `include/fuhglgraphics/render/decals.hpp`, decal pass in `src/render/deferred_renderer.cpp`
+  + `kDecalVert/kDecalFrag` in `src/render/deferred_glsl.hpp`): oriented box decals
+  projected into the G-buffer albedo + normal attachments between the geometry pass and
+  the lighting pass — the MaterialId attachment gates the target surfaces
+  (`materialIdMask`, "material-ID/stencil from G3"); box projection onto the dominant face
+  axis of the surface normal, optional albedo texture + normal map, `opacity`, sorted
+  back-to-front, limited to `render::kMaxDecals` = 16 (farthest dropped with a one-time
+  warning); with MSAA the pass runs after the resolve. New `render::Effect::Decals`
+  (kEffectCount = 12). Pure projection helper `render::decalProject()` (unit-tested).
+  G9: `scene::DecalComponent` → `FrameData::decals` →
+  `DeferredRenderer::render(..., &decals)`. See `tests/test_render.cpp` (decalProject),
+  `tests/gl_smoke_decals.cpp` (mark appears only when enabled, material-ID mask gates it),
+  `examples/decals_screenshot`, `docs/images/g8_decals_*.png` and the
+  [G8 tutorial](en/tutorials/g8_decals.md).
+- **G10 — quick upgrades (roadmap 7)** — implemented: MSAA wiring+test in G3
+  (`create(w, h, msaaSamples)`, MSAA G-buffer + resolve, gl_smoke_render), CSM contact
+  hardening via the F45 shadow kit (PCSS penumbra, texel snap, cascade blend — PR #4),
+  temporal upscaling (FSR1-style EASU+RCAS after TAA — G3), and now: **DoF bokeh**
+  (`Effect::Dof`, post pass between upscale and tonemap, hexagonal bokeh gather, CoC from
+  the G-buffer depth; `EffectParams::dofFocusDist/dofStrength/dofMaxCoC`), **mini debug
+  HUD** (`render::DebugHud` on FuhGLCore's TextRenderer — fps, frame ms, per-effect
+  on/off; `Effect::DebugHud`, drawn after the post graph; `hud().fps()` /
+  `lastFrameMs()`), **CI screenshot perceptual diff** (`docs/screenshot_diff.py`, pure
+  python3, PSNR threshold, run in the `docs-screenshots` job over `docs/images/ci/` vs
+  `docs/images/`). kEffectCount = 14. See `tests/gl_smoke_g10.cpp`,
+  `examples/dof_screenshot`, `docs/images/g10_*.png` and the
+  [G10 tutorial](en/tutorials/g10_upgrades.md).
+- G2, G11 — planned.
 - **G13 — water rendering** (`fuhglgraphics::water`, `include/fuhglgraphics/water/`, `src/water/`, G3 renderer extension in `src/render/`): implemented — see `tests/test_water.cpp`, `tests/gl_smoke_water.cpp`, `examples/water_screenshot`, `docs/images/g13_water_*.png` and the [G13 tutorial](en/tutorials/g13_water.md).
-- G2, G8, G10, G11 — planned.
+- G2, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON
   project files, MCP stdio chat). Implementation in phases P1–P5 after review.

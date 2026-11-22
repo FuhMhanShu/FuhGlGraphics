@@ -320,7 +320,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < args.frames; ++i) {
         wc.surface.update(dt); // advance the waves
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                        frame.lightProbes, frame.water);
+                        frame.lightProbes, &frame.decals, frame.water);
     }
     fuhgl::gl::flush();
 

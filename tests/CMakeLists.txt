@@ -67,6 +67,22 @@ target_link_libraries(fuhglgraphics_gl_smoke_probes PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_probes COMMAND fuhglgraphics_gl_smoke_probes)
 set_tests_properties(fuhglgraphics_gl_smoke_probes PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
 
+# Headless GL smoke test for the G8 decals (label "gl_context"): renders a ground quad with
+# a red decal box with Effect::Decals on vs off and verifies the mark appears only when
+# enabled and only on the targeted material ID. Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_decals gl_smoke_decals.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_decals PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_decals COMMAND fuhglgraphics_gl_smoke_decals)
+set_tests_properties(fuhglgraphics_gl_smoke_decals PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G10 upgrades (label "gl_context"): DoF (Effect::Dof blurs
+# a near crate when focused far) and the debug HUD (Effect::DebugHud draws the panel
+# top-left). Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_g10 gl_smoke_g10.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_g10 PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_g10 COMMAND fuhglgraphics_gl_smoke_g10)
+set_tests_properties(fuhglgraphics_gl_smoke_g10 PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
 # Headless GL smoke test for the G13 water effect (label "gl_context"): builds a small
 # scene with a water surface (Gerstner waves), renders through the G3 renderer with
 # Effect::Water on vs off and verifies that the frames differ and that the reflection

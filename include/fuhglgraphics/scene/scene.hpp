@@ -12,6 +12,7 @@
 ///   frame.effects.applyTo(renderer);
 ///   renderer.render(frame.view, &frame.materialIds, &frame.castShadow);
 
+#include "../render/decals.hpp"
 #include "effects.hpp"
 #include "node.hpp"
 
@@ -38,8 +39,9 @@ namespace fuhglgraphics::scene {
 /// @brief Everything one frame needs: the FuhGLCore SceneView plus the parallel per-item
 /// vectors for the G3 renderer, the merged Effects of the whole graph, the G5 particle
 /// systems collected from ParticleEmitterComponents (rendered when Effect::Particles is
-/// on) and the G7 light-probe grid of the first LightProbeComponent (rendered when
-/// Effect::LightProbes is on).
+/// on), the G7 light-probe grid of the first LightProbeComponent (rendered when
+/// Effect::LightProbes is on) and the G8 decals of all DecalComponents (projected into the
+/// G-buffer when Effect::Decals is on).
 struct FrameData {
     fuhgl::render::SceneView view;          ///< items + lights + camera + size
     std::vector<std::uint32_t> materialIds; ///< parallel to view.items (G-buffer MaterialId)
@@ -47,6 +49,7 @@ struct FrameData {
     Effects effects;                        ///< merged union of all node effects
     std::vector<const particles::ParticleSystem*> particleSystems; ///< G5 emitters
     const probes::LightProbeGrid* lightProbes = nullptr;           ///< G7 probe grid
+    std::vector<render::Decal> decals;                              ///< G8 decals
     const water::WaterSurface* water = nullptr;                    ///< G13 water surface (first wins)
 };
 

@@ -59,7 +59,7 @@ wc.surface.update(dt);                                // advance the waves
 scene.fillFrame(frame, nullptr, 1280, 720);           // frame.water = &wc.surface
 frame.effects.applyTo(renderer);
 renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                frame.lightProbes, frame.water);
+                frame.lightProbes, &frame.decals, frame.water);
 ```
 
 Raw `fuhgl::render::SceneView` without the scene graph: add the surface's mesh as a draw

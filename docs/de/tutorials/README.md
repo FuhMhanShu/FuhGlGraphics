@@ -25,14 +25,21 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   (CPU-Bake, 3D-Textur-Trilinear-Sampling in der G3-Lighting-Pass) als G9-
   `LightProbeComponent`; Color-Bleeding von farbigen Wänden in die Schatten, Bilder in
   [docs/images/](../../images/g7_probes_on.png)
+- [G8 — Deferred-Decals](g8_decals.md) — `render::Decal`-Boxen in den G-Buffer projiziert
+  (Albedo + Normal), Material-ID-gegated, als G9-`DecalComponent`; Kugellöcher +
+  Markierungen in [docs/images/](../../images/g8_decals_on.png)
+- [G10 — Quick-Upgrades](g10_upgrades.md) — DoF mit hexagonalem Bokeh-Kernel
+  (`Effect::Dof`), Mini-Debug-HUD auf FuhGLCore's TextRenderer (`Effect::DebugHud`),
+  perzeptueller CI-Screenshot-Diff (`docs/screenshot_diff.py`); Bilder in
+  [docs/images/](../../images/g10_dof_on.png)
 
 - [G13 — Realistisches Wasser](g13_water.md) — `water::WaterSurface` (Gerstner-Wellen) als
-  G9-`WaterComponent` → `FrameData::water` → G3-`render(..., water)` mit `Effect::Water`:
+  G9-`WaterComponent` → `FrameData::water` → G3-`render(..., &decals, water)` mit `Effect::Water`:
   planarer Reflexions-Pass (gespiegelte Kamera) + Wasser-Post-Pass (Reflexion/Refraktion
   per Fresnel, Kamm- + Uferschaum, Sonnen-Glint); See-Bilder in
   [docs/images/](../../images/g13_water_1280x720.png)
 
-Als Nächstes: **G8** (Decals) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
+Als Nächstes: **G11** (Engine-Infrastruktur) / **G2** (Qt-Editor) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Voraussetzung für alle: Bibliothek bauen und `FuhGlGraphics::fuhglgraphics` linken
 (siehe [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).

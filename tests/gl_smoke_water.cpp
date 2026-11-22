@@ -102,15 +102,15 @@ int main() {
     renderer.setEffectEnabled(fuhglgraphics::render::Effect::Water, true);
     renderer.setEffectEnabled(fuhglgraphics::render::Effect::Taa, false);
     water.update(0.0f);
-    renderer.render(scene, &materialIds, &castShadow, nullptr, nullptr, &water);
+    renderer.render(scene, &materialIds, &castShadow, nullptr, nullptr, nullptr, &water);
     const std::vector<unsigned char> withWater = readOutput(renderer, W, H);
     water.update(0.35f);
-    renderer.render(scene, &materialIds, &castShadow, nullptr, nullptr, &water);
+    renderer.render(scene, &materialIds, &castShadow, nullptr, nullptr, nullptr, &water);
     const std::vector<unsigned char> withWater2 = readOutput(renderer, W, H);
 
     // water OFF: the mesh falls back to plain G-buffer PBR rendering
     renderer.setEffectEnabled(fuhglgraphics::render::Effect::Water, false);
-    renderer.render(scene, &materialIds, &castShadow, nullptr, nullptr, &water);
+    renderer.render(scene, &materialIds, &castShadow, nullptr, nullptr, nullptr, &water);
     const std::vector<unsigned char> withoutWater = readOutput(renderer, W, H);
 
     if (renderer.reflectionTexture().id() == 0) {

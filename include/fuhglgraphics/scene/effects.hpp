@@ -48,6 +48,10 @@ struct EffectParams {
     int csmCascades = 4;             ///< cascade count for Effect::CsmShadows
     // --- G7 light probes (Effect::LightProbes) ---
     float lightProbeStrength = 1.f;  ///< scale of the probe diffuse-indirect term
+    // --- G10 DoF (Effect::Dof) ---
+    float dofFocusDist = 8.f;   ///< world-space focus distance (view depth)
+    float dofStrength = 12.f;   ///< CoC scale per unit of focus error
+    float dofMaxCoC = 24.f;     ///< max circle of confusion in output pixels
 };
 
 /// @brief Effect list + parameters of one scene node (or of a whole frame after merging).

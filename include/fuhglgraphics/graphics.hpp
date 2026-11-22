@@ -12,7 +12,7 @@
 //   probes/   G7   SH L2 light-probe grid, CPU bake + 3D-texture sampling (implemented)
 //   water/    G13  realistic water: Gerstner waves + planar reflection + foam (implemented)
 //   editor/   G2+G11  minimal Qt6 editor (only built with FUHGLGRAPHICS_WITH_QT=1)
-// Additionally planned: G8 decals, G10 quick upgrades, G11 engine infrastructure.
+// Additionally planned: G10 quick upgrades, G11 engine infrastructure.
 //
 // The library core stays Qt-free; build with -DFUHGLGRAPHICS_WITH_QT=OFF for
 // headless use.
@@ -21,6 +21,8 @@
 
 #include <fuhglgraphics/render/effects.hpp>
 #include <fuhglgraphics/render/gbuffer.hpp>
+#include <fuhglgraphics/render/decals.hpp>
+#include <fuhglgraphics/render/debug_hud.hpp>
 #include <fuhglgraphics/render/deferred_renderer.hpp>
 
 #include <fuhglgraphics/scene/component.hpp>

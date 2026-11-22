@@ -61,7 +61,7 @@ wc.surface.update(dt);                                // Wellen weiterschieben
 scene.fillFrame(frame, nullptr, 1280, 720);           // frame.water = &wc.surface
 frame.effects.applyTo(renderer);
 renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                frame.lightProbes, frame.water);
+                frame.lightProbes, &frame.decals, frame.water);
 ```
 
 Ohne Szenengraph (raw `fuhgl::render::SceneView`): Mesh der Fläche als Draw-Item eintragen

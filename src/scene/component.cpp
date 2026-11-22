@@ -50,11 +50,10 @@ void LightProbeComponent::fill(const Node& /*node*/, FrameData& frame) const {
     if (grid.valid() && !frame.lightProbes) frame.lightProbes = &grid;
 }
 
-void WaterComponent::fill(const Node& node, FrameData& frame) const {
-    frame.view.items.push_back(fuhgl::render::DrawItem{&surface.mesh(), nullptr, node.worldMatrix()});
-    frame.materialIds.push_back(0);
-    frame.castShadow.push_back(false); // the water surface never casts a shadow
-    if (!frame.water) frame.water = &surface; // the first water component in the graph wins
+void DecalComponent::fill(const Node& node, FrameData& frame) const {
+    render::Decal d = decal;
+    d.world = node.worldMatrix();
+    frame.decals.push_back(d);
 }
 
 void LightComponent::fill(const Node& node, FrameData& frame) const {
@@ -65,6 +64,14 @@ void LightComponent::fill(const Node& node, FrameData& frame) const {
     const fuhgl::math::Vec4 d = w * fuhgl::math::Vec4{l.direction.x, l.direction.y, l.direction.z, 0.f};
     l.direction = fuhgl::math::normalize(fuhgl::math::Vec3{d.x, d.y, d.z});
     frame.view.lights.push_back(l);
+}
+
+
+void WaterComponent::fill(const Node& node, FrameData& frame) const {
+    frame.view.items.push_back(fuhgl::render::DrawItem{&surface.mesh(), nullptr, node.worldMatrix()});
+    frame.materialIds.push_back(0);
+    frame.castShadow.push_back(false); // the water surface never casts a shadow
+    if (!frame.water) frame.water = &surface; // the first water component in the graph wins
 }
 
 } // namespace fuhglgraphics::scene

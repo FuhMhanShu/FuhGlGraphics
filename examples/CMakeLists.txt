@@ -34,6 +34,15 @@ target_link_libraries(fuhglgraphics_animation_screenshot PRIVATE fuhglgraphics)
 add_executable(fuhglgraphics_probes_screenshot probes_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_probes_screenshot PRIVATE fuhglgraphics)
 
+# G8 decal demo: plaza with bullet-hole decals (ground + wall, material-ID gated) and a
+# ground marking, projected into the G-buffer by the G3 decal pass (Effect::Decals).
+add_executable(fuhglgraphics_decals_screenshot decals_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_decals_screenshot PRIVATE fuhglgraphics)
+
+# G10 demo: DoF with a hexagonal bokeh kernel (Effect::Dof) + debug HUD (Effect::DebugHud).
+add_executable(fuhglgraphics_dof_screenshot dof_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_dof_screenshot PRIVATE fuhglgraphics)
+
 # G13 water demo: lake scene (terrain basin + Gerstner-wave water surface with planar
 # reflection, refraction, fresnel, crest/shore foam and sun glint) as a G9 scene graph —
 # WaterComponent -> FrameData::water -> DeferredRenderer with Effect::Water — headless to PNG.

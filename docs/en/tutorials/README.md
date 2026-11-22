@@ -26,14 +26,21 @@ One small tutorial per feature. Each is self-contained: goal → code → result
   (CPU bake, 3D-texture trilinear sampling in the G3 lighting pass) as a G9
   `LightProbeComponent`; color bleeding from colored walls into shadows, screenshots in
   [docs/images/](../../images/g7_probes_on.png)
+- [G8 — Deferred decals](g8_decals.md) — `render::Decal` boxes projected into the G-buffer
+  (albedo + normal), material-ID gated, as a G9 `DecalComponent`; bullet holes + markings
+  screenshots in [docs/images/](../../images/g8_decals_on.png)
+- [G10 — Quick upgrades](g10_upgrades.md) — DoF with a hexagonal bokeh kernel
+  (`Effect::Dof`), mini debug HUD on FuhGLCore's TextRenderer (`Effect::DebugHud`), CI
+  perceptual screenshot diff (`docs/screenshot_diff.py`); screenshots in
+  [docs/images/](../../images/g10_dof_on.png)
 
 - [G13 — Realistic water](g13_water.md) — `water::WaterSurface` (Gerstner waves) as a G9
-  `WaterComponent` → `FrameData::water` → G3 `render(..., water)` with `Effect::Water`:
+  `WaterComponent` → `FrameData::water` → G3 `render(..., &decals, water)` with `Effect::Water`:
   planar-reflection pass (mirrored camera) + water post pass (reflection/refraction
   fresnel mix, crest + shore foam, sun glint); lake screenshots in
   [docs/images/](../../images/g13_water_1280x720.png)
 
-Next: **G8** (decals) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
+Next: **G11** (engine infrastructure) / **G2** (Qt editor) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Prerequisite for all: build the library and link `FuhGlGraphics::fuhglgraphics`
 (see [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).
