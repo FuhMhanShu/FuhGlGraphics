@@ -11,8 +11,11 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   Albedo- + Normalmap-Texturen pro Mesh, Lichter, Kamera), pro Node Effekte + Instancing,
   `Scene::fillFrame()` → G3-Renderer, mit Effekt-Vergleichsbildern in
   [docs/images/](../../images/g9_scene_graph.png)
+- [G4 — glTF-2.0-Loader](g4_gltf_loader.md) — `io::loadGltf()` + `io::instantiateGltf()` auf
+  den G9-Szenengraphen, Demo-Asset (Kenney, CC0) + `examples/gltf_demo`, Bilder in
+  [docs/images/](../../images/g4_gltf_ship.png)
 
-Als Nächstes: **G4** (glTF-2.0-Asset-Loading) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
+Als Nächstes: **G5** (GPU-Partikel) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Voraussetzung für alle: Bibliothek bauen und `FuhGlGraphics::fuhglgraphics` linken
 (siehe [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).

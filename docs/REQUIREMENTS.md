@@ -81,5 +81,21 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   G-buffer normal-map support added in G3's G-buffer pass (unit `kTextureUnitNormalMap`).
   See `tests/test_scene.cpp`, `tests/gl_smoke_scene.cpp`, `examples/scene_screenshot`,
   `docs/images/g9_*.png` and the [G9 tutorial](en/tutorials/g9_scene_graph.md).
-  glTF node mapping comes with G4.
-- G2, G4–G8, G10, G11 — planned.
+- **G4 — glTF 2.0 asset loading** (`fuhglgraphics::io`, `include/fuhglgraphics/io/`,
+  `src/io/`): own minimal JSON parser + base64 (`io/json.hpp`), `io::loadGltf(path)` parses
+  .gltf (JSON) and .glb (binary container) — buffers (external .bin, embedded base64
+  data-URIs, GLB BIN chunk), bufferViews + accessors (all component types, normalized,
+  strided, sparse), primitives (TRIANGLES/STRIP/FAN; POSITION/NORMAL/TEXCOORD_0/COLOR_0 +
+  indices → FuhGLCore `render::MeshData`), materials via
+  `KHR_materials_pbrMetallicRoughness` (factors + baseColor/normal textures, alphaMode,
+  doubleSided), images (external/embedded, PNG/JPEG decoded to RGBA8 via Qt QImage when
+  `WITH_QT`, otherwise factors only), samplers, nodes (TRS + matrix decomposed to TRS),
+  scenes. `io::instantiateGltf(asset, scene, gpu, parent)` maps the default scene onto the
+  G9 scene graph with GL resources (one `render::Mesh` per primitive, preset materials with
+  albedo/normal textures, one `MeshEntry` per primitive, `castShadow = true`, running
+  material IDs). No vendored third-party assets — tests use generated fixtures
+  (`tests/gltf_fixture.hpp`); demo asset is Kenney CC0 (see the
+  [G4 tutorial](en/tutorials/g4_gltf_loader.md)). See `tests/test_io.cpp`,
+  `tests/gl_smoke_gltf.cpp`, `examples/gltf_demo`, `docs/images/g4_*.png` and the
+  [G4 tutorial](en/tutorials/g4_gltf_loader.md).
+- G2, G5–G8, G10, G11 — planned.
