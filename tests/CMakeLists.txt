@@ -73,3 +73,11 @@ add_executable(fuhglgraphics_gl_smoke_decals gl_smoke_decals.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_decals PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_decals COMMAND fuhglgraphics_gl_smoke_decals)
 set_tests_properties(fuhglgraphics_gl_smoke_decals PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G10 upgrades (label "gl_context"): DoF (Effect::Dof blurs
+# a near crate when focused far) and the debug HUD (Effect::DebugHud draws the panel
+# top-left). Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_g10 gl_smoke_g10.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_g10 PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_g10 COMMAND fuhglgraphics_gl_smoke_g10)
+set_tests_properties(fuhglgraphics_gl_smoke_g10 PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

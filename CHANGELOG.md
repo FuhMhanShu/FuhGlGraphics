@@ -215,3 +215,27 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   `docs/images/g8_decals_{on,off,nofx}.png` (pixel-verified: red marking present only with
   decals on). G8 tutorial en/de; USER_GUIDE/REQUIREMENTS/READMEs/DEVELOPMENT updated; CI
   docs-screenshots renders them.
+- **G10 — quick upgrades (roadmap 7)**, the remaining open items (MSAA wiring+test,
+  CSM penumbra hardening and FSR1-style temporal upscaling already landed with G3/#4):
+  - **DoF bokeh** (`render::Effect::Dof`, kEffectCount = 14): new post-graph pass "dof"
+    between upscale and tonemap (`kDofFrag` in `src/render/deferred_glsl.hpp`,
+    `DeferredRenderer::drawDof`) — CoC from the linearized G-buffer depth, hexagonal bokeh
+    gather (6 full-ring + 6 half-ring taps); plain copy when off. Params
+    `EffectParams::dofFocusDist/dofStrength/dofMaxCoC` via `Effects::applyTo()`.
+  - **Mini debug HUD** (`render::DebugHud`, `include/fuhglgraphics/render/debug_hud.hpp`,
+    `src/render/debug_hud.cpp`, PIMPL over FuhGLCore's TextRenderer with the embedded 8x8
+    font): fps (FpsCounter), frame ms, per-effect on/off lines; `render::Effect::DebugHud`;
+    drawn by `render()` after the post graph into `output()` (NOT as a graph pass —
+    resolvePassOrder is LIFO for independent passes and would run it before tonemap);
+    `renderer.hud().fps()` / `renderer.lastFrameMs()`.
+  - **CI screenshot perceptual diff**: `docs/screenshot_diff.py` (pure python3, zlib +
+    struct, no PIL) compares `docs/images/ci/*.png` against the checked-in references in
+    `docs/images/` with a PSNR threshold and fails the `docs-screenshots` job below it.
+  Tests: `tests/test_render.cpp` (kEffectCount = 14, effect names) +
+  `tests/gl_smoke_g10.cpp` (gl_context: DoF on/off blurs the near crate, HUD changes the
+  top-left pixels, hud created, no GL error).
+  New tool `examples/dof_screenshot` (`--focus 9 --no-dof --hud ...`) with reference
+  images `docs/images/g10_{dof_on,dof_off,hud}.png` (verified: foreground pillar blurred,
+  background sharp; HUD panel readable top-left). G10 tutorial en/de;
+  USER_GUIDE/REQUIREMENTS/READMEs/DEVELOPMENT updated; CI renders the G10 images and runs
+  the screenshot diff.

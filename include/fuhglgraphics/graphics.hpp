@@ -21,6 +21,7 @@
 #include <fuhglgraphics/render/effects.hpp>
 #include <fuhglgraphics/render/gbuffer.hpp>
 #include <fuhglgraphics/render/decals.hpp>
+#include <fuhglgraphics/render/debug_hud.hpp>
 #include <fuhglgraphics/render/deferred_renderer.hpp>
 
 #include <fuhglgraphics/scene/component.hpp>

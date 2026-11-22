@@ -527,6 +527,46 @@ void main() {
 }
 )GLSL";
 
+// --- G10 DoF pass (after upscale, before tonemap): hexagonal bokeh gather -------------
+// CoC from the linearized G-buffer depth; when disabled the pass is a plain copy.
+constexpr const char* kDofFrag = R"GLSL(#version 330 core
+in vec2 vUV;
+uniform sampler2D uSrc;    // unit 0: upscaled HDR ("up")
+uniform sampler2D uGDepth; // unit 1: G-buffer depth (sampled by uv)
+uniform int uDofEnabled;
+uniform float uZNear, uZFar;
+uniform float uFocusDist;   // world-space focus distance (view depth)
+uniform float uDofStrength; // CoC scale per unit of focus error
+uniform float uMaxCoC;      // max circle of confusion in pixels
+uniform float uBokehAngle;  // hexagon rotation
+uniform vec2 uTexel;        // 1 / output resolution
+out vec4 FragColor;
+float viewDepth(float d) { return uZNear * uZFar / max(uZFar - d * (uZFar - uZNear), 1e-5); }
+float cocOf(float d) { return clamp(abs(viewDepth(d) - uFocusDist) * uDofStrength, 0.0, uMaxCoC); }
+void main() {
+    vec4 center = texture(uSrc, vUV);
+    if (uDofEnabled == 0) { FragColor = center; return; }
+    float coc = cocOf(texture(uGDepth, vUV).r);
+    if (coc < 0.5) { FragColor = center; return; }
+    // hexagonal bokeh: 6 taps on the full CoC ring + 6 half-radius taps offset by 30 deg
+    vec3 acc = center.rgb;
+    float wsum = 1.0;
+    for (int k = 0; k < 6; ++k) {
+        float a = uBokehAngle + float(k) * 1.0471976; // 60 deg
+        vec2 uv1 = vUV + vec2(cos(a), sin(a)) * coc * uTexel;
+        float w1 = clamp(cocOf(texture(uGDepth, uv1).r) * 1.5, 0.0, 1.0);
+        acc += texture(uSrc, uv1).rgb * w1;
+        wsum += w1;
+        float a2 = a + 0.5235988; // +30 deg
+        vec2 uv2 = vUV + vec2(cos(a2), sin(a2)) * coc * 0.5 * uTexel;
+        float w2 = clamp(cocOf(texture(uGDepth, uv2).r) * 1.5, 0.0, 1.0);
+        acc += texture(uSrc, uv2).rgb * w2;
+        wsum += w2;
+    }
+    FragColor = vec4(acc / wsum, center.a);
+}
+)GLSL";
+
 // --- TAA pass: motion-vector reprojected history with 3x3 neighborhood clamp ---------
 constexpr const char* kTaaFrag = R"GLSL(#version 330 core
 in vec2 vUV;

@@ -10,6 +10,7 @@
 #include <fuhgl/render/shadow_glsl.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 
@@ -46,7 +47,7 @@ struct DeferredRenderer::Impl {
         rMotion{fuhgl::Texture::Target::Tex2D}, rMatId{fuhgl::Texture::Target::Tex2D};
     fuhgl::Texture texOutput{fuhgl::Texture::Target::Tex2D};
 
-    fuhgl::render::Material gbufferMat, lightingMat, taaMat, upscaleMat, tonemapMat, copyMat, decalMat;
+    fuhgl::render::Material gbufferMat, lightingMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
     fuhgl::render::Mesh decalBox; ///< G8: unit box for the decal projection pass
     fuhgl::UniformBuffer lightsUbo;
     fuhgl::VertexArray fsVao;
@@ -224,10 +225,12 @@ bool DeferredRenderer::createInternal() {
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
         !compilePostFs(im.taaMat, kTaaFrag, "taa") ||
         !compilePostFs(im.upscaleMat, kUpscaleFrag, "upscale") ||
+        !compilePostFs(im.dofMat, kDofFrag, "dof") ||
         !compilePostFs(im.tonemapMat, kTonemapFrag, "tonemap") ||
         !compilePostFs(im.copyMat, kCopyFrag, "copy")) {
         return false;
     }
+    hud_.create(); // G10 HUD (best effort — the hud pass checks isCreated())
     im.lightingMat.program().bindUniformBlock("LightBlock", 0);
 
     if (!im.lightsUbo.create()) return false;
@@ -311,6 +314,7 @@ bool DeferredRenderer::createInternal() {
     im.post.addResource("hdrP", iw, ih, fuhgl::gl::GL_RGBA16F); // hdr + G5 particles
     im.post.addResource("taa", iw, ih, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("up", width_, height_, fuhgl::gl::GL_RGBA16F);
+    im.post.addResource("dof", width_, height_, fuhgl::gl::GL_RGBA16F); // G10 DoF at output res
     im.post.addPass("lighting", {"gAlbedo", "gNormal", "gPbr", "gEmissive", "gDepth"}, {"hdr"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawLighting(ctx); });
     im.post.addPass("particles", {"hdr", "gDepth"}, {"hdrP"},
@@ -319,8 +323,13 @@ bool DeferredRenderer::createInternal() {
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTaa(ctx); }, /*feedback=*/true);
     im.post.addPass("upscale", {"taa"}, {"up"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawUpscale(ctx); });
-    im.post.addPass("tonemap", {"up", "gDepth"}, {},
+    im.post.addPass("dof", {"up", "gDepth"}, {"dof"},
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawDof(ctx); });
+    im.post.addPass("tonemap", {"dof", "gDepth"}, {},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTonemap(ctx); });
+    // NOTE: the G10 HUD is NOT a graph pass — resolvePassOrder() is LIFO for independent
+    // passes, so a no-output pass would run before tonemap and be overwritten. render()
+    // draws it directly after post.execute() instead.
     if (!im.post.compile()) {
         std::fprintf(stderr, "fuhglgraphics::DeferredRenderer: post graph compile failed\n");
         return false;
@@ -532,6 +541,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
                               const probes::LightProbeGrid* lightProbes,
                               const std::vector<Decal>* decals) {
     if (!scene.camera || width_ <= 0) return;
+    const auto t0 = std::chrono::steady_clock::now();
     fuhgl::render::SceneView s = scene;
     applyCapabilities();
     curParticles_ = particleSystems;
@@ -623,7 +633,12 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     // remember this frame's (jittered) viewProj for next frame's motion vectors
     prevViewProj_ = fuhgl::math::jitterViewProj(s.camera->viewProj(s.aspect), s.jitter);
     impl_->post.execute();
+    // G10 HUD: drawn after the post graph (into the output, over the tonemapped frame)
+    if (effectEnabled(Effect::DebugHud) && hud_.isCreated()) drawHud();
     if (taaOn) ++frameIndex_;
+    const auto t1 = std::chrono::steady_clock::now();
+    lastFrameMs_ = std::chrono::duration<float, std::milli>(t1 - t0).count();
+    hud_.frame(std::chrono::duration<double>(t1.time_since_epoch()).count());
     curScene_ = nullptr;
     curParticles_ = nullptr;
     curProbes_ = nullptr;
@@ -846,8 +861,47 @@ void DeferredRenderer::drawUpscale(fuhgl::render::RenderGraph::PassContext& ctx)
     });
 }
 
-void DeferredRenderer::drawTonemap(fuhgl::render::RenderGraph::PassContext& ctx) {
+// G10 DoF pass: hexagonal bokeh gather on the upscaled HDR image ("up" -> "dof"),
+// CoC from the G-buffer depth; plain copy when Effect::Dof is off.
+void DeferredRenderer::drawDof(fuhgl::render::RenderGraph::PassContext& ctx) {
     ctx.bindInput(0, "up");
+    ctx.bindInput(1, "gDepth");
+    const bool on = effectEnabled(Effect::Dof);
+    drawFs(impl_->dofMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uSrc"), 0);
+        p.setUniform(p.uniformLocation("uGDepth"), 1);
+        p.setUniform(p.uniformLocation("uDofEnabled"), on ? 1 : 0);
+        if (curScene_ && curScene_->camera) {
+            p.setUniform("uZNear", curScene_->camera->zNear());
+            p.setUniform("uZFar", curScene_->camera->zFar());
+        } else {
+            p.setUniform("uZNear", 0.1f);
+            p.setUniform("uZFar", 100.f);
+        }
+        p.setUniform("uFocusDist", dofFocusDist);
+        p.setUniform("uDofStrength", dofStrength);
+        p.setUniform("uMaxCoC", dofMaxCoC);
+        p.setUniform("uBokehAngle", 0.35f);
+        p.setUniform("uTexel", fuhgl::math::Vec2(width_ > 0 ? 1.f / static_cast<float>(width_) : 1.f,
+                                                  height_ > 0 ? 1.f / static_cast<float>(height_) : 1.f));
+    });
+}
+
+// G10 HUD: draws the debug panel (fps / frame ms / effect toggles) into the output.
+// Called from render() after the post graph (not as a graph pass — see createInternal).
+void DeferredRenderer::drawHud() {
+    if (!effectEnabled(Effect::DebugHud) || !hud_.isCreated()) return;
+    fuhgl::Framebuffer& out = impl_->output;
+    out.bind();
+    const fuhgl::gl::GLenum buf[1] = {fuhgl::gl::GL_COLOR_ATTACHMENT0};
+    fuhgl::gl::drawBuffers(1, buf);
+    fuhgl::gl::viewport(0, 0, width_, height_);
+    hud_.draw(width_, height_, lastFrameMs_, *this);
+    fuhgl::Framebuffer::unbind();
+}
+
+void DeferredRenderer::drawTonemap(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "dof"); // upscaled + G10 DoF
     ctx.bindInput(1, "gDepth"); // for the god-ray occlusion
     fuhgl::Framebuffer& out = impl_->output;
     out.bind();
@@ -915,6 +969,8 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::Particles, particlesEnabled_);
     gate(Effect::LightProbes, lightProbesEnabled_);
     gate(Effect::Decals, decalsEnabled_);
+    gate(Effect::Dof, dofEnabled_);
+    gate(Effect::DebugHud, hudEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -933,6 +989,8 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::Particles: particlesEnabled_ = on; break;
         case Effect::LightProbes: lightProbesEnabled_ = on; break;
         case Effect::Decals: decalsEnabled_ = on; break;
+        case Effect::Dof: dofEnabled_ = on; break;
+        case Effect::DebugHud: hudEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -961,6 +1019,8 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::Particles: return particlesEnabled_;
         case Effect::LightProbes: return lightProbesEnabled_;
         case Effect::Decals: return decalsEnabled_;
+        case Effect::Dof: return dofEnabled_;
+        case Effect::DebugHud: return hudEnabled_;
     }
     return false;
 }
@@ -968,6 +1028,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
 void DeferredRenderer::setAllEffects(bool on) {
     taaEnabled_ = upscaleEnabled_ = tonemapEnabled_ = iblEnabled_ = shadows_ = csmEnabled_ = on;
     pointShadows_ = contactShadowsEnabled = particlesEnabled_ = lightProbesEnabled_ = decalsEnabled_ = on;
+    dofEnabled_ = hudEnabled_ = on;
     applyCapabilities();
 }
 

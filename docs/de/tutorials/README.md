@@ -28,8 +28,12 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
 - [G8 — Deferred-Decals](g8_decals.md) — `render::Decal`-Boxen in den G-Buffer projiziert
   (Albedo + Normal), Material-ID-gegated, als G9-`DecalComponent`; Kugellöcher +
   Markierungen in [docs/images/](../../images/g8_decals_on.png)
+- [G10 — Quick-Upgrades](g10_upgrades.md) — DoF mit hexagonalem Bokeh-Kernel
+  (`Effect::Dof`), Mini-Debug-HUD auf FuhGLCore's TextRenderer (`Effect::DebugHud`),
+  perzeptueller CI-Screenshot-Diff (`docs/screenshot_diff.py`); Bilder in
+  [docs/images/](../../images/g10_dof_on.png)
 
-Als Nächstes: **G10** (Quick-Upgrades) / **G11** (Engine-Infrastruktur) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
+Als Nächstes: **G11** (Engine-Infrastruktur) / **G2** (Qt-Editor) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Voraussetzung für alle: Bibliothek bauen und `FuhGlGraphics::fuhglgraphics` linken
 (siehe [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).
