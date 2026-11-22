@@ -38,6 +38,9 @@ equals(FUHGLGRAPHICS_WITH_QT, 1) {
     QT += widgets openglwidgets
     CONFIG += automoc
     DEFINES += FUHGLGRAPHICS_WITH_QT=1
+    # Qt code lives only in editor/ (the core in src/ stays Qt-free); the header is picked
+    # up by the include/fuhglgraphics/*/*.hpp glob above and moc'd via automoc.
+    SOURCES += $$files($$PWD/editor/*.cpp)
 }
 
 gcc|clang {

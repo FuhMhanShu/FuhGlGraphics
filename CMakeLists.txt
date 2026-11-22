@@ -70,6 +70,12 @@ target_link_libraries(fuhglgraphics PUBLIC FuhGLCore::fuhglcore)
 if(FUHGLGRAPHICS_WITH_QT)
     find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGLWidgets)
     set_target_properties(fuhglgraphics PROPERTIES AUTOMOC ON)
+    # Qt code lives only in editor/ (the core in src/ stays Qt-free); the header is listed
+    # so AUTOMOC picks up its Q_OBJECT.
+    target_sources(fuhglgraphics PRIVATE
+        editor/gl_viewport_widget.cpp
+        include/fuhglgraphics/editor/gl_viewport_widget.hpp
+    )
     target_link_libraries(fuhglgraphics PUBLIC Qt6::Widgets Qt6::OpenGLWidgets)
     target_compile_definitions(fuhglgraphics PUBLIC FUHGLGRAPHICS_WITH_QT=1)
 endif()

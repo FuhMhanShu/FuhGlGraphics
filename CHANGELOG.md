@@ -46,6 +46,16 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G2 editor building block — GL viewport widget** (`fuhglgraphics::editor::GlViewportWidget`,
+  `include/fuhglgraphics/editor/gl_viewport_widget.hpp` + `editor/gl_viewport_widget.cpp`,
+  built only with `FUHGLGRAPHICS_WITH_QT=ON`): minimal `QOpenGLWidget` that owns the GL context
+  lifecycle (initializeGL/resizeGL/paintGL delegated to injected handlers — MVC view) plus
+  on-demand rendering (`requestRender()` dirty flag), a `setMaxFps()` frame-rate limiter
+  (paced `QTimer`), VSync via swap interval, MSAA + requested GL version on the surface format,
+  device-pixel resize reporting, smoothed fps/frame-time stats via `frameRendered()` (G10 HUD
+  input), `grabFrame()` screenshots, and `glInitialized()` / `glAboutToBeDestroyed()` lifecycle
+  signals. PIMPL, no exceptions (bool + log). Unit test `tests/test_editor_widget.cpp`
+  (offscreen, label `unit`, WITH_QT only).
 - **G3 — deferred renderer** (`fuhglgraphics::render::DeferredRenderer`,
   `include/fuhglgraphics/render/deferred_renderer.hpp`, `src/render/`): extended G-buffer
   (albedo+normal, metallic/roughness/AO, HDR emissive, motion vectors, material ID — layout
