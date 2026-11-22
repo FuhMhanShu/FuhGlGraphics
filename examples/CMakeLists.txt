@@ -23,3 +23,8 @@ target_link_libraries(fuhglgraphics_gltf_demo PRIVATE fuhglgraphics)
 # smoke plume, pollen motes — headless to PNG.
 add_executable(fuhglgraphics_particles_screenshot particles_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_particles_screenshot PRIVATE fuhglgraphics)
+
+# G6 animation demo: skeletal arm (CPU skinning with the joint palette) + waving flag
+# (TRS clip) through the G3 renderer, headless to PNG.
+add_executable(fuhglgraphics_animation_screenshot animation_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_animation_screenshot PRIVATE fuhglgraphics)

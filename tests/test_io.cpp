@@ -80,7 +80,7 @@ void checkQuadAsset(const GltfAsset& a, const char* what) {
     const fuhgl::render::MeshData& d = mesh.primitives[0];
     CHECK(d.vertexCount() == 4);
     CHECK(d.indices.size() == 6);
-    CHECK(d.indices[0] == 0 && d.indices[1] == 1 && d.indices[2] == 2 && d.indices[5] == 3);
+    CHECK(d.indices[0] == 0 && d.indices[1] == 2 && d.indices[2] == 1 && d.indices[5] == 2); // CCW from +Y
     // vertex 2 = (1, 0, 1), normal (0,1,0), uv (1,1)
     const float* v2 = &d.vertices[2 * 11];
     CHECK_NEAR(v2[0], 1.f, 1e-6);
@@ -128,6 +128,21 @@ void testGltf() {
     GltfAsset b;
     CHECK(loadGltf((dir / "quad.glb").string(), b, &err));
     checkQuadAsset(b, ".glb container");
+
+    // G6: animations + skins parsed from the fixture
+    CHECK(a.animations.size() == 1 && a.animations[0].name == "spin");
+    if (a.animations.size() == 1 && a.animations[0].channels.size() == 1) {
+        const auto& ch = a.animations[0].channels[0];
+        CHECK(ch.node == 1 && ch.path == 1 && ch.times.size() == 2 && ch.values.size() == 8);
+        CHECK_NEAR(ch.times[1], 1.f, 1e-6);
+    } else {
+        CHECK(a.animations.size() == 1 && a.animations[0].channels.size() == 1);
+    }
+    CHECK(a.skins.size() == 1 && a.skins[0].joints.size() == 2 && a.skins[0].inverseBindMatrices.size() == 2);
+    CHECK(a.nodes.size() == 2 && a.nodes[1].skin == 0);
+    CHECK(a.meshes.size() == 1 && a.meshes[0].primitiveJoints.size() == 1 &&
+          a.meshes[0].primitiveJoints[0].size() == 16);
+    CHECK(a.meshes[0].primitiveWeights.size() == 1 && a.meshes[0].primitiveWeights[0].size() == 16);
 
     // error handling: missing file, garbage, bad json
     GltfAsset c;

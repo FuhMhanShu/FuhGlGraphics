@@ -19,6 +19,8 @@ include/fuhglgraphics/   public API (headers)
   io/                     G4 glTF 2.0 loader (implemented: json.hpp, gltf.hpp)
   particles/              G5 GPU particle system (implemented: particle_system.hpp;
                           compute on GL >= 4.3, CPU fallback below)
+  anim/                   G6 animation/skinning (implemented: animation.hpp;
+                          AnimationPlayer + Skeleton + CPU skinning)
   scene/                  G9 scene graph (implemented: component.hpp, effects.hpp,
                           node.hpp, scene.hpp)
   editor/                 G2+G11 minimal Qt6 editor (planned, WITH_QT only)
@@ -27,13 +29,16 @@ src/                      implementations (PIMPL targets)
   render/                 G3 implementation + GLSL (deferred_renderer.cpp, deferred_glsl.hpp)
   io/                     G4 implementation (json.cpp, gltf.cpp)
   particles/              G5 implementation (particle_system.cpp, particle_glsl.hpp)
+  anim/                   G6 implementation (animation.cpp)
   scene/                  G9 implementation (component.cpp, effects.cpp, node.cpp, scene.cpp)
 examples/                 screenshot tools (render demo scenes headless to PNG):
                           screenshot/ = G3 demo (flat SceneView), scene_screenshot/ = G9
                           demo (scene graph + per-node effects), landscape_screenshot/ =
                           G9 landscape (terrain + trees, cloud sky cubemap, sun, fog,
                           god rays), gltf_demo/ = G4 glTF model demo (--model x.glb
-                          --out shot.png, headless PNG via the G3 renderer)
+                          --out shot.png, headless PNG via the G3 renderer),
+                          animation_screenshot/ = G6 demo (skinned robot arm + waving
+                          flag, --time 0.7 --frames 16 --no-shadows --no-rays)
 tests/                    unit tests + gl smoke tests (own mini runner, no framework)
 cmake/                    package config template
 FuhGlGraphics.pro         qmake project (static library, alternative to CMake)
@@ -114,9 +119,13 @@ nothing on some Qt6 qmake versions).
   node world transforms on draw items, material-ID readback, material presets, lit pixels).
   G5: `gl_smoke_particles.cpp` (ParticleSystem create/update on GL >= 4.3 compute or CPU
   fallback, alive count, renderer particles pass brightens the emitter region).
+  G6: `gl_smoke_anim.cpp` (fixture .glb with animation + skin → player/skeletons/
+  skinnedMeshes, CPU-skinned vertex check, rendered frames at t=0 vs t=1 differ).
   Unit tests for the pure parts live in `tests/test_render.cpp` / `tests/test_scene.cpp` /
-  `tests/test_io.cpp` (JSON, base64, glTF fixtures; PNG decode roundtrip when `WITH_QT=ON`) /
-  `tests/test_particles.cpp` (CpuSim emit/integrate/determinism).
+  `tests/test_io.cpp` (JSON, base64, glTF fixtures incl. animations/skins/JOINTS_0/
+  WEIGHTS_0; PNG decode roundtrip when `WITH_QT=ON`) / `tests/test_particles.cpp`
+  (CpuSim emit/integrate/determinism) / `tests/test_anim.cpp` (channel sampling lerp/
+  slerp/clamp, loop modes, applyTo node map, skinMeshCpu).
 - `examples/screenshot` — renders the G3 demo scene headless into a PNG;
   `examples/scene_screenshot` — the G9 demo scene (scene graph) with CLI effect switches;
   `examples/landscape_screenshot` — the G9 landscape (vegetation, cloud sky cubemap,
@@ -124,7 +133,9 @@ nothing on some Qt6 qmake versions).
   `examples/gltf_demo` — G4: renders any glTF 2.0 model (`--model x.glb --out shot.png`,
   `--no-shadows/--no-ibl/--no-rays/--no-sky/--no-tex`) headless into a PNG;
   `examples/particles_screenshot` — G5: campfire/smoke/pollen particle demo
-  (`--kind fire|smoke|pollen|all`, `--no-particles/--no-shadows/--no-rays`) headless to PNG
+  (`--kind fire|smoke|pollen|all`, `--no-particles/--no-shadows/--no-rays`) headless to PNG;
+  `examples/animation_screenshot` — G6: skinned robot arm + waving flag
+  (`--time 0.7`, `--frames 16`, `--no-shadows/--no-rays`) headless to PNG
   (all used for the reference images in `docs/images/`, locally and by the CI
   `docs-screenshots` job).
 

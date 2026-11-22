@@ -376,6 +376,25 @@ bool parseMeshPrimitive(LoadContext& ctx, const Json& prim, GltfMesh& meshOut) {
         if (!readAccessorFloats(ctx, ti->asInt(), uv, uvComps)) return false;
     if (const Json* ci = attrs.find("COLOR_0"))
         if (!readAccessorFloats(ctx, ci->asInt(), col, colComps)) return false;
+    // G6: skinning attributes JOINTS_0 (u8/u16, 4 per vertex) + WEIGHTS_0 (float vec4)
+    std::vector<float> jointsF, weights;
+    int jointsComps = 0, weightsComps = 0;
+    if (const Json* ji = attrs.find("JOINTS_0")) {
+        if (!readAccessorFloats(ctx, ji->asInt(), jointsF, jointsComps) || jointsComps != 4)
+            ctx.log("JOINTS_0 with != 4 components ignored");
+        else {
+            std::vector<std::uint8_t> j(n * 4);
+            for (std::size_t i = 0; i < n * 4 && i < jointsF.size(); ++i)
+                j[i] = static_cast<std::uint8_t>(jointsF[i]);
+            meshOut.primitiveJoints.push_back(std::move(j));
+        }
+    }
+    if (const Json* wi = attrs.find("WEIGHTS_0")) {
+        if (!readAccessorFloats(ctx, wi->asInt(), weights, weightsComps) || weightsComps != 4)
+            ctx.log("WEIGHTS_0 with != 4 components ignored");
+        else
+            meshOut.primitiveWeights.push_back(weights);
+    }
 
     std::vector<unsigned int> indices;
     if (const Json* ii = prim.find("indices")) {
@@ -423,6 +442,9 @@ bool parseMeshPrimitive(LoadContext& ctx, const Json& prim, GltfMesh& meshOut) {
     data.indices = std::move(indices);
     meshOut.primitives.push_back(std::move(data));
     meshOut.primitiveMaterials.push_back(prim.at("material").asInt(-1));
+    // keep the skin attribute arrays parallel to primitives
+    while (meshOut.primitiveJoints.size() < meshOut.primitives.size()) meshOut.primitiveJoints.push_back({});
+    while (meshOut.primitiveWeights.size() < meshOut.primitives.size()) meshOut.primitiveWeights.push_back({});
     // bounds from the POSITION accessor min/max (or computed)
     const Json& accessors = ctx.root->at("accessors");
     const Json& posAcc = accessors[static_cast<std::size_t>(posIdx->asInt())];
@@ -453,6 +475,7 @@ void parseNodes(LoadContext& ctx) {
         GltfNode out;
         out.name = nd.at("name").asString();
         out.mesh = nd.at("mesh").asInt(-1);
+        out.skin = nd.at("skin").asInt(-1); // G6
         out.translation = vec3Of(nd.at("translation"), {0.f, 0.f, 0.f});
         const Json& rot = nd.at("rotation");
         if (rot.isArray() && rot.arr.size() == 4)
@@ -498,6 +521,73 @@ void parseScenes(LoadContext& ctx) {
             ctx.asset.scenes.push_back(std::move(roots));
         }
     ctx.asset.defaultScene = ctx.root->at("scene").asInt(-1);
+}
+
+// G6: animations — channels (node + path) + samplers (input times / output values)
+void parseAnimations(LoadContext& ctx) {
+    const Json& anims = ctx.root->at("animations");
+    if (!anims.isArray()) return;
+    const Json& samplersOf = ctx.root->at("accessors"); // accessors shared
+    (void)samplersOf;
+    for (std::size_t i = 0; i < anims.size(); ++i) {
+        const Json& a = anims[i];
+        GltfAnimation anim;
+        anim.name = a.at("name").asString("anim" + std::to_string(i));
+        const Json& samplers = a.at("samplers");
+        const Json& channels = a.at("channels");
+        if (!channels.isArray()) {
+            ctx.asset.animations.push_back(std::move(anim));
+            continue;
+        }
+        for (const Json& ch : channels.arr) {
+            GltfAnimChannel c;
+            const Json& target = ch.at("target");
+            c.node = target.at("node").asInt(-1);
+            const std::string path = target.at("path").asString("");
+            c.path = path == "translation" ? 0 : path == "rotation" ? 1 : path == "scale" ? 2 : -1;
+            const int samp = ch.at("sampler").asInt(-1);
+            if (samp >= 0 && samplers.isArray() && static_cast<std::size_t>(samp) < samplers.size()) {
+                const Json& s = samplers[static_cast<std::size_t>(samp)];
+                c.interpolation = s.at("interpolation").asString("LINEAR") == "LINEAR" ? 0 : 1;
+                std::vector<float> t;
+                int tc = 0;
+                if (readAccessorFloats(ctx, s.at("input").asInt(-1), t, tc) && tc == 1) c.times = std::move(t);
+                std::vector<float> v;
+                int vc = 0;
+                if (readAccessorFloats(ctx, s.at("output").asInt(-1), v, vc)) c.values = std::move(v);
+            }
+            if (c.node >= 0 && c.path >= 0) anim.channels.push_back(std::move(c));
+        }
+        ctx.asset.animations.push_back(std::move(anim));
+    }
+}
+
+// G6: skins — joints (node indices) + inverseBindMatrices accessor (mat4 per joint)
+void parseSkins(LoadContext& ctx) {
+    const Json& skins = ctx.root->at("skins");
+    if (!skins.isArray()) return;
+    for (std::size_t i = 0; i < skins.size(); ++i) {
+        const Json& s = skins[i];
+        GltfSkin skin;
+        skin.name = s.at("name").asString("skin" + std::to_string(i));
+        skin.skeleton = s.at("skeleton").asInt(-1);
+        const Json& joints = s.at("joints");
+        if (joints.isArray())
+            for (const Json& j : joints.arr) skin.joints.push_back(j.asInt(-1));
+        const int ibm = s.at("inverseBindMatrices").asInt(-1);
+        if (ibm >= 0) {
+            std::vector<float> raw;
+            int comps = 0;
+            if (readAccessorFloats(ctx, ibm, raw, comps) && comps == 16) {
+                for (std::size_t j = 0; j + 15 < raw.size(); j += 16) {
+                    fuhgl::math::Mat4 m;
+                    for (int k = 0; k < 16; ++k) m.m[k] = raw[j + static_cast<std::size_t>(k)];
+                    skin.inverseBindMatrices.push_back(m);
+                }
+            }
+        }
+        ctx.asset.skins.push_back(std::move(skin));
+    }
 }
 
 } // namespace
@@ -614,6 +704,8 @@ bool loadGltf(const std::string& path, GltfAsset& out, std::string* err) {
     parseMeshes(ctx);
     parseNodes(ctx);
     parseScenes(ctx);
+    parseAnimations(ctx); // G6
+    parseSkins(ctx);      // G6
     return true;
 }
 
@@ -690,10 +782,12 @@ bool instantiateGltf(const GltfAsset& asset, fuhglgraphics::scene::Scene& scene,
 
     // --- nodes -> scene::Node tree ---
     std::uint32_t runningMatId = 1;
+    gpu.nodePtrs.assign(asset.nodes.size(), nullptr);
     std::function<void(int, Node*)> buildNode = [&](int ni, Node* par) {
         if (ni < 0 || ni >= static_cast<int>(asset.nodes.size())) return;
         const GltfNode& gn = asset.nodes[static_cast<std::size_t>(ni)];
         Node& n = par->createChild(gn.name.empty() ? "node" : gn.name);
+        gpu.nodePtrs[static_cast<std::size_t>(ni)] = &n; // G6
         n.translation = gn.translation;
         n.rotation = gn.rotation;
         n.scale = gn.scale;
@@ -717,6 +811,65 @@ bool instantiateGltf(const GltfAsset& asset, fuhglgraphics::scene::Scene& scene,
         for (int rootIdx : asset.scenes[static_cast<std::size_t>(sceneIdx)]) buildNode(rootIdx, parent);
     else if (!asset.scenes.empty())
         for (int rootIdx : asset.scenes.front()) buildNode(rootIdx, parent);
+
+    // --- G6: animations -> AnimationPlayer clips (node index -> node name) ---
+    gpu.player = anim::AnimationPlayer{};
+    for (const GltfAnimation& ga : asset.animations) {
+        anim::AnimationClip clip;
+        clip.name = ga.name;
+        float dur = 0.f;
+        for (const GltfAnimChannel& ch : ga.channels) {
+            if (ch.node < 0 || ch.node >= static_cast<int>(asset.nodes.size())) continue;
+            anim::TrsChannel tc;
+            tc.nodeName = asset.nodes[static_cast<std::size_t>(ch.node)].name;
+            tc.times = ch.times;
+            const int comps = ch.path == 1 ? 4 : 3;
+            for (std::size_t k = 0; k + static_cast<std::size_t>(comps) <= ch.values.size();
+                 k += static_cast<std::size_t>(comps)) {
+                if (ch.path == 0)
+                    tc.translations.push_back({ch.values[k], ch.values[k + 1], ch.values[k + 2]});
+                else if (ch.path == 1)
+                    tc.rotations.push_back(fuhgl::math::normalize(fuhgl::math::Quat{ch.values[k], ch.values[k + 1],
+                                                                                       ch.values[k + 2], ch.values[k + 3]}));
+                else
+                    tc.scales.push_back({ch.values[k], ch.values[k + 1], ch.values[k + 2]});
+            }
+            if (!tc.times.empty()) dur = std::max(dur, tc.times.back());
+            clip.channels.push_back(std::move(tc));
+        }
+        clip.duration = dur;
+        gpu.player.addClip(clip);
+    }
+
+    // --- G6: skins -> Skeleton (joint node ptrs + IBMs) + skinned-mesh records ---
+    gpu.skeletons.clear();
+    gpu.skinnedMeshes.clear();
+    for (std::size_t si = 0; si < asset.skins.size(); ++si) {
+        const GltfSkin& gs = asset.skins[si];
+        anim::Skeleton sk;
+        sk.jointNodes = gs.joints;
+        sk.inverseBindMatrices = gs.inverseBindMatrices;
+        gpu.skeletons.push_back(std::move(sk));
+    }
+    for (std::size_t ni = 0; ni < asset.nodes.size(); ++ni) {
+        const GltfNode& gn = asset.nodes[ni];
+        if (gn.mesh < 0 || gn.skin < 0 || gn.mesh >= static_cast<int>(asset.meshes.size()) ||
+            gn.skin >= static_cast<int>(asset.skins.size()))
+            continue;
+        const GltfMesh& gm = asset.meshes[static_cast<std::size_t>(gn.mesh)];
+        for (std::size_t pi = 0; pi < gm.primitives.size(); ++pi) {
+            if (pi >= gm.primitiveJoints.size() || gm.primitiveJoints[pi].empty()) continue;
+            GltfGpuResources::SkinnedMesh sm;
+            sm.node = static_cast<int>(ni);
+            sm.skin = gn.skin;
+            sm.primitive = pi;
+            sm.base = gm.primitives[pi];
+            sm.weights.joints = gm.primitiveJoints[pi];
+            sm.weights.weights = pi < gm.primitiveWeights.size() ? gm.primitiveWeights[pi]
+                                                                  : std::vector<float>{};
+            gpu.skinnedMeshes.push_back(std::move(sm));
+        }
+    }
     return true;
 }
 

@@ -23,6 +23,8 @@
 
 #include "json.hpp"
 
+#include "../anim/animation.hpp"
+
 #include <fuhgl/gl/texture.hpp>
 #include <fuhgl/math.hpp>
 #include <fuhgl/render/material.hpp>
@@ -74,11 +76,40 @@ struct GltfMaterial {
 };
 
 /// @brief One glTF mesh: one MeshData per primitive plus the primitive's material index.
+/// G6: skinned primitives additionally carry JOINTS_0/WEIGHTS_0 per primitive and the
+/// mesh's skin index.
 struct GltfMesh {
     std::string name;
     fuhgl::math::Vec3 boundsMin{0.f, 0.f, 0.f}, boundsMax{0.f, 0.f, 0.f}; ///< POSITION accessor min/max
     std::vector<fuhgl::render::MeshData> primitives;
     std::vector<int> primitiveMaterials; ///< parallel to primitives (-1 = default material)
+    int skin = -1;                                           ///< G6: index into GltfAsset::skins
+    std::vector<std::vector<std::uint8_t>> primitiveJoints;  ///< G6: 4 joint indices per vertex
+    std::vector<std::vector<float>> primitiveWeights;        ///< G6: 4 weights per vertex
+};
+
+/// @brief One glTF animation channel (G6): node + path (translation/rotation/scale) with
+/// input times + output values (3 / 4 / 3 floats per keyframe).
+struct GltfAnimChannel {
+    int node = -1;
+    int path = 0; ///< 0 = translation, 1 = rotation, 2 = scale
+    std::vector<float> times;
+    std::vector<float> values;
+    int interpolation = 0; ///< 0 = LINEAR (only LINEAR is sampled; STEP snaps, SLERP slerps)
+};
+
+/// @brief One glTF animation (G6).
+struct GltfAnimation {
+    std::string name;
+    std::vector<GltfAnimChannel> channels;
+};
+
+/// @brief One glTF skin (G6): joint node indices + inverse bind matrices.
+struct GltfSkin {
+    std::string name;
+    std::vector<int> joints;
+    std::vector<fuhgl::math::Mat4> inverseBindMatrices;
+    int skeleton = -1;
 };
 
 /// @brief One glTF node (TRS; a "matrix" node is decomposed into TRS at load time).
@@ -88,6 +119,7 @@ struct GltfNode {
     fuhgl::math::Quat rotation{}; ///< identity by default
     fuhgl::math::Vec3 scale{1.f, 1.f, 1.f};
     int mesh = -1;
+    int skin = -1; ///< G6: index into GltfAsset::skins when the mesh is skinned
     std::vector<int> children;
 };
 
@@ -99,6 +131,8 @@ struct GltfAsset {
     std::vector<GltfTexture> textures;
     std::vector<GltfNode> nodes;
     std::vector<std::vector<int>> scenes; ///< root node indices per scene
+    std::vector<GltfAnimation> animations; ///< G6
+    std::vector<GltfSkin> skins;           ///< G6
     int defaultScene = -1;
     std::string generator;
     std::string baseDir; ///< directory of the .gltf/.glb file (external buffers/images resolve against it)
@@ -118,6 +152,18 @@ struct GltfGpuResources {
     std::vector<fuhgl::render::Mesh> meshes;        ///< one Mesh per (glTF mesh, primitive)
     std::vector<fuhgl::render::Material> materials; ///< one preset Material per glTF material
     std::vector<fuhgl::Texture> textures;           ///< decoded images as GL textures
+    // --- G6: animation ---
+    anim::AnimationPlayer player;              ///< clips parsed from animations[] (node names)
+    std::vector<anim::Skeleton> skeletons;     ///< one per skin (palette filled per frame)
+    std::vector<scene::Node*> nodePtrs;        ///< glTF node index -> instantiated scene::Node
+    struct SkinnedMesh {
+        int node = -1;                          ///< glTF node index carrying the skinned mesh
+        int skin = -1;                          ///< index into skeletons
+        std::size_t primitive = 0;
+        fuhgl::render::MeshData base;           ///< bind-pose MeshData
+        anim::SkinWeights weights;              ///< JOINTS_0 / WEIGHTS_0
+    };
+    std::vector<SkinnedMesh> skinnedMeshes;    ///< primitives with JOINTS_0/WEIGHTS_0 (CPU skinning)
 };
 
 /// @brief Instantiates the asset's default scene into the G9 scene graph: one scene::Node

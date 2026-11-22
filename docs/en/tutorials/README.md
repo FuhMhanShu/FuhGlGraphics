@@ -18,8 +18,12 @@ One small tutorial per feature. Each is self-contained: goal → code → result
   GL >= 4.3, CPU fallback) as a G9 `ParticleEmitterComponent`, rendered in the G3
   "particles" post pass; campfire/smoke/pollen screenshots in
   [docs/images/](../../images/g5_particles_fire.png)
+- [G6 — Animation & skinning](g6_animation.md) — `anim::AnimationPlayer` (TRS clips,
+  Once/Loop/PingPong) + `anim::Skeleton` with CPU skinning (`skinMeshCpu`), glTF
+  animations/skins via the G4 loader, G9 `AnimationComponent`; skinned robot-arm +
+  waving-flag screenshots in [docs/images/](../../images/g6_animation_bend.png)
 
-Next: **G6** (animation/skinning) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
+Next: **G7** (light probes / lightmapping) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Prerequisite for all: build the library and link `FuhGlGraphics::fuhglgraphics`
 (see [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).

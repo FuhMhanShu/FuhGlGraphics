@@ -7,6 +7,7 @@
 /// ID), LightComponent, CameraComponent. Decal / particle-emitter / probe components attach
 /// the same way once G8 / G5 / G7 land.
 
+#include "../anim/animation.hpp"
 #include "../particles/particle_system.hpp"
 
 #include <fuhgl/cam/camera.hpp>
@@ -113,6 +114,15 @@ public:
     particles::ParticleSystem system;     ///< create(maxParticles, config) once with a GL context
 
     void fill(const Node& node, FrameData& frame) const override; // defined in component.cpp
+};
+
+/// @brief G6 animation component: owns an anim::AnimationPlayer (clips). Per frame the app
+/// calls `player.update(dt)` and `player.applyTo(scene)` (or applyTo(nodeMap)) before
+/// Scene::fillFrame()/updateWorldTransforms(). For glTF assets, io::instantiateGltf() fills
+/// `gpu.player` with the parsed animation clips.
+class AnimationComponent : public Component {
+public:
+    anim::AnimationPlayer player;
 };
 
 } // namespace fuhglgraphics::scene

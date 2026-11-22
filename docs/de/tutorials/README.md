@@ -17,8 +17,12 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
 - [G5 — GPU-Partikel](g5_particles.md) — `particles::ParticleSystem` (Compute ab GL 4.3,
   CPU-Fallback) als G9-`ParticleEmitterComponent`, gerendert im G3-"particles"-Post-Pass;
   Campfire/Rauch/Pollen-Bilder in [docs/images/](../../images/g5_particles_fire.png)
+- [G6 — Animation & Skinning](g6_animation.md) — `anim::AnimationPlayer` (TRS-Clips,
+  Once/Loop/PingPong) + `anim::Skeleton` mit CPU-Skinning (`skinMeshCpu`), glTF-Animationen/
+  Skins über den G4-Loader, G9-`AnimationComponent`; geskinnter Roboterarm + winkende
+  Flagge in [docs/images/](../../images/g6_animation_bend.png)
 
-Als Nächstes: **G6** (Animation/Skinning) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
+Als Nächstes: **G7** (Light-Probes / Lightmapping) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Voraussetzung für alle: Bibliothek bauen und `FuhGlGraphics::fuhglgraphics` linken
 (siehe [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).

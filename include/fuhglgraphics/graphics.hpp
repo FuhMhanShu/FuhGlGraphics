@@ -8,6 +8,7 @@
 //   io/       G4   glTF 2.0 asset loading (implemented: json.hpp, gltf.hpp)
 //   scene/    G9   scene graph + components + per-node effects/instancing (implemented)
 //   particles/ G5  GPU particle system, compute on GL >= 4.3 + CPU fallback (implemented)
+//   anim/     G6   keyframe AnimationPlayer + skeletal skinning (CPU palette) (implemented)
 //   editor/   G2+G11  minimal Qt6 editor (only built with FUHGLGRAPHICS_WITH_QT=1)
 // Additionally planned: G6 animation/skinning, G7 light probes, G8 decals,
 // G10 quick upgrades, G11 engine infrastructure.
@@ -30,3 +31,5 @@
 #include <fuhglgraphics/io/gltf.hpp>
 
 #include <fuhglgraphics/particles/particle_system.hpp>
+
+#include <fuhglgraphics/anim/animation.hpp>

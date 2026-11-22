@@ -108,8 +108,37 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   em.system.update(dt);
   renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems);
   ```
-- **Effects (G6–G8, G10).** skeletal animation,
-  SH light probes / lightmaps, deferred decals, plus quick upgrades: MSAA, CSM
+- **Animation & skinning (G6).** `fuhglgraphics::anim` (new module, `anim/animation.hpp`):
+  `AnimationClip` (TRS keyframe channels per node name, sampled with lerp + slerp),
+  `AnimationPlayer` (`play(name, LoopMode::Once|Loop|PingPong, speed)`, `update(dt)`,
+  `applyTo(scene)` writes the sampled TRS into the named nodes — call it before
+  `Scene::fillFrame()`), and skeletal skinning on the CPU (the requirement allows
+  "CPU or GPU"): `Skeleton` (joint nodes + inverse bind matrices,
+  `updatePalette(jointNodePtrs)` → palette = jointWorld * inverseBind) plus
+  `skinMeshCpu()` deforms a bind-pose mesh (+ `SkinWeights`) into a dynamic mesh per
+  frame. The G4 glTF loader parses `animations[]`/`skins[]` (incl. JOINTS_0/WEIGHTS_0)
+  and `io::instantiateGltf()` maps them onto `GltfGpuResources::{player, skeletons,
+  nodePtrs, skinnedMeshes}`. G9 integration: `scene::AnimationComponent` holds a player.
+  Quick start: [G6 tutorial](en/tutorials/g6_animation.md), demo
+  `examples/animation_screenshot`, screenshots: [arm bent](images/g6_animation_bend.png),
+  [arm straight](images/g6_animation_straight.png),
+  [no effects](images/g6_animation_nofx.png).
+
+  ```cpp
+  fuhglgraphics::anim::AnimationPlayer player;
+  player.addClip(clip);
+  player.play("bend", fuhglgraphics::anim::LoopMode::PingPong);
+  // per frame:
+  player.update(dt);
+  player.applyTo(scene);                    // TRS into the named nodes
+  scene.fillFrame(frame, nullptr, 1280, 720);
+  skeleton.updatePalette(jointNodePtrs);    // palette = jointWorld * inverseBind
+  fuhglgraphics::anim::skinMeshCpu(base, weights, skeleton.palette, skinned);
+  skinnedMesh.setMeshData(skinned);         // dynamic mesh, rendered by G3
+  renderer.render(frame.view, &frame.materialIds, &frame.castShadow);
+  ```
+- **Effects (G7, G8, G10).** SH light probes / lightmaps, deferred decals, plus quick
+  upgrades: MSAA, CSM
   hardening, temporal upscaling, bokeh DoF, screenshot diffs in CI, debug HUD.
 - **Infrastructure (G11).** On-disk asset cache keyed by content hash, JSON config system
   (same minimal in-repo JSON parser as the glTF loader), minimal Qt editor.

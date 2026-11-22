@@ -141,3 +141,26 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   New tool `examples/particles_screenshot` (`--kind fire|smoke|pollen|all`) with reference
   images `docs/images/g5_particles_{fire,smoke,pollen,all_nofx}.png`. G5 tutorial en/de;
   USER_GUIDE/REQUIREMENTS/READMEs/DEVELOPMENT updated; CI docs-screenshots renders them.
+- **G6 — animation/skinning** (`fuhglgraphics::anim`, `include/fuhglgraphics/anim/animation.hpp`,
+  `src/anim/animation.cpp`): `AnimationClip`/`TrsChannel` (keyframe channels per node
+  name; translation/scale lerp, rotation `fuhgl::math::slerp`), `AnimationPlayer`
+  (`addClip`, `play(name, LoopMode::Once|Loop|PingPong, speed)`, `update(dt)`, `applyTo(scene)`
+  / node-map overload — writes the sampled TRS into the named nodes; PingPong mirrors via
+  the speed sign), `Skeleton` (joint node indices + inverse bind matrices,
+  `updatePalette(jointNodePtrs)` → palette = jointWorld * IBM) and CPU skinning
+  `skinMeshCpu(base, SkinWeights, palette, out)` (the requirement allows "CPU or GPU";
+  a GPU matrix-palette SSBO in the G3 G-buffer pass on GL >= 4.3 is future work).
+  G4 extension: glTF `animations[]` (channels/samplers → clips) and `skins[]` (joints +
+  inverseBindMatrices) plus JOINTS_0/WEIGHTS_0 on primitives are parsed into
+  `GltfAsset::{animations, skins, ...}`; `instantiateGltf()` maps them onto
+  `GltfGpuResources::{player, skeletons, nodePtrs, skinnedMeshes}`. G9:
+  `scene::AnimationComponent` holds an `anim::AnimationPlayer`.
+  Tests: `tests/test_anim.cpp` (unit: sampling, loop modes, applyTo, skinMeshCpu) +
+  `tests/test_io.cpp` extended (fixture now carries a clip + skin; index winding fixed to
+  CCW) + `tests/gl_smoke_anim.cpp` (gl_context: fixture .glb → player/skeletons/
+  skinnedMeshes, CPU-skinned vertex check, rendered frames at t=0 vs t=1 differ).
+  New tool `examples/animation_screenshot` (`--out shot.png [--time 0.7] [--frames 16]
+  [--no-shadows] [--no-rays] ...`): 2-joint skinned robot arm (CPU palette) + waving flag,
+  reference images `docs/images/g6_animation_{bend,straight,nofx}.png`. G6 tutorial
+  en/de; USER_GUIDE/REQUIREMENTS/READMEs/DEVELOPMENT updated; CI docs-screenshots renders
+  them.

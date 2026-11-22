@@ -47,8 +47,13 @@ in [docs/images/](docs/images/g4_gltf_ship.png) — and **G5** — GPU particles
 (`particles::ParticleSystem`, compute on GL >= 4.3 with CPU fallback) as a G9
 `ParticleEmitterComponent`, rendered in the G3 "particles" post pass — see the
 [G5 tutorial](docs/en/tutorials/g5_particles.md) and screenshots in
-[docs/images/](docs/images/g5_particles_fire.png).
-Next up: **G6** (animation/skinning).
+[docs/images/](docs/images/g5_particles_fire.png) — and **G6** — animation/skinning:
+`fuhglgraphics::anim::AnimationPlayer` (TRS clips, Once/Loop/PingPong) +
+`anim::Skeleton` with CPU skinning (`skinMeshCpu`), glTF animations/skins via the G4
+loader, as a G9 `AnimationComponent` — see the
+[G6 tutorial](docs/en/tutorials/g6_animation.md) and screenshots in
+[docs/images/](docs/images/g6_animation_bend.png).
+Next up: **G7** (light probes / lightmapping).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.
 
