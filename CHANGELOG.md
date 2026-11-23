@@ -7,6 +7,13 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Re-compressed all 86 reference screenshots in `docs/images/` losslessly with
+  `docs/compress_png.py` (per-row filter + zlib 9): 57.5 MB -> 18.1 MB, pixels byte-identical
+  (verified by SHA-256 over decoded RGBA and by re-rendering G24/G27/G28/G29 references at
+  PSNR >= 28 dB), so the CI perceptual diff is unaffected.
+
 ### Added
 
 - **G28 — Voronoi diagrams** (`include/fuhglgraphics/procedural/voronoi.hpp`,
