@@ -261,9 +261,16 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON
   project files, MCP stdio chat). Implementation in phases P1–P5 after review.
-- **G24–G29 — procedural generation algorithms** — planned (new `procedural/` module,
+- **G24 — procedural noise module (CPU)** — implemented: `procedural::Noise` in
+  `include/fuhglgraphics/procedural/noise.hpp` (header-only value type, deterministic per
+  seed): value noise 2D/3D, Perlin 2D/3D (delegates to `fuhgl::math::Noise`), Simplex
+  2D/3D (Gustavson), fBm / ridged / turbulence over a selectable base, domain warp
+  (`warp2`/`warp3`), `height2` terrain field. See `tests/test_procedural_noise.cpp`,
+  `examples/noise_screenshot`, `docs/images/g24_noise_*.png` and the
+  [G24 tutorial](en/tutorials/g24_procedural_noise.md).
+- **G25–G29 — procedural generation algorithms** — planned (same `procedural/` module,
   one feature per PR with unit test + gl_smoke + example screenshot + tutorial en/de):
-  G24 seeded CPU noise (value/Perlin/Simplex 2D+3D, fBm/ridged), G25 marching cubes
-  (chunked, `MeshData` out), G26 L-systems (3D turtle → `MeshData`), G27 wave function
-  collapse (tiled, edge tags + rotations, backtracking → scene placements), G28 2D
-  Voronoi cells + extrusion meshes, G29 SDF/3D fractals (Mandelbulb) meshed via G25.
+  G25 marching cubes (chunked, `MeshData` out), G26 L-systems (3D turtle → `MeshData`),
+  G27 wave function collapse (tiled, edge tags + rotations, backtracking → scene
+  placements), G28 2D Voronoi cells + extrusion meshes, G29 SDF/3D fractals
+  (Mandelbulb) meshed via G25.

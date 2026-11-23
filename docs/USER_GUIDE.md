@@ -261,6 +261,14 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   demo `examples/tonemap_screenshot`, screenshots: [ACES](images/g23_tonemap_aces.png),
   [Reinhard](images/g23_tonemap_reinhard.png), [Uncharted2](images/g23_tonemap_uncharted2.png),
   [linear](images/g23_tonemap_linear.png), [ACES + bloom thr 4](images/g23_tonemap_bloomthr4.png).
+- **Procedural noise (G24).** `procedural::Noise` (`procedural/noise.hpp`, header-only,
+  deterministic per seed) provides value/Perlin/Simplex noise in 2D+3D, fBm/ridged/turbulence
+  (`Noise::Base` selects the base) and domain warp; `height2()` returns a [0, 1] terrain
+  field. Use it to carve `TerrainComponent::heights` (+ `rebuildLod()`), to build volume
+  fields for G25 marching cubes, or sky cubemaps. Quick start:
+  [G24 tutorial](en/tutorials/g24_procedural_noise.md), demo `examples/noise_screenshot`,
+  screenshots: [wide](images/g24_noise_wide.png), [ridge + wetness](images/g24_noise_ridge.png).
+  Planned on top of it: G25 marching cubes, G26 L-systems, G27 WFC, G28 voronoi, G29 SDF fractals.
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

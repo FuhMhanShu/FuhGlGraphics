@@ -9,6 +9,22 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G24 — procedural noise module (CPU)** (`include/fuhglgraphics/procedural/noise.hpp`,
+  header-only `procedural::Noise` value type, deterministic per seed): value noise 2D/3D,
+  Perlin 2D/3D (delegates to `fuhgl::math::Noise`), Simplex 2D/3D (Gustavson scaling),
+  fBm / ridged / turbulence over a selectable `Base`, domain warp (`warp2`/`warp3`) and a
+  `height2` terrain field in [0, 1]. Shared noise source for the G25-G29 generators (marching
+  cubes volumes, L-system jitter, WFC seeds, voronoi jitter, SDF fields) and usable for
+  heightmap carving (`TerrainComponent::heights` + `rebuildLod()`), sky cubemaps and
+  textures. Unit tests: `tests/test_procedural_noise.cpp` (determinism, ranges, Perlin
+  zero at integer lattice, fractal ranges, continuity, warp bounds). Demo:
+  `examples/noise_screenshot` — terrain carved with domain-warped ridged fBm + carved lake
+  basin, G13 lake water, cloud-sky cubemap from the same `Noise` + IBL, warm low sun with
+  CSM shadows + god rays, SSAO + volumetric fog + wetness + bloom, TAA + upscale + ACES;
+  references `docs/images/g24_noise_{wide,ridge}.png`. Tutorial:
+  `docs/en/tutorials/g24_procedural_noise.md` + German translation. Requirement entry G24
+  in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G23 — tonemapping operators + adjustable bloom threshold**
   (`include/fuhglgraphics/render/tonemap.hpp`, `uOperator` in `kTonemapFrag`,
   `DeferredRenderer::tonemapOperator`, `EffectParams::tonemapOperator`): the final pass now

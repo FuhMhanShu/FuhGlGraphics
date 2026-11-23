@@ -118,3 +118,9 @@ target_link_libraries(fuhglgraphics_parallax_house_screenshot PRIVATE fuhglgraph
 # (on vs off) and a daylight courtyard with HBAO vs SSAO (contact-corner occlusion) — headless to PNG.
 add_executable(fuhglgraphics_postfx_screenshot postfx_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_postfx_screenshot PRIVATE fuhglgraphics)
+# G24 procedural-noise showcase: terrain heightmap carved with procedural::Noise
+# (domain-warped ridged fBm + simplex detail + carved lake basin), G13 lake water,
+# cloud-sky cubemap from the same noise source + IBL, sun + CSM shadows + god rays,
+# SSAO + volumetric fog + wetness + bloom, TAA + upscale + ACES — wide + ridge shots.
+add_executable(fuhglgraphics_noise_screenshot noise_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_noise_screenshot PRIVATE fuhglgraphics)
