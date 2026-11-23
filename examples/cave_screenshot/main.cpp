@@ -277,6 +277,28 @@ int main(int argc, char** argv) {
         e.castShadow = true;
         e.materialId = 10 + i;
     }
+    { // smoke: dark plume drifting to the ceiling — created BEFORE the flame so the
+      // particles pass draws it first and the bright flame stays visible on top of it
+        scene::Node& n = scene.root().createChild("smoke");
+        auto& em = n.attach<scene::ParticleEmitterComponent>();
+        em.config.position = {kFirePos.x, kFirePos.y + 1.15f, kFirePos.z}; // above the flame tip
+        em.config.direction = {0.f, 1.f, 0.f};
+        em.config.speed = 0.4f;
+        em.config.spread = 0.35f;
+        em.config.rate = 40.f;
+        em.config.lifetime = 2.6f;
+        em.config.size = 0.22f;
+        em.config.grow = 0.55f;
+        em.config.color = {0.10f, 0.11f, 0.14f};
+        em.config.alpha = 0.16f;
+        em.config.gravity = 0.3f;
+        em.config.drag = 0.7f;
+        em.config.blend = particles::BlendMode::Alpha;
+        if (!em.system.create(4096, em.config)) {
+            std::fprintf(stderr, "cave_screenshot: smoke emitter create failed\n");
+            return 1;
+        }
+    }
     { // flame: teardrop billboards with fbm flicker (G35)
         scene::Node& n = scene.root().createChild("fire");
         auto& em = n.attach<scene::ParticleEmitterComponent>();
@@ -289,7 +311,7 @@ int main(int argc, char** argv) {
         em.config.size = 0.50f;
         em.config.grow = 0.18f;
         em.config.color = {1.0f, 0.72f, 0.30f};
-        em.config.alpha = 0.6f;
+        em.config.alpha = 0.72f;
         em.config.gravity = 0.45f;
         em.config.drag = 1.2f;
         em.config.blend = particles::BlendMode::Additive;
@@ -320,28 +342,6 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
-    { // smoke: dark, slow, alpha-blended plume drifting to the ceiling
-        scene::Node& n = scene.root().createChild("smoke");
-        auto& em = n.attach<scene::ParticleEmitterComponent>();
-        em.config.position = {kFirePos.x, kFirePos.y + 0.55f, kFirePos.z};
-        em.config.direction = {0.f, 1.f, 0.f};
-        em.config.speed = 0.45f;
-        em.config.spread = 0.3f;
-        em.config.rate = 50.f;
-        em.config.lifetime = 3.0f;
-        em.config.size = 0.3f;
-        em.config.grow = 0.8f;
-        em.config.color = {0.06f, 0.07f, 0.09f};
-        em.config.alpha = 0.30f;
-        em.config.gravity = 0.3f;
-        em.config.drag = 0.7f;
-        em.config.blend = particles::BlendMode::Alpha;
-        if (!em.system.create(4096, em.config)) {
-            std::fprintf(stderr, "cave_screenshot: smoke emitter create failed\n");
-            return 1;
-        }
-    }
-
     // ice crystal clusters on the floor (ring around the fire + a few in the tunnel)
     std::mt19937 rng(23u);
     std::uniform_real_distribution<float> uni(0.f, 1.f);
