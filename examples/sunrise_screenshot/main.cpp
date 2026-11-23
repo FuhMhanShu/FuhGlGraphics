@@ -79,10 +79,10 @@ fuhgl::Texture makeSunriseSky(int size, unsigned seed, const fuhgl::math::Vec3& 
         fuhgl::Texture::CubeFace::PosX, fuhgl::Texture::CubeFace::NegX, fuhgl::Texture::CubeFace::PosY,
         fuhgl::Texture::CubeFace::NegY, fuhgl::Texture::CubeFace::PosZ, fuhgl::Texture::CubeFace::NegZ,
     };
-    const fuhgl::math::Vec3 zenith{0.045f, 0.085f, 0.27f};
-    const fuhgl::math::Vec3 horizonAway{0.42f, 0.22f, 0.36f}; // violet-pink away from the sun
-    const fuhgl::math::Vec3 horizonSun{1.0f, 0.40f, 0.10f};   // hot orange at the sun
-    const fuhgl::math::Vec3 ground{0.07f, 0.045f, 0.075f};
+    const fuhgl::math::Vec3 zenith{0.10f, 0.18f, 0.45f};
+    const fuhgl::math::Vec3 horizonAway{0.62f, 0.38f, 0.55f}; // violet-pink away from the sun
+    const fuhgl::math::Vec3 horizonSun{1.0f, 0.55f, 0.22f};   // hot orange at the sun
+    const fuhgl::math::Vec3 ground{0.15f, 0.10f, 0.14f};
     std::vector<unsigned char> px(static_cast<std::size_t>(size) * size * 4);
     for (int face = 0; face < 6; ++face) {
         for (int j = 0; j < size; ++j) {
@@ -96,10 +96,10 @@ fuhgl::Texture makeSunriseSky(int size, unsigned seed, const fuhgl::math::Vec3& 
                 // cirrus streaks, pinker near the sun
                 const float n = fuhgl::math::fbm3(dir.x * 4.f + 3.1f, dir.y * 9.f, dir.z * 4.f, 4, seed);
                 const float cl = smoothstep01(0.52f, 0.78f, n) * smoothstep01(-0.02f, 0.22f, dir.y);
-                col += fuhgl::math::Vec3{1.0f, 0.45f, 0.32f} * (cl * (0.35f + 0.65f * sunAmt));
+                col += fuhgl::math::Vec3{1.0f, 0.55f, 0.40f} * (cl * (0.5f + 0.5f * sunAmt));
                 // sun glow
-                col += fuhgl::math::Vec3{1.0f, 0.55f, 0.22f} * std::pow(std::max(fuhgl::math::dot(dir, sunDir), 0.f), 300.f) * 8.f;
-                col += fuhgl::math::Vec3{1.0f, 0.5f, 0.25f} * std::pow(std::max(fuhgl::math::dot(dir, sunDir), 0.f), 24.f) * 0.7f;
+                col += fuhgl::math::Vec3{1.0f, 0.55f, 0.22f} * std::pow(std::max(fuhgl::math::dot(dir, sunDir), 0.f), 300.f) * 10.f;
+                col += fuhgl::math::Vec3{1.0f, 0.5f, 0.25f} * std::pow(std::max(fuhgl::math::dot(dir, sunDir), 0.f), 24.f) * 1.0f;
                 unsigned char* p = px.data() + (static_cast<std::size_t>(j) * size + i) * 4;
                 p[0] = static_cast<unsigned char>(std::min(255.f, col.x * 255.f));
                 p[1] = static_cast<unsigned char>(std::min(255.f, col.y * 255.f));
@@ -140,6 +140,28 @@ void aimAt(fuhgl::FirstPersonCamera& cam, const fuhgl::math::Vec3& target) {
     const fuhgl::math::Vec3 d = fuhgl::math::normalize(target - cam.position);
     cam.yaw = std::atan2(d.x, -d.z);
     cam.pitch = std::asin(d.y);
+}
+
+// Crossed-quad grass blade, base at y=0, tapered top. Both windings per plane so
+// backface culling never hides a blade (16 verts / 24 indices).
+fuhgl::render::MeshData makeGrassBlade(const fuhgl::math::Vec3& color) {
+    fuhgl::render::MeshData d;
+    const float w = 0.30f, wt = 0.14f, h = 0.85f;
+    for (int p = 0; p < 2; ++p) { // two crossed vertical planes: XY and ZY
+        const float ax = p == 0 ? 1.f : 0.f, az = p == 0 ? 0.f : 1.f;
+        const float nx = -az, nz = ax; // in-plane normal
+        const unsigned base = static_cast<unsigned>(d.vertexCount());
+        const float verts[4 * fuhgl::render::MeshData::kFloatsPerVertex] = {
+            -w * ax, 0.f, -w * az, nx, 0.f, nz, color.x, color.y, color.z, 0.f, 0.f,
+             w * ax, 0.f,  w * az, nx, 0.f, nz, color.x, color.y, color.z, 1.f, 0.f,
+             wt * ax, h,   wt * az, nx, 0.f, nz, color.x, color.y, color.z, 1.f, 1.f,
+            -wt * ax, h,  -wt * az, nx, 0.f, nz, color.x, color.y, color.z, 0.f, 1.f,
+        };
+        d.vertices.insert(d.vertices.end(), verts, verts + 4 * fuhgl::render::MeshData::kFloatsPerVertex);
+        d.indices.insert(d.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+        d.indices.insert(d.indices.end(), {base, base + 2, base + 1, base, base + 3, base + 2}); // flipped
+    }
+    return d;
 }
 
 } // namespace
@@ -326,6 +348,29 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "sunrise_screenshot: %d trees, %d rocks, %d reeds, %d pads\n", trees, rocksN,
                  reeds, pads);
 
+    // --- grass via instancing (G9 F24): 6000 blades in ONE draw call, snapped to the
+    // terrain height via Instancing::heightFn (hidden in the lake / at the shore) ---
+    fuhgl::render::Mesh grass;
+    if (!grass.create()) return 1;
+    grass.setMeshData(makeGrassBlade({1.f, 1.f, 1.f}));
+    scene::Node& grassNode = scene.root().createChild("grass");
+    grassNode.instancing.enabled = true;
+    grassNode.instancing.count = 6000;
+    grassNode.instancing.layout = scene::InstanceLayout::Random;
+    grassNode.instancing.extent = {300.f, 1.f, 300.f};
+    grassNode.instancing.seed = 99u;
+    grassNode.instancing.heightFn = [&](float x, float z) {
+        const float h = tc.heightAt(x, z);
+        if (h < waterLevel + 0.35f || std::hypot(x - basin.x, z - basin.y) < basinR + 3.f)
+            return -100.f; // no grass in the lake / right at the shore
+        return h - 0.05f;
+    };
+    scene::MeshEntry& gr = grassNode.attach<scene::MeshComponent>().addMesh(&grass);
+    gr.albedo = {0.16f, 0.40f, 0.11f};
+    gr.roughness = 1.f;
+    gr.castShadow = false;
+    gr.materialId = 1024;
+
     // --- dock into the lake + waving flag (G6) ---
     // dockDir points from the shore (-16,-2) toward the basin center; the dock starts at
     // the shore-side rim and extends INTO the lake (along dockDir)
@@ -463,7 +508,7 @@ int main(int argc, char** argv) {
     fuhgl::render::Environment env;
     if (skyCube.id() != 0 && !env.createFromCubemap(skyCube, 16, 32, 64))
         std::fprintf(stderr, "sunrise_screenshot: IBL bake failed, continuing without env\n");
-    env.intensity = 0.5f;
+    env.intensity = 0.7f;
 
     // --- root effects: everything visual at once ---
     scene::Effects& fx = scene.root().effects;
@@ -481,7 +526,7 @@ int main(int argc, char** argv) {
     fx.enable(render::Effect::Particles);
     fx.enable(render::Effect::Decals);
     scene::EffectParams& prm = fx.params;
-    prm.exposure = 1.15f;
+    prm.exposure = 1.3f;
     prm.taaBlend = 0.08f;
     prm.shadowCenter = {0.f, 8.f, -20.f};
     prm.shadowRadius = 150.f;
@@ -512,8 +557,8 @@ int main(int argc, char** argv) {
     render::DeferredRenderer renderer;
     if (!renderer.create(args.width, args.height, 0)) return 1;
     if (skyCube.id() != 0) renderer.setSkyCubemap(&skyCube);
-    renderer.skyTop = {0.05f, 0.09f, 0.27f};
-    renderer.skyBottom = {1.0f, 0.45f, 0.15f};
+    renderer.skyTop = {0.10f, 0.18f, 0.45f};
+    renderer.skyBottom = {1.0f, 0.60f, 0.30f};
     renderer.enableCsmShadows(1024, 4);
     renderer.setWaterReflectionScale(0.5f);
     renderer.godRays.enabled = true;

@@ -10,6 +10,7 @@
 
 #include <fuhgl/math.hpp>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,6 +31,11 @@ struct Instancing {
     InstanceLayout layout = InstanceLayout::Grid;
     fuhgl::math::Vec3 extent{10.f, 10.f, 10.f}; ///< grid area / random box, centered at the node origin
     unsigned seed = 1;                          ///< random layout seed (deterministic)
+    /// @brief Optional ground-height callback (local xz -> local y): when set,
+    /// makeLocalInstances() snaps every instance onto the ground (e.g. grass on a
+    /// heightmap terrain). Return a very low y to hide an instance. Runtime-only —
+    /// not serialized (callbacks are not JSON-representable).
+    std::function<float(float, float)> heightFn = nullptr;
 
     /// @brief The `count` local-space instance offset matrices (deterministic for Grid
     /// and for Random with a fixed seed). Pure — unit-testable without GL.
