@@ -9,6 +9,12 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Fixed
 
+- **G25 marching-cubes demo** showed see-through holes: the cave SDF reached the volume
+  boundary, so the iso-surface was open there and the pipeline's back-face culling made the
+  interior invisible. The demo field now keeps positive near the box border (falloff), so the
+  surface closes inside the volume; crystals raised above the ridge and emissive/bloom
+  strengthened so they visibly glow. Refs `docs/images/g25_marching_cubes_*.png` re-rendered
+  + compressed; the closed-volume gotcha is documented in the G25 tutorials (en/de).
 - **G30 creature look**: eyes no longer bloom into bright balls (smaller 0.06 spheres, embedded
   into the head, glossy dark albedo + dim amber emissive below the bloom threshold); the skin
   is no longer lumpy (geometry detail `detailAmp` 0.035 -> 0.02 default, higher frequency, fewer
