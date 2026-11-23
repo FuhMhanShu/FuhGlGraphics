@@ -18,7 +18,7 @@ fuhglgraphics::procedural::LSystem tree = fuhglgraphics::procedural::LSystem::ma
 // or custom: axiom + rules + turtle parameters
 fuhglgraphics::procedural::LSystem custom;
 custom.axiom = "F";
-custom.rules = {{'F', "FF+[+&F-FL]-[-&F+FL]"}};  // L = leaf quad at the tip
+custom.rules = {{'F', "FF+[+&F-FL]-[-&F+FL]"}};  // L = leaf-shaped kite at the tip
 custom.iterations = 4;
 custom.angleDeg = 22.5f;   // + - & ^ \ | turn angle
 custom.step = 0.9f;        // F/f segment length
@@ -41,7 +41,7 @@ n.attach<scene::MeshComponent>().addMesh(&mesh);
 
 Turtle symbols: `F` draw forward (cylinder, radius tapers with `[` depth), `f` move,
 `+`/`-` roll around the heading, `&`/`^` pitch, `\`/`|` yaw, `[`/`]` push/pop the frame
-(new branch), `L` two crossed leaf quads. Unknown symbols are ignored.
+(new branch), `L` two crossed leaf-shaped kite quads (pointed tip, not square). Unknown symbols are ignored.
 
 > The turtle starts with heading +Y (up), and roll (`+`/`-`) alone never changes the drawing
 > direction — a rule with only `+`/`-` draws every segment straight up and looks like a
@@ -65,7 +65,7 @@ Forest overview:
 
 ![G26 L-systems: forest](../../images/g26_lsystem_forest.png)
 
-Tree closeup (trunk, branches, leaf quads):
+Tree closeup (trunk, branches, leaf-shaped kites):
 
 ![G26 L-systems: tree](../../images/g26_lsystem_tree.png)
 

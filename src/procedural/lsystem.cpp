@@ -2,7 +2,7 @@
 // interpretation (generate) into MeshData. The turtle keeps an orthonormal frame
 // (forward, left, up); + - roll around forward, & ^ pitch around left, \ | yaw around up,
 // [ ] push/pop the frame (branch depth -> radius taper), F draws a tapered cylinder,
-// f moves, L emits two crossed leaf quads.
+// f moves, L emits two crossed leaf-shaped kite quads.
 
 #include <fuhglgraphics/procedural/lsystem.hpp>
 
@@ -74,24 +74,24 @@ void addCylinder(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& p0, const
     }
 }
 
-// two crossed quads (leaf) at the turtle frame
+// two crossed leaf-shaped kites at the turtle frame: pointed tip along `a`, narrow base,
+// width along `b` — reads as a leaf from every angle, not as a square quad
 void addLeaf(fuhgl::render::MeshData& md, const TurtleState& t, float size,
              const fuhgl::math::Vec3& color) {
-    const std::uint32_t base = static_cast<std::uint32_t>(md.vertexCount());
-    auto quad = [&](const fuhgl::math::Vec3& a, const fuhgl::math::Vec3& b) {
-        const fuhgl::math::Vec3 n = fuhgl::math::normalize(fuhgl::math::cross(b - a, t.up));
-        const fuhgl::math::Vec3 c0 = t.pos - a * size - b * size;
-        const fuhgl::math::Vec3 c1 = t.pos + a * size - b * size;
-        const fuhgl::math::Vec3 c2 = t.pos + a * size + b * size;
-        const fuhgl::math::Vec3 c3 = t.pos - a * size + b * size;
-        pushVertex(md, c0, n, color); pushVertex(md, c1, n, color);
-        pushVertex(md, c2, n, color); pushVertex(md, c3, n, color);
+    auto kite = [&](const fuhgl::math::Vec3& a, const fuhgl::math::Vec3& b) {
+        const fuhgl::math::Vec3 n = fuhgl::math::normalize(fuhgl::math::cross(a, b));
+        const fuhgl::math::Vec3 v0 = t.pos - a * (0.25f * size);              // base
+        const fuhgl::math::Vec3 v1 = t.pos + b * (0.55f * size) - a * (0.15f * size); // side +
+        const fuhgl::math::Vec3 v2 = t.pos + a * (1.35f * size);              // tip
+        const fuhgl::math::Vec3 v3 = t.pos - b * (0.55f * size) - a * (0.15f * size); // side -
+        pushVertex(md, v0, n, color); pushVertex(md, v1, n, color);
+        pushVertex(md, v2, n, color); pushVertex(md, v3, n, color);
         const std::uint32_t b0 = static_cast<std::uint32_t>(md.vertexCount()) - 4;
         md.indices.push_back(b0); md.indices.push_back(b0 + 1); md.indices.push_back(b0 + 2);
         md.indices.push_back(b0); md.indices.push_back(b0 + 2); md.indices.push_back(b0 + 3);
     };
-    quad(t.left, t.up);
-    quad(t.fwd, t.up);
+    kite(t.fwd, t.left);
+    kite(t.left, t.fwd);
 }
 
 } // namespace

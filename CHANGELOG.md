@@ -9,6 +9,9 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Fixed
 
+- **G26 L-system leaves** were square quads; `L` now emits two crossed leaf-shaped kite quads
+  (pointed tip at 1.35x leafSize along the heading, narrow base) — regression test
+  `testLeafShape` asserts the tip extent. Refs `docs/images/g26_lsystem_*.png` re-rendered.
 - **G26 L-system presets** drew vertical sticks instead of trees: the rules used only `+`/`-`,
   which in the 3D turtle is a roll around the heading and never changes the drawing direction
   (heading starts at +Y). Presets (`makeTree` variants 0-2, `makeFern`, `makeBush`) now combine

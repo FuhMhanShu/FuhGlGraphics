@@ -279,8 +279,8 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   [crystal blob](images/g25_marching_cubes_blob.png).
 - **L-systems (G26).** `procedural::LSystem` (`procedural/lsystem.hpp`): set axiom + rules +
   iterations, call `derive()` (string rewriting) and `generate(trunkColor, leafColor)` —
-  a 3D turtle (F/f, +−&^\|, [ ] with radius taper, L leaf quads) emits `MeshData`
-  (tapered cylinders + leaf quads). Presets: `LSystem::makeTree(variant)`, `makeFern()`,
+  a 3D turtle (F/f, +−&^\|, [ ] with radius taper, L leaf kites) emits `MeshData`
+  (tapered cylinders + leaf-shaped kite quads). Presets: `LSystem::makeTree(variant)`, `makeFern()`,
   `makeBush()`. Upload via `mesh.setMeshData(...)` + `MeshComponent`, place with
   `heightAt()` / instancing. Quick start: [G26 tutorial](en/tutorials/g26_lsystem.md),
   demo `examples/lsystem_screenshot`, screenshots: [forest](images/g26_lsystem_forest.png),

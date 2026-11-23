@@ -5,7 +5,7 @@
 **Ziel:** Pflanzen per regelbasiertem String-Rewriting als Mesh wachsen lassen — L-Systeme
 (`procedural::LSystem` in `procedural/lsystem.hpp`). `derive()` ersetzt das Axiom `iterations`
 mal mit den Produktionsregeln; `generate()` interpretiert den String mit einer 3D-Turtle und
-erzeugt ein `fuhgl::render::MeshData` (verjüngte Zylinder für Äste, gekreuzte Blatt-Quads).
+erzeugt ein `fuhgl::render::MeshData` (verjüngte Zylinder für Äste, gekreuzte blattförmige Kites).
 
 ## Anwendung
 
@@ -18,7 +18,7 @@ fuhglgraphics::procedural::LSystem tree = fuhglgraphics::procedural::LSystem::ma
 // oder individuell: Axiom + Regeln + Turtle-Parameter
 fuhglgraphics::procedural::LSystem custom;
 custom.axiom = "F";
-custom.rules = {{'F', "FF+[+&F-FL]-[-&F+FL]"}};  // L = Blatt-Quad an der Spitze
+custom.rules = {{'F', "FF+[+&F-FL]-[-&F+FL]"}};  // L = blattförmiger Kite an der Spitze
 custom.iterations = 4;
 custom.angleDeg = 22.5f;   // Drehwinkel für + - & ^ \ |
 custom.step = 0.9f;        // Segmentlänge von F/f
@@ -41,7 +41,7 @@ n.attach<scene::MeshComponent>().addMesh(&mesh);
 
 Turtle-Symbole: `F` vorwärts zeichnen (Zylinder, Radius verjüngt sich mit `[`-Tiefe), `f` bewegen,
 `+`/`-` rollen um die Richtung, `&`/`^` nicken, `\`/`|` gieren, `[`/`]` Frame pushen/poppen
-(neuer Ast), `L` zwei gekreuzte Blatt-Quads. Unbekannte Symbole werden ignoriert.
+(neuer Ast), `L` zwei gekreuzte blattförmige Kites (spitze Form, nicht quadratisch). Unbekannte Symbole werden ignoriert.
 
 > Die Turtle startet mit Richtung +Y (oben), und reines Rollen (`+`/`-`) ändert die
 > Zeichenrichtung nie — eine Regel nur mit `+`/`-` zeichnet jedes Segment senkrecht nach oben
@@ -66,7 +66,7 @@ Wald-Übersicht:
 
 ![G26 L-Systeme: Wald](../../images/g26_lsystem_forest.png)
 
-Baum-Nahaufnahme (Stamm, Äste, Blatt-Quads):
+Baum-Nahaufnahme (Stamm, Äste, blattförmige Kites):
 
 ![G26 L-Systeme: Baum](../../images/g26_lsystem_tree.png)
 
