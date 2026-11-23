@@ -9,6 +9,23 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G26 — L-systems (Lindenmayer) → mesh** (`include/fuhglgraphics/procedural/lsystem.hpp`,
+  `src/procedural/lsystem.cpp`): `procedural::LSystem` with axiom + production rules +
+  iterations; `derive()` rewrites the string deterministically; `generate()` interprets it
+  with a 3D turtle (orthonormal frame; F/f draw/move, +− roll, &^ pitch, \| yaw, [ ] push/pop
+  with radius taper per depth, L = two crossed leaf quads) and emits `fuhgl::render::MeshData`
+  (tapered `sides`-gon cylinders per segment + leaf quads, 11 floats/vertex) — ready for
+  `Mesh::setMeshData` + `MeshComponent`. Presets: `LSystem::makeTree(variant 0..2)`,
+  `makeFern()` (Barnsley-style), `makeBush()`. Unit tests `tests/test_procedural_lsystem.cpp`:
+  rule rewriting (exact strings, determinism), balanced brackets of all presets, mesh validity
+  (finite, indexed, unit normals, upward growth bounds), presets differ, leaf/trunk vertex
+  colors. Demo `examples/lsystem_screenshot`: 9 L-system trees (3 variants) + ferns on a
+  G24-noise terrain, 3000 instanced grass blades snapped via `Instancing::heightFn`, noon sun
+  with CSM shadows + god rays, day-sky cubemap + IBL, SSAO + volumetric fog, TAA + upscale +
+  ACES; references `docs/images/g26_lsystem_{forest,tree}.png`. Tutorial
+  `docs/en/tutorials/g26_lsystem.md` + German translation. Requirement entry G26 in
+  [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G25 — marching cubes (voxel → mesh)** (`include/fuhglgraphics/procedural/marching_cubes.hpp`,
   `src/procedural/marching_cubes.cpp`): `procedural::VolumeGrid` + `sampleField(field, min, max,
   nx, ny, nz)` sample a scalar volume; `marchingCubes(grid, isolevel, color)` runs the classic

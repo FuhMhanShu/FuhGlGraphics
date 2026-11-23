@@ -54,6 +54,7 @@ add_library(fuhglgraphics STATIC
     src/probes/light_probes.cpp
     src/water/water_surface.cpp
     src/procedural/marching_cubes.cpp
+    src/procedural/lsystem.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 

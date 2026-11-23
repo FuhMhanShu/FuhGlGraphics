@@ -65,6 +65,7 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   [docs/images/](../../images/g23_tonemap_uncharted2.png)
 - [G24 — Procedural Noise (CPU)](g24_procedural_noise.md) — `procedural::Noise`: seeded value/Perlin/Simplex 2D+3D, fBm/ridged/turbulence, Domain-Warp; Höhenfelder fürs Terrain carven, Sky-Cubemaps, Volumenfelder; Screenshots in [docs/images/](../../images/g24_noise_wide.png)
 - [G25 — Marching Cubes (Voxel → Mesh)](g25_marching_cubes.md) — `procedural::marchingCubes`/`marchingCubesChunked`: Isofläche aus Volumen extrahieren (watertight, indexiert), Höhlen-Terrain aus Noise-Volumen; Screenshots in [docs/images/](../../images/g25_marching_cubes_cave.png)
+- [G26 — L-Systeme (Turtle → Mesh)](g26_lsystem.md) — `procedural::LSystem`: Regel-Ersetzung (`derive`) + 3D-Turtle (`generate`) → Bäume/Farne/Büsche als `MeshData`; Screenshots in [docs/images/](../../images/g26_lsystem_forest.png)
 - [G17 — Bloom](g17_bloom.md) — Post-Pass nach den Partikeln, vor TAA: Bright-Pass oberhalb
   eines einstellbaren `bloomThreshold` + 9-Tap-Blur + Add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   Bilder in [docs/images/](../../images/g17_bloom_on.png)
