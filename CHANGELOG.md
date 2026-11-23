@@ -29,6 +29,22 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G30 — procedural creatures** (`include/fuhglgraphics/procedural/creature.hpp`,
+  `src/procedural/creature.cpp`): `Skeleton` graph (nodes with position/radius/`BodyPart`,
+  `finalize()` bakes world-space ellipsoid + tapered-capsule prims with broadphase AABBs, linear
+  cache-friendly evaluation); `creatureSdf()` joins prims via G29 `sdf::smoothMin` and adds G24
+  simplex fBm detail (scales/ribs/folds in the geometry); `meshCreature()` meshes via G25
+  marching cubes with analytic SDF-gradient normals, per-vertex curvature (SDF Laplacian)
+  written into the vertex color channel (the G-buffer pass multiplies vColor into albedo, so
+  creases darken and ridges brighten automatically) and a seamless cylindrical UV unwrap;
+  `bakeCreatureMaps()` bakes albedo + tangent normal maps from 3D object-space noise
+  (worley scale cells, stripes, lighter belly — seamless in u). Presets `makeQuadruped()` and
+  `makeReptile()`. Unit tests `tests/test_procedural_creature.cpp` (incl. curvature-sign test on
+  a two-sphere dumbbell), creature case in `tests/gl_smoke_procedural.cpp`, demo
+  `examples/creature_screenshot` (dusk sun + CSM + god rays, sky + IBL, SSAO, bloom,
+  volumetric fog, TAA + ACES) with references `docs/images/g30_creature_{wide,closeup}.png`,
+  CI step, tutorials en/de. Requirement entry G30 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G28 — Voronoi diagrams** (`include/fuhglgraphics/procedural/voronoi.hpp`,
   `src/procedural/voronoi.cpp`): `procedural::voronoi2d(n, min, max, seed)` builds a seeded 2D
   Voronoi diagram — one convex polygon per seed (half-plane clipping against every bisector,

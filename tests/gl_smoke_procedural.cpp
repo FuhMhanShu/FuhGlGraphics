@@ -115,6 +115,45 @@ int main() {
         std::fprintf(stderr, "gl_smoke_procedural: FAIL (lit=%d differs=%d)\n", lit ? 1 : 0, differs ? 1 : 0);
         return 1;
     }
+
+    // G30 creature: skeleton -> SDF -> marching cubes with curvature vertex colors, uploaded
+    // and rendered — the center pixel must change again (creature visible)
+    const procedural::Skeleton quadruped = procedural::makeQuadruped();
+    procedural::CreatureParams cpr;
+    cpr.seed = 11u;
+    const procedural::CreatureMesh creature = procedural::meshCreature(quadruped, cpr, 44, {1.f, 1.f, 1.f});
+    if (creature.mesh.indices.empty()) {
+        std::fprintf(stderr, "gl_smoke_procedural: FAIL (empty creature mesh)\n");
+        return 1;
+    }
+    std::fprintf(stderr, "gl_smoke_procedural: creature %zu vertices, %zu triangles\n",
+                 creature.mesh.vertexCount(), creature.mesh.indices.size() / 3);
+    fuhgl::render::Mesh creatureMesh;
+    creatureMesh.setMeshData(creature.mesh);
+    fuhgl::render::Material creatureMat = fuhgl::render::materials::pbr({0.55f, 0.45f, 0.3f}, 0.1f, 0.6f);
+    cam.pitch = 0.07f; // aim at the creature torso
+    fuhgl::render::SceneView scene2; // fresh view: ground + creature
+    scene2.camera = &cam;
+    scene2.width = W;
+    scene2.height = H;
+    scene2.aspect = 1.f;
+    scene2.items.push_back({&ground, &groundMat, fuhgl::math::rotateX(-fuhgl::math::kPi * 0.5f)});
+    scene2.items.push_back({&creatureMesh, &creatureMat,
+                            fuhgl::math::translate({0.f, 0.2f, 0.f}) * fuhgl::math::scale({0.55f, 0.55f, 0.55f})});
+    scene2.lights = scene.lights;
+    const std::vector<std::uint32_t> materialIds3 = {0u, 9u}; // parallel to scene2.items
+    for (int frame = 0; frame < 4; ++frame) renderer.render(scene2, &materialIds3);
+    fuhgl::gl::flush();
+    const auto withCreature = readCenter();
+    std::fprintf(stderr, "gl_smoke_procedural: center with creature = (%d,%d,%d,%d)\n", withCreature[0],
+                 withCreature[1], withCreature[2], withCreature[3]);
+    const bool creatureDiffers = std::abs(int(withCreature[0]) - int(withoutBlob[0])) +
+                                     std::abs(int(withCreature[1]) - int(withoutBlob[1])) +
+                                     std::abs(int(withCreature[2]) - int(withoutBlob[2])) > 10;
+    if (!creatureDiffers) {
+        std::fprintf(stderr, "gl_smoke_procedural: FAIL (creature not visible)\n");
+        return 1;
+    }
     std::fprintf(stderr, "gl_smoke_procedural: OK\n");
     return 0;
 }

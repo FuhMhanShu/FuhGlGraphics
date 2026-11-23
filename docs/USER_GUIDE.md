@@ -305,6 +305,16 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   resolution, color)` meshes any SDF into `MeshData` via the G25 marching cubes. Quick start:
   [G29 tutorial](en/tutorials/g29_mandelbulb.md), demo `examples/mandelbulb_screenshot`,
   screenshots: [wide](images/g29_mandelbulb_wide.png), [closeup](images/g29_mandelbulb_closeup.png).
+- **Procedural creatures (G30).** `procedural::Skeleton` (nodes with position/radius/`BodyPart`,
+  `finalize()` -> world-space ellipsoid+capsule prims with broadphase AABBs);
+  `procedural::creatureSdf(skel, params, p)` (G29 `smoothMin` join + G24 simplex detail);
+  `procedural::meshCreature(skel, params, res)` -> `MeshData` via G25 marching cubes with
+  gradient normals, curvature in the vertex color channel (G-buffer multiplies vColor into
+  albedo -> creases darken automatically) and cylindrical UVs; `procedural::bakeCreatureMaps`
+  bakes albedo + normal maps from object-space 3D noise (seamless). Presets `makeQuadruped()`,
+  `makeReptile()`. Quick start: [G30 tutorial](en/tutorials/g30_creature.md), demo
+  `examples/creature_screenshot`, screenshots: [wide](images/g30_creature_wide.png),
+  [closeup](images/g30_creature_closeup.png).
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

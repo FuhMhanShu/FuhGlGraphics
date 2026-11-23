@@ -250,6 +250,10 @@ jobs:
         run: |
           cmake --build build -j --target fuhglgraphics_mandelbulb_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_mandelbulb_screenshot --prefix docs/images/ci/g29_mandelbulb --width 1280 --height 720 --frames 16
+      - name: Build + render G30 creature screenshots (skeleton+SDF creatures with curvature vertex colors and baked scale maps, dusk sun/CSM/god rays, SSAO/bloom/volumetric)
+        run: |
+          cmake --build build -j --target fuhglgraphics_creature_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_creature_screenshot --prefix docs/images/ci/g30_creature --width 1280 --height 720 --frames 16
 
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).

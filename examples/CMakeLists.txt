@@ -157,6 +157,14 @@ target_link_libraries(fuhglgraphics_voronoi_screenshot PRIVATE fuhglgraphics)
 # CSM + god rays, dusk sky + IBL, SSAO + volumetric fog, TAA + upscale + ACES — wide + closeup.
 add_executable(fuhglgraphics_mandelbulb_screenshot mandelbulb_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_mandelbulb_screenshot PRIVATE fuhglgraphics)
+
+# G30 procedural-creature showcase: quadruped + reptile from a skeleton graph -> SDF (smooth-min
+# capsules/ellipsoids + simplex detail) -> G25 marching cubes with curvature vertex colors,
+# baked albedo/normal maps from object-space 3D noise (scales, stripes, belly), emissive eyes,
+# dusk sun + CSM + god rays, sky + IBL, SSAO + bloom + volumetric fog, TAA + upscale + ACES —
+# wide + closeup, headless to PNG.
+add_executable(fuhglgraphics_creature_screenshot creature_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_creature_screenshot PRIVATE fuhglgraphics)
 # G32/G33/G34 post-effect showcase: chromatic aberration (dusk lamps, on/off), subsurface
 # scattering (backlit thin panel, on/off) and screen-space GI (red-wall bounce on a box,
 # on/off) — headless to PNG.
