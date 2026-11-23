@@ -18,7 +18,7 @@ fuhglgraphics::procedural::LSystem tree = fuhglgraphics::procedural::LSystem::ma
 // oder individuell: Axiom + Regeln + Turtle-Parameter
 fuhglgraphics::procedural::LSystem custom;
 custom.axiom = "F";
-custom.rules = {{'F', "FF+[+F-F-FL]-[-F+F+FL]"}};  // L = Blatt-Quad an der Spitze
+custom.rules = {{'F', "FF+[+&F-FL]-[-&F+FL]"}};  // L = Blatt-Quad an der Spitze
 custom.iterations = 4;
 custom.angleDeg = 22.5f;   // Drehwinkel für + - & ^ \ |
 custom.step = 0.9f;        // Segmentlänge von F/f
@@ -42,6 +42,12 @@ n.attach<scene::MeshComponent>().addMesh(&mesh);
 Turtle-Symbole: `F` vorwärts zeichnen (Zylinder, Radius verjüngt sich mit `[`-Tiefe), `f` bewegen,
 `+`/`-` rollen um die Richtung, `&`/`^` nicken, `\`/`|` gieren, `[`/`]` Frame pushen/poppen
 (neuer Ast), `L` zwei gekreuzte Blatt-Quads. Unbekannte Symbole werden ignoriert.
+
+> Die Turtle startet mit Richtung +Y (oben), und reines Rollen (`+`/`-`) ändert die
+> Zeichenrichtung nie — eine Regel nur mit `+`/`-` zeichnet jedes Segment senkrecht nach oben
+> und sieht aus wie ein Stock. Roll mit Nicken (`&`/`^`) oder Gieren (`\\`/`|`) kombinieren
+> für echte 3D-Äste, z. B. `FF+[+&F-FL]-[-&F+FL]`: das Roll setzt das Azimut des Astes, `&`
+> kippt ihn vom Stamm weg.
 
 ## Demo + Ergebnis
 

@@ -7,6 +7,16 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **G26 L-system presets** drew vertical sticks instead of trees: the rules used only `+`/`-`,
+  which in the 3D turtle is a roll around the heading and never changes the drawing direction
+  (heading starts at +Y). Presets (`makeTree` variants 0-2, `makeFern`, `makeBush`) now combine
+  roll with pitch (`&`) — e.g. `F -> FF+[+&F-FL]-[-&F+FL]` — so branches spread in 3D.
+  Regression test `testPresetsSpread3D` asserts every preset's horizontal spread > 30% of its
+  height. Reference screenshots `docs/images/g26_lsystem_*.png` re-rendered (crown closeup
+  camera reframed); tutorials en/de document the roll-vs-pitch pitfall.
+
 ### Changed
 
 - Re-compressed all 86 reference screenshots in `docs/images/` losslessly with

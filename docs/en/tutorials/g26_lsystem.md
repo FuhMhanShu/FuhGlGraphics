@@ -18,7 +18,7 @@ fuhglgraphics::procedural::LSystem tree = fuhglgraphics::procedural::LSystem::ma
 // or custom: axiom + rules + turtle parameters
 fuhglgraphics::procedural::LSystem custom;
 custom.axiom = "F";
-custom.rules = {{'F', "FF+[+F-F-FL]-[-F+F+FL]"}};  // L = leaf quad at the tip
+custom.rules = {{'F', "FF+[+&F-FL]-[-&F+FL]"}};  // L = leaf quad at the tip
 custom.iterations = 4;
 custom.angleDeg = 22.5f;   // + - & ^ \ | turn angle
 custom.step = 0.9f;        // F/f segment length
@@ -42,6 +42,11 @@ n.attach<scene::MeshComponent>().addMesh(&mesh);
 Turtle symbols: `F` draw forward (cylinder, radius tapers with `[` depth), `f` move,
 `+`/`-` roll around the heading, `&`/`^` pitch, `\`/`|` yaw, `[`/`]` push/pop the frame
 (new branch), `L` two crossed leaf quads. Unknown symbols are ignored.
+
+> The turtle starts with heading +Y (up), and roll (`+`/`-`) alone never changes the drawing
+> direction — a rule with only `+`/`-` draws every segment straight up and looks like a
+> stick. Combine roll with pitch (`&`/`^`) or yaw (`\\`/`|`) for real 3D branches, e.g.
+> `FF+[+&F-FL]-[-&F+FL]`: the roll sets the branch azimuth, `&` tilts it off the trunk.
 
 ## Demo + result
 
