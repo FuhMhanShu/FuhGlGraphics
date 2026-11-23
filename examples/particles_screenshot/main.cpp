@@ -127,6 +127,28 @@ int main(int argc, char** argv) {
     const bool wantSmoke = args.kind == "smoke" || args.kind == "all";
     const bool wantPollen = args.kind == "pollen" || args.kind == "all";
 
+    if (wantSmoke) { // smoke plume above the fire: alpha-blended, expanding — created BEFORE
+        // the fire emitter so the particles pass draws it first and the flame stays visible
+        scene::Node& n = scene.root().createChild("smoke");
+        auto& em = n.attach<scene::ParticleEmitterComponent>();
+        em.config.position = {0.f, 1.7f, 0.f}; // well above the flame tip
+        em.config.direction = {0.f, 1.f, 0.f};
+        em.config.speed = 0.7f;
+        em.config.spread = 0.3f;
+        em.config.rate = 70.f;
+        em.config.lifetime = 3.0f;
+        em.config.size = 0.22f;
+        em.config.grow = 0.7f;
+        em.config.color = {0.38f, 0.39f, 0.44f};
+        em.config.alpha = 0.15f;
+        em.config.gravity = 0.35f; // buoyant
+        em.config.drag = 0.6f;
+        em.config.blend = particles::BlendMode::Alpha;
+        if (!em.system.create(4096, em.config)) {
+            std::fprintf(stderr, "particles_screenshot: smoke emitter create failed\n");
+            return 1;
+        }
+    }
     if (wantFire) { // campfire: G35 teardrop flame (fbm flicker, heat color ramp) + a few additive embers
         scene::Node& n = scene.root().createChild("fire");
         auto& em = n.attach<scene::ParticleEmitterComponent>();
@@ -166,27 +188,6 @@ int main(int argc, char** argv) {
         em2.config.blend = particles::BlendMode::Additive;
         if (!em2.system.create(2048, em2.config)) {
             std::fprintf(stderr, "particles_screenshot: ember emitter create failed\n");
-            return 1;
-        }
-    }
-    if (wantSmoke) { // smoke plume above the fire: alpha-blended, expanding
-        scene::Node& n = scene.root().createChild("smoke");
-        auto& em = n.attach<scene::ParticleEmitterComponent>();
-        em.config.position = {0.f, 1.1f, 0.f};
-        em.config.direction = {0.f, 1.f, 0.f};
-        em.config.speed = 0.7f;
-        em.config.spread = 0.25f;
-        em.config.rate = 90.f;
-        em.config.lifetime = 3.5f;
-        em.config.size = 0.25f;
-        em.config.grow = 0.9f;
-        em.config.color = {0.45f, 0.45f, 0.5f};
-        em.config.alpha = 0.22f;
-        em.config.gravity = 0.35f; // buoyant
-        em.config.drag = 0.6f;
-        em.config.blend = particles::BlendMode::Alpha;
-        if (!em.system.create(4096, em.config)) {
-            std::fprintf(stderr, "particles_screenshot: smoke emitter create failed\n");
             return 1;
         }
     }
