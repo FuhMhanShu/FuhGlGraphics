@@ -120,7 +120,11 @@ Kristall-Splitter) — siehe [G28-Tutorial](docs/de/tutorials/g28_voronoi.md) un
 [docs/images/](docs/images/g28_voronoi_shattered.png) — und **G29** — SDF / 3D-Fraktale
 (`procedural::sdf`-Primitive + `smoothMin` + `mandelbulb` DE; `procedural::meshFromSdf` mesht
 jedes SDF via G25 Marching Cubes) — siehe [G29-Tutorial](docs/de/tutorials/g29_mandelbulb.md)
-und Bilder in [docs/images/](docs/images/g29_mandelbulb_wide.png).
+und Bilder in [docs/images/](docs/images/g29_mandelbulb_wide.png) — und **G30** — prozedurale
+Kreaturen (`procedural::Skeleton`-Graph + `creatureSdf` smooth-min SDF + Simplex-Detail;
+`meshCreature` via G25 mit Krümmung im Vertex-Color; `bakeCreatureMaps` Objektraum-Noise-Haut)
+— siehe [G30-Tutorial](docs/de/tutorials/g30_creature.md) und Bilder in
+[docs/images/](docs/images/g30_creature_wide.png).
 Als Nächstes: **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder
 **G2** (Qt-Editor).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen

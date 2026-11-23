@@ -69,6 +69,7 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
 - [G27 — Wave Function Collapse](g27_wfc.md) — `procedural::Wfc`: Edge-Tag-Tiles + Rotationen, Min-Entropie + Propagation + Backtracking → Dungeon-Layout als Szenen-Knoten; Screenshots in [docs/images/](../../images/g27_wfc_overview.png)
 - [G28 — Voronoi-Diagramme](g28_voronoi.md) — `procedural::voronoi2d` + `extrudeCells` (Zellen → Prismen-Meshes), F1/F2-Distanzfelder, gerissene Platte mit glühenden Rissen + Kristalle; Screenshots in [docs/images/](../../images/g28_voronoi_shattered.png)
 - [G29 — SDF / 3D-Fraktale (Mandelbulb)](g29_mandelbulb.md) — `procedural::sdf` + `meshFromSdf` (SDF via Marching Cubes meshen), emissive Fraktal-Skulptur mit Bloom; Screenshots in [docs/images/](../../images/g29_mandelbulb_wide.png)
+- [G30 — Prozedurale Kreaturen](g30_creature.md) — `Skeleton`-Graph + `creatureSdf` (smooth-min Kapseln/Ellipsoide + Simplex-Detail) + `meshCreature` (Marching Cubes, Gradienten-Normalen, Krümmung im Vertex-Color, zylindrische UVs) + `bakeCreatureMaps` (Objektraum-Noise für Albedo/Normal); Vierbeiner + Reptil; Screenshots in [docs/images/](../../images/g30_creature_wide.png)
 - [G17 — Bloom](g17_bloom.md) — Post-Pass nach den Partikeln, vor TAA: Bright-Pass oberhalb
   eines einstellbaren `bloomThreshold` + 9-Tap-Blur + Add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   Bilder in [docs/images/](../../images/g17_bloom_on.png)

@@ -123,7 +123,11 @@ backtracking → dungeon/city layouts as scene nodes) — see the
 [docs/images/](docs/images/g28_voronoi_shattered.png) — and **G29** — SDF / 3D fractals
 (`procedural::sdf` primitives + `smoothMin` + `mandelbulb` DE; `procedural::meshFromSdf` meshes
 any SDF via G25 marching cubes) — see the [G29 tutorial](docs/en/tutorials/g29_mandelbulb.md)
-and screenshots in [docs/images/](docs/images/g29_mandelbulb_wide.png).
+and screenshots in [docs/images/](docs/images/g29_mandelbulb_wide.png) — and **G30** —
+procedural creatures (`procedural::Skeleton` graph + `creatureSdf` smooth-min SDF + simplex
+detail; `meshCreature` via G25 with curvature in the vertex color; `bakeCreatureMaps`
+object-space noise skin maps) — see the [G30 tutorial](docs/en/tutorials/g30_creature.md) and
+screenshots in [docs/images/](docs/images/g30_creature_wide.png).
 Next: **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
 (Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited

@@ -57,6 +57,7 @@ FuhGLCore.
 | G27 | Wave Function Collapse (tiled) | `procedural::Wfc`: 2D tiled WFC over a grid with edge-tag tiles + 4 rotations, min-entropy cell selection, constraint propagation, seeded backtracking on contradiction; output = tile+rotation placement per cell, instantiated as G9 scene-graph nodes (instancing per tile); typical use: dungeons, cities, stations |
 | G28 | Voronoi diagrams | `procedural::voronoi2d(...)`: seeded 2D Voronoi cells (polygon per seed point via half-plane clipping, robust for moderate n) + cell edges; `procedural::extrudeCells(...)` → `MeshData` prisms (cracked ground plates, city blocks, crystal shards); optional F1/F2 distance field helper |
 | G29 | 3D fractals / SDF (e.g. Mandelbulb) | `procedural::Sdf`: distance-estimator SDFs — Mandelbulb (power 8), sphere/box/rounded-box, smooth-min combos; `procedural::meshFromSdf(...)` converts an SDF to `MeshData` via G25 marching cubes; typical use: emissive fractal sculptures rendered with bloom/god rays |
+| G30 | Procedural creatures (skeleton + SDF → mesh) | new `procedural/creature.hpp`: `Skeleton` graph (nodes = position/radius/`BodyPart`, finalized to world-space capsule+ellipsoid prims with broadphase AABBs), `creatureSdf()` = prims joined by G29 `sdf::smoothMin` + G24 simplex/worley noise modulation (scales/ribs/folds in the geometry); `meshCreature()` = G25 marching cubes + analytic gradient normals + per-vertex curvature (SDF Laplacian) stored in the vertex color channel (G-buffer multiplies vColor into albedo → creases darken automatically) + cylindrical UV unwrap; `bakeCreatureMaps()` bakes albedo + tangent normal map from 3D object-space noise (seamless); presets `makeQuadruped()`/`makeReptile()`; one PR with unit test + gl_smoke + example screenshot + tutorial en/de |
 
 ## 4. Non-functional requirements
 
@@ -305,3 +306,13 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   `procedural::meshFromSdf(field, min, max, res)` which meshes any SDF via the G25 marching
   cubes. See `tests/test_procedural_sdf.cpp`, `examples/mandelbulb_screenshot`,
   `docs/images/g29_mandelbulb_*.png` and the [G29 tutorial](en/tutorials/g29_mandelbulb.md).
+- **G30 — procedural creatures (skeleton + SDF -> mesh)** — implemented:
+  `procedural::Skeleton`/`SkeletonNode`/`BodyPart` (graph, `finalize()` -> world-space
+  ellipsoid+capsule prims with broadphase AABBs), `creatureSdf()` (G29 `smoothMin` join + G24
+  simplex fBm detail), `meshCreature()` (G25 marching cubes, analytic gradient normals,
+  per-vertex curvature via SDF Laplacian in the vertex color channel, cylindrical UV unwrap),
+  `bakeCreatureMaps()` (albedo + tangent normal maps baked from 3D object-space worley/simplex
+  noise, seamless) in `include/fuhglgraphics/procedural/creature.hpp` + `src/procedural/
+  creature.cpp`; presets `makeQuadruped()` / `makeReptile()`. See
+  `tests/test_procedural_creature.cpp`, `examples/creature_screenshot`,
+  `docs/images/g30_creature_*.png` and the [G30 tutorial](en/tutorials/g30_creature.md).
