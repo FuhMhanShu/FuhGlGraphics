@@ -210,6 +210,14 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
                   frame.lightProbes, &frame.decals, frame.water);
   ```
+- **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
+  before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
+  `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA
+  stabilizes the halo). Params in `EffectParams`: `bloomThreshold`, `bloomStrength`,
+  `bloomRadius`; pure helpers `bloomBrightPass()` / `bloomTaps()` in `render/bloom.hpp`. Quick
+  start: [G17 tutorial](en/tutorials/g17_bloom.md), demo `examples/bloom_screenshot`,
+  screenshots: [on](images/g17_bloom_on.png), [off](images/g17_bloom_off.png),
+  [threshold 4](images/g17_bloom_thr4.png).
 - **Screen-space reflections (G16).** `render::Effect::Ssr` runs a post-graph pass `ssr`
   after lighting: the reflection vector is marched against the G-buffer depth and the hit HDR
   color is added with a fresnel/roughness/edge/distance mask (pure helpers `ssrEdgeFade()` /

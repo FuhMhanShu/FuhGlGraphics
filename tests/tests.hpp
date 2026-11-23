@@ -12,3 +12,4 @@ void runProbesTests();
 void runWaterTests();
 void runSsaoTests();
 void runSsrTests();
+void runBloomTests();

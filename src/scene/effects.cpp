@@ -45,6 +45,10 @@ void Effects::applyTo(render::DeferredRenderer& renderer) const {
     renderer.ssrThickness = params.ssrThickness;
     renderer.ssrMaxDist = params.ssrMaxDist;
     renderer.ssrStrength = params.ssrStrength;
+    // G17 bloom
+    renderer.bloomThreshold = params.bloomThreshold;
+    renderer.bloomStrength = params.bloomStrength;
+    renderer.bloomRadius = params.bloomRadius;
     // (width() > 0: the renderer was create()d, so a GL context is current and the
     //  cube map can be allocated)
     if (enabled(render::Effect::PointShadows) && !renderer.pointShadowEnabled() && renderer.width() > 0)

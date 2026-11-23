@@ -62,6 +62,10 @@ struct EffectParams {
     float ssrThickness = 0.4f;  ///< hit thickness in world units
     float ssrMaxDist = 30.f;    ///< max march distance in world units
     float ssrStrength = 0.8f;   ///< reflection intensity (wetness adds on top, G22)
+    // --- G17 bloom (Effect::Bloom) ---
+    float bloomThreshold = 1.0f; ///< HDR luminance above which a pixel blooms
+    float bloomStrength = 0.6f;  ///< added bloom intensity
+    float bloomRadius = 1.0f;    ///< blur radius in texels (scaled by the tap pattern)
 };
 
 /// @brief Effect list + parameters of one scene node (or of a whole frame after merging).

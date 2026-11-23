@@ -271,6 +271,34 @@ void main() {
 }
 )GLSL";
 
+// --- G17 bloom pass: HDR -> HDR + bloom (resource "hdrB", feeds TAA). Bright-pass above
+// uThreshold, 9-tap golden-angle blur at uRadius texels, added with uStrength. Plain copy
+// when Effect::Bloom is off. Unit: uSrc 0.
+constexpr const char* kBloomFrag = R"GLSL(#version 330 core
+in vec2 vUV;
+uniform sampler2D uSrc; // unit 0: hdrP (lighting + water + particles)
+uniform int uBloomEnabled;
+uniform float uThreshold;
+uniform float uStrength;
+uniform float uRadius;
+uniform vec2 uTexel;
+out vec4 FragColor;
+void main() {
+    vec3 c = texture(uSrc, vUV).rgb;
+    if (uBloomEnabled != 1) { FragColor = vec4(c, 1.0); return; }
+    const float golden = 2.39996323;
+    vec3 acc = vec3(0.0);
+    for (int i = 0; i < 9; ++i) {
+        float a = float(i) * golden;
+        float r = (0.35 + 0.65 * float(i) / 9.0) * uRadius;
+        vec2 off = vec2(cos(a), sin(a)) * r * uTexel;
+        vec3 s = texture(uSrc, vUV + off).rgb;
+        acc += max(s - vec3(uThreshold), vec3(0.0)); // per-channel bright-pass
+    }
+    FragColor = vec4(c + (acc / 9.0) * uStrength, 1.0);
+}
+)GLSL";
+
 // --- G15 SSAO uniforms for the lighting pass (uSsao on unit 6, kTextureUnitGBufferPbr slot
 // is free in this pass — gPbr is bound at unit 2) ---
 constexpr const char* kLightFragSsao = R"GLSL(

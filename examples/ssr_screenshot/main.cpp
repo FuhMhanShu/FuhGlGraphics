@@ -124,8 +124,6 @@ int main(int argc, char** argv) {
     scene.root().effects.params.shadowCenter = {0.f, 1.f, 0.f};
     scene.root().effects.params.shadowRadius = 12.f;
     scene.root().effects.params.shadowZFar = 40.f;
-    scene.root().effects.params.ssrMaxSteps = 48;
-    scene.root().effects.params.ssrStrength = 0.9f;
 
     const fuhgl::math::Vec3 skyTop{0.16f, 0.32f, 0.64f}, skyHorizon{0.88f, 0.84f, 0.74f};
     fuhgl::Skybox skybox;
@@ -147,6 +145,8 @@ int main(int argc, char** argv) {
     for (int i = 0; i < args.frames; ++i) {
         scene::FrameData frame;
         scene.fillFrame(frame, nullptr, args.width, args.height);
+        frame.effects.params.ssrMaxSteps = 48;
+        frame.effects.params.ssrStrength = 0.9f;
         frame.effects.applyTo(renderer);
         frame.view.fogColor = skyHorizon;
         frame.view.fogDensity = 0.0015f;

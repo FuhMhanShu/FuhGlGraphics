@@ -10,6 +10,7 @@ add_executable(fuhglgraphics_tests
     test_water.cpp
     test_ssao.cpp
     test_ssr.cpp
+    test_bloom.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -118,3 +119,11 @@ add_executable(fuhglgraphics_gl_smoke_ssr gl_smoke_ssr.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_ssr PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_ssr COMMAND fuhglgraphics_gl_smoke_ssr)
 set_tests_properties(fuhglgraphics_gl_smoke_ssr PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G17 bloom (label "gl_context"): dark scene + HDR-bright
+# emissive lamp — with Effect::Bloom on there is a halo ring around the lamp; with a very
+# high bloom threshold there is none (adjustable threshold). Skips (exit code 77) no GL.
+add_executable(fuhglgraphics_gl_smoke_bloom gl_smoke_bloom.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_bloom PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_bloom COMMAND fuhglgraphics_gl_smoke_bloom)
+set_tests_properties(fuhglgraphics_gl_smoke_bloom PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

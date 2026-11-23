@@ -63,3 +63,8 @@ target_link_libraries(fuhglgraphics_ssao_screenshot PRIVATE fuhglgraphics)
 # "ssr" post pass raymarches the G-buffer depth (Effect::Ssr) — headless to PNG.
 add_executable(fuhglgraphics_ssr_screenshot ssr_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_ssr_screenshot PRIVATE fuhglgraphics)
+
+# G17 bloom demo: dusk plaza with HDR-bright lamps + sun disk — the G3 "bloom" post pass
+# (bright-pass + blur + add before TAA, Effect::Bloom, adjustable threshold) — headless to PNG.
+add_executable(fuhglgraphics_bloom_screenshot bloom_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_bloom_screenshot PRIVATE fuhglgraphics)

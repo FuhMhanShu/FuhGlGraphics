@@ -122,9 +122,6 @@ int main(int argc, char** argv) {
     scene.root().effects.params.shadowCenter = {0.f, 1.f, 0.f};
     scene.root().effects.params.shadowRadius = 10.f;
     scene.root().effects.params.shadowZFar = 40.f;
-    scene.root().effects.params.ssaoRadius = args.radius;
-    scene.root().effects.params.ssaoIntensity = 1.6f;
-    scene.root().effects.params.ssaoSamples = 32;
 
     const fuhgl::math::Vec3 skyTop{0.18f, 0.34f, 0.66f}, skyHorizon{0.88f, 0.84f, 0.74f};
     fuhgl::Skybox skybox;
@@ -147,6 +144,9 @@ int main(int argc, char** argv) {
     for (int i = 0; i < args.frames; ++i) {
         scene::FrameData frame;
         scene.fillFrame(frame, nullptr, args.width, args.height);
+        frame.effects.params.ssaoRadius = args.radius;
+        frame.effects.params.ssaoIntensity = 1.6f;
+        frame.effects.params.ssaoSamples = 32;
         frame.effects.applyTo(renderer);
         frame.view.fogColor = skyHorizon;
         frame.view.fogDensity = 0.002f;

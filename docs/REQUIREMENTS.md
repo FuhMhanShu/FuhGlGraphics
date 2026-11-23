@@ -207,6 +207,11 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   `kSsrFrag` + "ssr" post-graph pass in the G3 renderer, `Effect::Ssr`, output `hdrS` feeding
   the water/particles passes): implemented — see `tests/test_ssr.cpp`, `tests/gl_smoke_ssr.cpp`,
   `examples/ssr_screenshot`, `docs/images/g16_ssr_*.png` and the [G16 tutorial](en/tutorials/g16_ssr.md).
+- **G17 — bloom** (`include/fuhglgraphics/render/bloom.hpp` pure helpers, `kBloomFrag` +
+  "bloom" post-graph pass after particles / before TAA (`hdrP` -> `hdrB`), `Effect::Bloom`,
+  adjustable `bloomThreshold`): implemented — see `tests/test_bloom.cpp`,
+  `tests/gl_smoke_bloom.cpp`, `examples/bloom_screenshot`, `docs/images/g17_bloom_*.png` and
+  the [G17 tutorial](en/tutorials/g17_bloom.md).
 - G2, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON

@@ -9,6 +9,20 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G17 — bloom** (`include/fuhglgraphics/render/bloom.hpp`, `kBloomFrag` in
+  `src/render/deferred_glsl.hpp`, "bloom" post-graph pass in the G3 renderer): after the
+  particles pass and before TAA, the HDR image gets a per-channel bright-pass above the
+  adjustable `bloomThreshold`, a 9-tap golden-angle blur (`bloomRadius` texels) and is added
+  with `bloomStrength` (input `hdrP`, output `hdrB` consumed by the TAA pass, so the halo is
+  temporally stabilized). Pure helpers `bloomBrightPass()` / `bloomTaps()` (unit-tested). New
+  `render::Effect::Bloom` (kEffectCount = 19, off by default), `EffectParams::bloom*`. Tests:
+  `tests/test_bloom.cpp` (unit) + `tests/gl_smoke_bloom.cpp` (label `gl_context`; HDR lamp in
+  a dark scene: halo ring appears with bloom on, suppressed with threshold 100). Demo:
+  `examples/bloom_screenshot` (dusk plaza, HDR lamps + sun disk) headless to PNG; references
+  `docs/images/g17_bloom_{on,off,thr4}.png` (re-rendered g15/g16 references with frame-level
+  effect params). Tutorial: `docs/en/tutorials/g17_bloom.md` + German translation.
+  Requirement entry G17 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G16 — screen-space reflections (SSR)** (`include/fuhglgraphics/render/ssr.hpp`,
   `kSsrFrag` in `src/render/deferred_glsl.hpp`, "ssr" post-graph pass in the G3 renderer):
   after the lighting pass the reflection vector is marched in world space against the

@@ -74,8 +74,11 @@ sampled by the lighting pass) — see the [G15 tutorial](docs/en/tutorials/g15_s
 screenshots in [docs/images/](docs/images/g15_ssao_on.png) — and **G16** — screen-space
 reflections (`Effect::Ssr`: post pass after lighting raymarching the G-buffer depth,
 fresnel/roughness/edge mask, output `hdrS`) — see the [G16 tutorial](docs/en/tutorials/g16_ssr.md)
-and screenshots in [docs/images/](docs/images/g16_ssr_on.png).
-Next up: **G17–G23** (technical extensions: SSAO, SSR, bloom, picking, scene serialization,
+and screenshots in [docs/images/](docs/images/g16_ssr_on.png) — and **G17** — bloom
+(`Effect::Bloom`: post pass after particles, before TAA; bright-pass above the adjustable
+`bloomThreshold` + 9-tap blur + add into `hdrB`) — see the [G17 tutorial](docs/en/tutorials/g17_bloom.md)
+and screenshots in [docs/images/](docs/images/g17_bloom_on.png).
+Next up: **G18–G23** (technical extensions: SSAO, SSR, bloom, picking, scene serialization,
 terrain/LOD, volumetric fog, wetness, tonemap operators), then **G11** (engine
 infrastructure: asset cache, JSON config, minimal Qt editor) or **G2** (Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited

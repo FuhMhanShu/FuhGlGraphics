@@ -35,10 +35,11 @@ enum class Effect {
     GpuSkinning,    ///< G14 GPU skinning: matrix-palette SSBO in the G-buffer pass (GL >= 4.3, CPU fallback below)
     Ssao,           ///< G15 screen-space ambient occlusion from the G-buffer (pass before lighting)
     Ssr,            ///< G16 screen-space reflections: raymarch vs the G-buffer depth (post pass after lighting)
+    Bloom,          ///< G17 bloom: bright-pass (adjustable threshold) + blur + add in the HDR chain before TAA
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 18;
+constexpr int kEffectCount = 19;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -61,6 +62,7 @@ inline const char* effectName(Effect e) {
         case Effect::GpuSkinning: return "GPU skinning";
         case Effect::Ssao: return "SSAO";
         case Effect::Ssr: return "SSR";
+        case Effect::Bloom: return "bloom";
     }
     return "unknown";
 }

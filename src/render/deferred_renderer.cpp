@@ -1,6 +1,7 @@
 #include "fuhglgraphics/render/deferred_renderer.hpp"
 
 #include <fuhglgraphics/anim/gpu_skinner.hpp>
+#include <fuhglgraphics/render/bloom.hpp>
 #include <fuhglgraphics/render/ssao.hpp>
 #include <fuhglgraphics/render/ssr.hpp>
 #include <fuhglgraphics/particles/particle_system.hpp>
@@ -51,7 +52,7 @@ struct DeferredRenderer::Impl {
         rMotion{fuhgl::Texture::Target::Tex2D}, rMatId{fuhgl::Texture::Target::Tex2D};
     fuhgl::Texture texOutput{fuhgl::Texture::Target::Tex2D};
 
-    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, ssrMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
+    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, ssrMat, bloomMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
     std::vector<fuhgl::math::Vec3> ssaoKernel; ///< G15: generated once per createInternal
     bool skinProgramReady = false; ///< G14: the GLSL 430 skinning G-buffer program (GL >= 4.3)
     fuhgl::render::Mesh decalBox; ///< G8: unit box for the decal projection pass
@@ -277,6 +278,7 @@ bool DeferredRenderer::createInternal() {
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
         !compilePostFs(im.ssaoMat, kSsaoFrag, "ssao") ||
         !compilePostFs(im.ssrMat, kSsrFrag, "ssr") ||
+        !compilePostFs(im.bloomMat, kBloomFrag, "bloom") ||
         !compilePostFs(im.taaMat, kTaaFrag, "taa") ||
         !compilePostFs(im.upscaleMat, kUpscaleFrag, "upscale") ||
         !compilePostFs(im.dofMat, kDofFrag, "dof") ||
@@ -392,6 +394,7 @@ bool DeferredRenderer::createInternal() {
     im.post.addResource("hdrS", iw, ih, fuhgl::gl::GL_RGBA16F); // G16: hdr + screen-space reflections
     im.post.addResource("hdrW", iw, ih, fuhgl::gl::GL_RGBA16F); // hdr + G13 water
     im.post.addResource("hdrP", iw, ih, fuhgl::gl::GL_RGBA16F); // hdrW + G5 particles
+    im.post.addResource("hdrB", iw, ih, fuhgl::gl::GL_RGBA16F); // G17: hdrP + bloom
     im.post.addResource("taa", iw, ih, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("up", width_, height_, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("dof", width_, height_, fuhgl::gl::GL_RGBA16F); // G10 DoF at output res
@@ -405,7 +408,9 @@ bool DeferredRenderer::createInternal() {
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawWater(ctx); });
     im.post.addPass("particles", {"hdrW", "gDepth"}, {"hdrP"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawParticles(ctx); });
-    im.post.addPass("taa", {"hdrP", "gMotion", "taa"}, {"taa"},
+    im.post.addPass("bloom", {"hdrP"}, {"hdrB"}, // G17, after particles, before TAA
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawBloom(ctx); });
+    im.post.addPass("taa", {"hdrB", "gMotion", "taa"}, {"taa"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTaa(ctx); }, /*feedback=*/true);
     im.post.addPass("upscale", {"taa"}, {"up"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawUpscale(ctx); });
@@ -1200,8 +1205,24 @@ void DeferredRenderer::drawSsr(fuhgl::render::RenderGraph::PassContext& ctx) {
     });
 }
 
+// G17 bloom pass: bright-pass + 9-tap blur + add on the HDR image (hdrP -> hdrB, which the
+// TAA pass then blends temporally). Plain copy when Effect::Bloom is off.
+void DeferredRenderer::drawBloom(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "hdrP");
+    const bool on = effectEnabled(Effect::Bloom);
+    drawFs(impl_->bloomMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uSrc"), 0);
+        p.setUniform(p.uniformLocation("uBloomEnabled"), on ? 1 : 0);
+        p.setUniform("uThreshold", bloomThreshold);
+        p.setUniform("uStrength", bloomStrength);
+        p.setUniform("uRadius", bloomRadius);
+        p.setUniform("uTexel", fuhgl::math::Vec2(1.f / static_cast<float>(internalWidth_),
+                                                  1.f / static_cast<float>(internalHeight_)));
+    });
+}
+
 void DeferredRenderer::drawTaa(fuhgl::render::RenderGraph::PassContext& ctx) {
-    ctx.bindInput(0, "hdrP"); // lighting + G5 particles
+    ctx.bindInput(0, "hdrB"); // lighting + water + particles + G17 bloom
     ctx.bindInput(1, "gMotion");
     ctx.bindInput(2, "taa");
     const bool taaOn = effectEnabled(Effect::Taa);
@@ -1356,6 +1377,7 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::GpuSkinning, gpuSkinningEnabled_);
     gate(Effect::Ssao, ssaoEnabled_);
     gate(Effect::Ssr, ssrEnabled_);
+    gate(Effect::Bloom, bloomEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -1380,6 +1402,7 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::GpuSkinning: gpuSkinningEnabled_ = on; break;
         case Effect::Ssao: ssaoEnabled_ = on; break;
         case Effect::Ssr: ssrEnabled_ = on; break;
+        case Effect::Bloom: bloomEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -1414,6 +1437,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::GpuSkinning: return gpuSkinningEnabled_;
         case Effect::Ssao: return ssaoEnabled_;
         case Effect::Ssr: return ssrEnabled_;
+        case Effect::Bloom: return bloomEnabled_;
     }
     return false;
 }
@@ -1421,7 +1445,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
 void DeferredRenderer::setAllEffects(bool on) {
     taaEnabled_ = upscaleEnabled_ = tonemapEnabled_ = iblEnabled_ = shadows_ = csmEnabled_ = on;
     pointShadows_ = contactShadowsEnabled = particlesEnabled_ = lightProbesEnabled_ = decalsEnabled_ = waterEnabled_ = on;
-    dofEnabled_ = hudEnabled_ = gpuSkinningEnabled_ = ssaoEnabled_ = ssrEnabled_ = on;
+    dofEnabled_ = hudEnabled_ = gpuSkinningEnabled_ = ssaoEnabled_ = ssrEnabled_ = bloomEnabled_ = on;
     applyCapabilities();
 }
 

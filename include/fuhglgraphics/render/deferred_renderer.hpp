@@ -262,6 +262,13 @@ public:
     float ssrStrength = 0.8f;   ///< reflection intensity
     float ssrWetnessBoost = 0.f; ///< G22: extra strength on wet surfaces (0..1 added to strength)
 
+    /// @brief G17 bloom (Effect::Bloom): the "bloom" post pass runs after particles and
+    /// before TAA — bright-pass above `bloomThreshold`, 9-tap blur, added with `bloomStrength`
+    /// (output resource "hdrB", consumed by the TAA pass). Off by default.
+    float bloomThreshold = 1.0f;
+    float bloomStrength = 0.6f;
+    float bloomRadius = 1.0f;
+
     /// @brief G10 debug HUD (Effect::DebugHud): fps / frame time / effect toggles panel.
     DebugHud& hud() { return hud_; }
     const DebugHud& hud() const { return hud_; }
@@ -290,6 +297,7 @@ private:
                           const fuhgl::math::Vec4& clipPlane, const fuhgl::math::Vec3& reflEye);
     void drawSsao(fuhgl::render::RenderGraph::PassContext& ctx); ///< G15, runs before lighting
     void drawSsr(fuhgl::render::RenderGraph::PassContext& ctx);   ///< G16, runs after lighting
+    void drawBloom(fuhgl::render::RenderGraph::PassContext& ctx); ///< G17, after particles, before TAA
     void drawLighting(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawWater(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawParticles(fuhgl::render::RenderGraph::PassContext& ctx);
@@ -321,6 +329,7 @@ private:
     const std::vector<const anim::GpuSkinner*>* curSkins_ = nullptr; ///< G14 skins of this frame
     bool ssaoEnabled_ = false;   ///< Effect::Ssao (off by default)
     bool ssrEnabled_ = false;    ///< Effect::Ssr (off by default)
+    bool bloomEnabled_ = false;  ///< Effect::Bloom (off by default)
     const water::WaterSurface* curWater_ = nullptr; ///< G13: active water surface this frame
     fuhgl::math::Mat4 waterModel_{};                 ///< its draw item's model matrix
     fuhgl::math::Vec4 waterClipPlane_{0.f, 1.f, 0.f, 0.f}; ///< world plane (n, d) for clipping
