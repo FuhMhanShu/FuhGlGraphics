@@ -251,6 +251,13 @@ jobs:
           cmake --build build -j --target fuhglgraphics_mandelbulb_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_mandelbulb_screenshot --prefix docs/images/ci/g29_mandelbulb --width 1280 --height 720 --frames 16
 
+      - name: Build + render G36 ice-cave screenshots (SDF cave with campfire inside — G35 flame particles, ice crystals + SSR/SSS, water puddle, HBAO, bloom, volumetric fog, entrance glow; wide/crystals/entrance)
+        run: |
+          cmake --build build -j --target fuhglgraphics_cave_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_cave_screenshot --prefix docs/images/ci/cave --shot 0 --width 1280 --height 720 --frames 16
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_cave_screenshot --prefix docs/images/ci/cave --shot 1 --width 1280 --height 720 --frames 16
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_cave_screenshot --prefix docs/images/ci/cave --shot 2 --width 1280 --height 720 --frames 16
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)

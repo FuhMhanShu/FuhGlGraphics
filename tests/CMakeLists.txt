@@ -66,6 +66,14 @@ target_link_libraries(fuhglgraphics_gl_smoke_particles PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_particles COMMAND fuhglgraphics_gl_smoke_particles)
 set_tests_properties(fuhglgraphics_gl_smoke_particles PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
 
+# Headless GL smoke test for the G35 flame billboard mode (label "gl_context"): renders
+# the same emitter with flame on/off and verifies the frames differ and the sim clock
+# (uTime flicker uniform) advances. Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_flame gl_smoke_flame.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_flame PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_flame COMMAND fuhglgraphics_gl_smoke_flame)
+set_tests_properties(fuhglgraphics_gl_smoke_flame PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
 # Headless GL smoke test for the G6 animation module (label "gl_context"): parses the
 # fixture's animation clip + skin, plays the clip, renders two frames at different times
 # (images must differ) and checks CPU skinning moves weighted vertices.

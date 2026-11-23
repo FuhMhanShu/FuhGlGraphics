@@ -127,24 +127,45 @@ int main(int argc, char** argv) {
     const bool wantSmoke = args.kind == "smoke" || args.kind == "all";
     const bool wantPollen = args.kind == "pollen" || args.kind == "all";
 
-    if (wantFire) { // campfire: rising additive embers/flame
+    if (wantFire) { // campfire: G35 teardrop flame (fbm flicker, heat color ramp) + a few additive embers
         scene::Node& n = scene.root().createChild("fire");
         auto& em = n.attach<scene::ParticleEmitterComponent>();
         em.config.position = {0.f, 0.35f, 0.f};
         em.config.direction = {0.f, 1.f, 0.f};
-        em.config.speed = 1.6f;
-        em.config.spread = 0.35f;
-        em.config.rate = 350.f;
-        em.config.lifetime = 0.9f;
-        em.config.size = 0.07f;
-        em.config.grow = 0.05f;
-        em.config.color = {1.0f, 0.55f, 0.15f};
-        em.config.alpha = 0.9f;
-        em.config.gravity = 1.2f; // embers rise
-        em.config.drag = 1.0f;
-        em.config.blend = particles::BlendMode::Additive;
+        em.config.speed = 0.5f;
+        em.config.spread = 0.22f;
+        em.config.rate = 140.f;
+        em.config.lifetime = 1.0f;
+        em.config.size = 0.42f;
+        em.config.grow = 0.18f;
+        em.config.color = {1.0f, 0.72f, 0.30f};
+        em.config.alpha = 0.55f;
+        em.config.gravity = 0.45f; // buoyant hot gas rises
+        em.config.drag = 1.2f;
+        em.config.blend = particles::BlendMode::Additive; // overlapping tongues accumulate to a white-hot core
+        em.config.flame = true; // G35: teardrop + noise flame shading in the billboard FS
         if (!em.system.create(8192, em.config)) {
             std::fprintf(stderr, "particles_screenshot: fire emitter create failed\n");
+            return 1;
+        }
+        // embers: small fast additive sparks flying out of the flame
+        scene::Node& n2 = scene.root().createChild("embers");
+        auto& em2 = n2.attach<scene::ParticleEmitterComponent>();
+        em2.config.position = {0.f, 0.42f, 0.f};
+        em2.config.direction = {0.f, 1.f, 0.f};
+        em2.config.speed = 2.0f;
+        em2.config.spread = 0.45f;
+        em2.config.rate = 45.f;
+        em2.config.lifetime = 1.4f;
+        em2.config.size = 0.045f;
+        em2.config.grow = -0.012f; // sparks shrink while they burn out
+        em2.config.color = {1.0f, 0.55f, 0.12f};
+        em2.config.alpha = 1.0f;
+        em2.config.gravity = 1.1f;
+        em2.config.drag = 0.8f;
+        em2.config.blend = particles::BlendMode::Additive;
+        if (!em2.system.create(2048, em2.config)) {
+            std::fprintf(stderr, "particles_screenshot: ember emitter create failed\n");
             return 1;
         }
     }
