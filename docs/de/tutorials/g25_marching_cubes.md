@@ -40,6 +40,12 @@ entry.albedo = {0.46f, 0.43f, 0.38f};
 entry.roughness = 0.95f;
 ```
 
+
+> ⚠️ **Geschlossene Volumen:** die Pipeline cullt Backfaces — die Iso-Fläche muss *innerhalb*
+> der gesampelten Box geschlossen sein. Feld nahe am Volumenrand positiv halten (z. B. Falloff
+> jenseits der Terrain-Ausdehnung). Berührt der Festkörper den Box-Rand, rendert die offene
+> Grenze als durchsichtige Löcher.
+
 Details: ein Gitterpunkt ist „innen“, wenn `Wert < Isolevel`; geschnittene Kanten werden linear
 interpoliert, Normalen kommen aus zentralen Differenzen des Grids (pro Kante interpoliert), und
 Vertices werden pro Gitterkante verschweißt — das Mesh ist also geschlossen (manifold), wo die

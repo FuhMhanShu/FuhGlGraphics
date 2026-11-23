@@ -229,16 +229,16 @@ int main(int argc, char** argv) {
         return mesh; // keep alive
     };
     std::vector<std::unique_ptr<fuhgl::render::Mesh>> blobs;
-    blobs.push_back(makeBlob({0.f, 26.f, -6.f}, 5.5f, {3.2f, 1.5f, 0.5f}));   // amber
-    blobs.push_back(makeBlob({-16.f, 20.f, 14.f}, 3.2f, {0.5f, 1.9f, 3.6f}));  // cyan
-    blobs.push_back(makeBlob({18.f, 17.f, 10.f}, 2.4f, {3.0f, 0.7f, 2.2f}));   // magenta
+    blobs.push_back(makeBlob({0.f, 36.f, -6.f}, 5.5f, {3.2f, 1.5f, 0.5f}));   // amber
+    blobs.push_back(makeBlob({-16.f, 30.f, 14.f}, 3.2f, {0.5f, 1.9f, 3.6f}));  // cyan
+    blobs.push_back(makeBlob({18.f, 26.f, 10.f}, 2.4f, {3.0f, 0.7f, 2.2f}));   // magenta
 
     // --- lights + sky/IBL ---
     scene.root().createChild("sun").attach<scene::LightComponent>().light =
         fuhgl::render::Light::directional(-sunDir, {1.0f, 0.55f, 0.32f}, 2.6f);
     // warm fill point light near the big crystal (cave glow)
     scene.root().createChild("glow").attach<scene::LightComponent>().light =
-        fuhgl::render::Light::point({0.f, 24.f, -6.f}, {1.0f, 0.45f, 0.18f}, 320.f, 60.f);
+        fuhgl::render::Light::point({0.f, 34.f, -6.f}, {1.0f, 0.45f, 0.18f}, 320.f, 60.f);
 
     fuhgl::Texture skyCube = makeDuskSky(256, noise, sunDir);
     fuhgl::render::Environment env;
@@ -283,9 +283,9 @@ int main(int argc, char** argv) {
     renderer.godRays.decay = 0.95f;
     renderer.godRays.samples = 48;
 
-    // shot 1: cave terrain at dusk from the south-east, crystals glowing
-    cam.position = {58.f, 34.f, 78.f};
-    aimAt(cam, {0.f, 14.f, -4.f});
+    // shot 1: cave terrain at dusk from the south-east, crystals glowing above the ridge
+    cam.position = {62.f, 44.f, 80.f};
+    aimAt(cam, {0.f, 18.f, -6.f});
     const std::string cavePath = args.prefix + "_cave.png";
     if (!renderToPng(scene, cam, renderer, &env, args.frames, args.width, args.height, cavePath)) {
         std::fprintf(stderr, "marching_cubes_screenshot: failed to write %s\n", cavePath.c_str());
@@ -294,8 +294,8 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "marching_cubes_screenshot: wrote %s\n", cavePath.c_str());
 
     // shot 2: closeup of the amber crystal cluster with bloom + god rays
-    cam.position = {14.f, 28.f, 16.f};
-    aimAt(cam, {0.f, 25.f, -6.f});
+    cam.position = {14.f, 36.f, 14.f};
+    aimAt(cam, {0.f, 35.f, -6.f});
     const std::string blobPath = args.prefix + "_blob.png";
     if (!renderToPng(scene, cam, renderer, &env, args.frames, args.width, args.height, blobPath)) {
         std::fprintf(stderr, "marching_cubes_screenshot: failed to write %s\n", blobPath.c_str());
