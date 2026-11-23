@@ -59,6 +59,7 @@ add_library(fuhglgraphics STATIC
     src/procedural/voronoi.cpp
     src/procedural/sdf.cpp
     src/procedural/creature.cpp
+    src/procedural/worldgen.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 
