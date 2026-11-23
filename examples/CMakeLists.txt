@@ -58,3 +58,8 @@ target_link_libraries(fuhglgraphics_gpu_skinning_screenshot PRIVATE fuhglgraphic
 # contact corners/edges (Effect::Ssao) — headless to PNG.
 add_executable(fuhglgraphics_ssao_screenshot ssao_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_ssao_screenshot PRIVATE fuhglgraphics)
+
+# G16 SSR demo: showroom with a mirror floor reflecting an emissive pillar + crates — the G3
+# "ssr" post pass raymarches the G-buffer depth (Effect::Ssr) — headless to PNG.
+add_executable(fuhglgraphics_ssr_screenshot ssr_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_ssr_screenshot PRIVATE fuhglgraphics)

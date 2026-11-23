@@ -180,6 +180,97 @@ void main() {
 }
 )GLSL";
 
+// --- G16 SSR pass: lit HDR + G-buffer -> HDR with screen-space reflections (resource
+// "hdrS"). World-space raymarch of the reflection vector against the G-buffer depth
+// (linearized compare, thickness band, binary refine), then the hit HDR color is added with
+// an edge/roughness/fresnel mask. Plain copy when Effect::Ssr is off.
+// Units: uHdr 0, uGNormal 1, uGDepth 2, uGPbr 3.
+constexpr const char* kSsrFrag = R"GLSL(#version 330 core
+in vec2 vUV;
+uniform sampler2D uHdr;     // unit 0: lit HDR scene
+uniform sampler2D uGNormal; // unit 1
+uniform sampler2D uGDepth;  // unit 2
+uniform sampler2D uGPbr;    // unit 3 (r=metallic, g=roughness)
+uniform mat4 uInvViewProj;
+uniform mat4 uViewProj;     // non-jittered camera viewProj (projection of march samples)
+uniform vec3 uCamPos;
+uniform int uSsrEnabled;
+uniform int uMaxSteps;
+uniform float uThickness;
+uniform float uMaxDist;
+uniform float uStrength;    // includes the G22 wetness boost
+uniform float uZNear, uZFar;
+out vec4 FragColor;
+float linearize(float d) { return 2.0 * uZNear * uZFar / max(uZFar + uZNear - d * (uZFar - uZNear), 1e-6); }
+float edgeFade(vec2 uv) {
+    const float m = 0.08;
+    float fx = min(min(uv.x, 1.0 - uv.x) / m, 1.0);
+    float fy = min(min(uv.y, 1.0 - uv.y) / m, 1.0);
+    float f = min(fx, fy);
+    return f * f * (3.0 - 2.0 * f);
+}
+void main() {
+    vec3 hdr = texture(uHdr, vUV).rgb;
+    if (uSsrEnabled != 1) { FragColor = vec4(hdr, 1.0); return; }
+    float depth = texture(uGDepth, vUV).r;
+    if (depth >= 0.99999) { FragColor = vec4(hdr, 1.0); return; } // sky reflects nothing here
+    vec4 wp = uInvViewProj * vec4(vUV * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec3 P = wp.xyz / wp.w;
+    vec3 N = normalize(texture(uGNormal, vUV).rgb * 2.0 - 1.0);
+    vec4 pbr = texture(uGPbr, vUV);
+    vec3 V = normalize(uCamPos - P);
+    float ndotv = clamp(dot(N, V), 0.0, 1.0);
+    // mask: rough surfaces reflect little, metals at all angles (schlick, F0 = mix(0.04,1,metal))
+    float f0 = mix(0.04, 1.0, pbr.r);
+    float fres = f0 + (1.0 - f0) * pow(1.0 - ndotv, 5.0);
+    float mask = fres * (1.0 - pbr.g) * (1.0 - pbr.g);
+    if (mask < 0.02) { FragColor = vec4(hdr, 1.0); return; }
+    vec3 R = reflect(-V, N);
+    if (dot(R, N) <= 0.0) { FragColor = vec4(hdr, 1.0); return; }
+    // march
+    float tPrev = 0.0;
+    float t = max(uMaxDist / max(float(uMaxSteps), 1.0), 1e-3) * 0.5;
+    float hitT = -1.0;
+    vec2 hitUV = vec2(0.0);
+    for (int i = 0; i < 128; ++i) {
+        if (i >= uMaxSteps) break;
+        vec3 sp = P + R * t;
+        vec4 clip = uViewProj * vec4(sp, 1.0);
+        if (clip.w <= 0.0) break;
+        vec2 suv = clip.xy / clip.w * 0.5 + 0.5;
+        if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) break; // left the screen
+        float sceneLin = linearize(texture(uGDepth, suv).r);
+        float rayLin = linearize(clip.z / clip.w * 0.5 + 0.5);
+        if (sceneLin < rayLin && sceneLin > rayLin - uThickness) { hitT = t; hitUV = suv; break; }
+        if (sceneLin < rayLin - uThickness) { // went behind the surface: refine between tPrev and t
+            float lo = tPrev, hi = t;
+            for (int k = 0; k < 4; ++k) {
+                float mid = 0.5 * (lo + hi);
+                vec3 mp = P + R * mid;
+                vec4 mc = uViewProj * vec4(mp, 1.0);
+                vec2 muv = mc.xy / mc.w * 0.5 + 0.5;
+                float mScene = linearize(texture(uGDepth, muv).r);
+                float mRay = linearize(mc.z / mc.w * 0.5 + 0.5);
+                if (mScene < mRay) hi = mid; else lo = mid;
+            }
+            hitT = 0.5 * (lo + hi);
+            vec4 fc = uViewProj * vec4(P + R * hitT, 1.0);
+            hitUV = fc.xy / fc.w * 0.5 + 0.5;
+            break;
+        }
+        tPrev = t;
+        t += uMaxDist / max(float(uMaxSteps), 1.0);
+        if (t > uMaxDist) break;
+    }
+    if (hitT > 0.0) {
+        float distFade = clamp(1.0 - hitT / max(uMaxDist, 1e-4), 0.0, 1.0);
+        vec3 refl = texture(uHdr, clamp(hitUV, vec2(0.001), vec2(0.999))).rgb;
+        hdr += refl * mask * uStrength * distFade * edgeFade(hitUV);
+    }
+    FragColor = vec4(hdr, 1.0);
+}
+)GLSL";
+
 // --- G15 SSAO uniforms for the lighting pass (uSsao on unit 6, kTextureUnitGBufferPbr slot
 // is free in this pass — gPbr is bound at unit 2) ---
 constexpr const char* kLightFragSsao = R"GLSL(

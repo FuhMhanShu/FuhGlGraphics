@@ -210,6 +210,14 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
                   frame.lightProbes, &frame.decals, frame.water);
   ```
+- **Screen-space reflections (G16).** `render::Effect::Ssr` runs a post-graph pass `ssr`
+  after lighting: the reflection vector is marched against the G-buffer depth and the hit HDR
+  color is added with a fresnel/roughness/edge/distance mask (pure helpers `ssrEdgeFade()` /
+  `ssrMask()` in `render/ssr.hpp`). The pass writes `hdrS`, which the water/particles passes
+  consume. Params in `EffectParams`: `ssrMaxSteps`, `ssrThickness`, `ssrMaxDist`,
+  `ssrStrength`; `renderer.ssrWetnessBoost` adds wetness on top (G22). Quick start:
+  [G16 tutorial](en/tutorials/g16_ssr.md), demo `examples/ssr_screenshot`,
+  screenshots: [on](images/g16_ssr_on.png), [off](images/g16_ssr_off.png).
 - **SSAO (G15).** `render::Effect::Ssao` runs a post-graph pass `ssao` before lighting:
   hemisphere-kernel sampling of the G-buffer (normal + depth, world-space reconstruction,
   per-pixel kernel rotation, linearized-depth compare with range check) into the `ssao`

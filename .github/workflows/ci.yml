@@ -165,6 +165,12 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_ssao_screenshot --out docs/images/ci/g15_ssao_on.png --width 1280 --height 720 --frames 16
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_ssao_screenshot --out docs/images/ci/g15_ssao_off.png --width 1280 --height 720 --frames 16 --no-ssao
 
+      - name: Build + render G16 SSR screenshots (ssr pass after lighting)
+        run: |
+          cmake --build build -j --target fuhglgraphics_ssr_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_ssr_screenshot --out docs/images/ci/g16_ssr_on.png --width 1280 --height 720 --frames 16
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_ssr_screenshot --out docs/images/ci/g16_ssr_off.png --width 1280 --height 720 --frames 16 --no-ssr
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)

@@ -9,6 +9,7 @@ add_executable(fuhglgraphics_tests
     test_probes.cpp
     test_water.cpp
     test_ssao.cpp
+    test_ssr.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -109,3 +110,11 @@ add_executable(fuhglgraphics_gl_smoke_ssao gl_smoke_ssao.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_ssao PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_ssao COMMAND fuhglgraphics_gl_smoke_ssao)
 set_tests_properties(fuhglgraphics_gl_smoke_ssao PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G16 SSR (label "gl_context"): mirror floor + bright emissive
+# box — with Effect::Ssr on the box appears reflected in the floor region (brighter there).
+# Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_ssr gl_smoke_ssr.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_ssr PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_ssr COMMAND fuhglgraphics_gl_smoke_ssr)
+set_tests_properties(fuhglgraphics_gl_smoke_ssr PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

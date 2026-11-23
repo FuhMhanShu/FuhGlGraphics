@@ -40,6 +40,9 @@ One small tutorial per feature. Each is self-contained: goal → code → result
   fresnel mix, crest + shore foam, sun glint); lake screenshots in
   [docs/images/](../../images/g13_water_1280x720.png)
 
+- [G16 — Screen-space reflections](g16_ssr.md) — post pass after lighting raymarching the
+  G-buffer depth (fresnel/roughness/edge mask), output `hdrS`; `Effect::Ssr`; screenshots in
+  [docs/images/](../../images/g16_ssr_on.png)
 - [G15 — SSAO](g15_ssao.md) — post pass before lighting from the G-buffer (hemisphere
   kernel + depth compare into an `ssao` resource, sampled by the lighting pass,
   `Effect::Ssao`); screenshots in [docs/images/](../../images/g15_ssao_on.png)
@@ -48,7 +51,7 @@ One small tutorial per feature. Each is self-contained: goal → code → result
   vertex shader when `Effect::GpuSkinning` is on (CPU fallback below); screenshots in
   [docs/images/](../../images/g14_gpu_skinning_on.png)
 
-Next: **G16–G23** (technical extensions: SSR, bloom, picking, scene serialization,
+Next: **G17–G23** (technical extensions: bloom, picking, scene serialization,
 terrain/LOD, volumetric fog, wetness, tonemap operators) / **G11** (engine infrastructure) /
 **G2** (Qt editor) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
 

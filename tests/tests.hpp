@@ -11,3 +11,4 @@ void runAnimTests();
 void runProbesTests();
 void runWaterTests();
 void runSsaoTests();
+void runSsrTests();

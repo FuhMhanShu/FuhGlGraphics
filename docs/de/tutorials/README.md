@@ -39,6 +39,9 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   per Fresnel, Kamm- + Uferschaum, Sonnen-Glint); See-Bilder in
   [docs/images/](../../images/g13_water_1280x720.png)
 
+- [G16 — Screen-Space Reflections](g16_ssr.md) — Post-Pass nach dem Lighting, raymarched
+  gegen die G-Buffer-Tiefe (Fresnel/Roughness/Edge-Maske), Ausgabe `hdrS`; `Effect::Ssr`;
+  Bilder in [docs/images/](../../images/g16_ssr_on.png)
 - [G15 — SSAO](g15_ssao.md) — Post-Pass vor dem Lighting aus dem G-Buffer
   (Hemisphären-Kernel + Tiefenvergleich in die Ressource `ssao`, vom Lighting-Pass
   gesampelt, `Effect::Ssao`); Bilder in [docs/images/](../../images/g15_ssao_on.png)
@@ -47,7 +50,7 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   G3-G-Buffer-Passes, wenn `Effect::GpuSkinning` an ist (CPU-Fallback darunter); Bilder in
   [docs/images/](../../images/g14_gpu_skinning_on.png)
 
-Als Nächstes: **G16–G23** (technische Erweiterungen: SSR, Bloom, Picking,
+Als Nächstes: **G17–G23** (technische Erweiterungen: Bloom, Picking,
 Szenen-Serialisierung, Terrain/LOD, volumetrischer Nebel, Wetness, Tonemap-Operatoren) /
 **G11** (Engine-Infrastruktur) / **G2** (Qt-Editor) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
 

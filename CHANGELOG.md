@@ -9,6 +9,20 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G16 — screen-space reflections (SSR)** (`include/fuhglgraphics/render/ssr.hpp`,
+  `kSsrFrag` in `src/render/deferred_glsl.hpp`, "ssr" post-graph pass in the G3 renderer):
+  after the lighting pass the reflection vector is marched in world space against the
+  G-buffer depth (linearized compare, thickness band, binary refine on hit) and the hit HDR
+  color is added masked by fresnel × (1−roughness)² × screen-edge fade × distance fade
+  (pure helpers `ssrEdgeFade` / `ssrMask`, unit-tested). The pass reads `hdr/gNormal/gDepth/
+  gPbr` and writes `hdrS`, which then feeds the water and particles passes. New
+  `render::Effect::Ssr` (kEffectCount = 18, off by default), `EffectParams::ssr*`,
+  `DeferredRenderer::ssrWetnessBoost` (G22 adds wetness on top). Tests: `tests/test_ssr.cpp`
+  (unit) + `tests/gl_smoke_ssr.cpp` (label `gl_context`; mirror floor + emissive box: the
+  floor region is brighter with SSR on). Demo: `examples/ssr_screenshot` headless to PNG;
+  references `docs/images/g16_ssr_{on,off}.png`. Tutorial: `docs/en/tutorials/g16_ssr.md` +
+  German translation. Requirement entry G16 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G15 — SSAO** (`fuhglgraphics::render`, `include/fuhglgraphics/render/ssao.hpp`,
   `src/render/ssao.cpp`): a new post-graph pass `ssao` runs before the lighting pass —
   world-position reconstruction from the G-buffer depth, a deterministic hemisphere kernel

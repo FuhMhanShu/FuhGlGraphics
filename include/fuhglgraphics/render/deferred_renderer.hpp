@@ -252,6 +252,16 @@ public:
     float ssaoBias = 0.03f;     ///< depth bias in world units
     int ssaoSamples = 24;       ///< hemisphere kernel samples (max 64)
 
+    /// @brief G16 SSR (Effect::Ssr): the "ssr" post pass runs after lighting and raymarches
+    /// the reflection vector against the G-buffer depth (inputs hdr/gNormal/gDepth/gPbr ->
+    /// hdrS), adding the reflected HDR color with an edge/roughness/fresnel mask. Off by
+    /// default (costs a raymarch pass). G22 wetness raises the effective strength.
+    int ssrMaxSteps = 32;       ///< raymarch steps
+    float ssrThickness = 0.4f;  ///< hit thickness in world units
+    float ssrMaxDist = 30.f;    ///< max march distance in world units
+    float ssrStrength = 0.8f;   ///< reflection intensity
+    float ssrWetnessBoost = 0.f; ///< G22: extra strength on wet surfaces (0..1 added to strength)
+
     /// @brief G10 debug HUD (Effect::DebugHud): fps / frame time / effect toggles panel.
     DebugHud& hud() { return hud_; }
     const DebugHud& hud() const { return hud_; }
@@ -279,6 +289,7 @@ private:
     void renderReflection(const fuhgl::render::SceneView& scene, const fuhgl::math::Mat4& reflViewProj,
                           const fuhgl::math::Vec4& clipPlane, const fuhgl::math::Vec3& reflEye);
     void drawSsao(fuhgl::render::RenderGraph::PassContext& ctx); ///< G15, runs before lighting
+    void drawSsr(fuhgl::render::RenderGraph::PassContext& ctx);   ///< G16, runs after lighting
     void drawLighting(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawWater(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawParticles(fuhgl::render::RenderGraph::PassContext& ctx);
@@ -309,6 +320,7 @@ private:
     bool gpuSkinningEnabled_ = true; ///< Effect::GpuSkinning (GL >= 4.3, CPU fallback below)
     const std::vector<const anim::GpuSkinner*>* curSkins_ = nullptr; ///< G14 skins of this frame
     bool ssaoEnabled_ = false;   ///< Effect::Ssao (off by default)
+    bool ssrEnabled_ = false;    ///< Effect::Ssr (off by default)
     const water::WaterSurface* curWater_ = nullptr; ///< G13: active water surface this frame
     fuhgl::math::Mat4 waterModel_{};                 ///< its draw item's model matrix
     fuhgl::math::Vec4 waterClipPlane_{0.f, 1.f, 0.f, 0.f}; ///< world plane (n, d) for clipping

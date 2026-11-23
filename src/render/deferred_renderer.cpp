@@ -2,6 +2,7 @@
 
 #include <fuhglgraphics/anim/gpu_skinner.hpp>
 #include <fuhglgraphics/render/ssao.hpp>
+#include <fuhglgraphics/render/ssr.hpp>
 #include <fuhglgraphics/particles/particle_system.hpp>
 #include <fuhglgraphics/probes/light_probes.hpp>
 #include <fuhglgraphics/water/water_surface.hpp>
@@ -50,7 +51,7 @@ struct DeferredRenderer::Impl {
         rMotion{fuhgl::Texture::Target::Tex2D}, rMatId{fuhgl::Texture::Target::Tex2D};
     fuhgl::Texture texOutput{fuhgl::Texture::Target::Tex2D};
 
-    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
+    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, ssrMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
     std::vector<fuhgl::math::Vec3> ssaoKernel; ///< G15: generated once per createInternal
     bool skinProgramReady = false; ///< G14: the GLSL 430 skinning G-buffer program (GL >= 4.3)
     fuhgl::render::Mesh decalBox; ///< G8: unit box for the decal projection pass
@@ -275,6 +276,7 @@ bool DeferredRenderer::createInternal() {
     im.ssaoKernel = ssaoKernel(std::min(ssaoSamples > 0 ? ssaoSamples : 24, 64), 1337u);
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
         !compilePostFs(im.ssaoMat, kSsaoFrag, "ssao") ||
+        !compilePostFs(im.ssrMat, kSsrFrag, "ssr") ||
         !compilePostFs(im.taaMat, kTaaFrag, "taa") ||
         !compilePostFs(im.upscaleMat, kUpscaleFrag, "upscale") ||
         !compilePostFs(im.dofMat, kDofFrag, "dof") ||
@@ -387,6 +389,7 @@ bool DeferredRenderer::createInternal() {
     im.post.addExternal("gDepth", &im.texDepth, iw, ih);
     im.post.addResource("ssao", iw, ih, fuhgl::gl::GL_RG16F); // G15 AO factor in .r
     im.post.addResource("hdr", iw, ih, fuhgl::gl::GL_RGBA16F);
+    im.post.addResource("hdrS", iw, ih, fuhgl::gl::GL_RGBA16F); // G16: hdr + screen-space reflections
     im.post.addResource("hdrW", iw, ih, fuhgl::gl::GL_RGBA16F); // hdr + G13 water
     im.post.addResource("hdrP", iw, ih, fuhgl::gl::GL_RGBA16F); // hdrW + G5 particles
     im.post.addResource("taa", iw, ih, fuhgl::gl::GL_RGBA16F);
@@ -396,7 +399,9 @@ bool DeferredRenderer::createInternal() {
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawSsao(ctx); });
     im.post.addPass("lighting", {"gAlbedo", "gNormal", "gPbr", "gEmissive", "gDepth", "ssao"}, {"hdr"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawLighting(ctx); });
-    im.post.addPass("water", {"hdr", "gDepth"}, {"hdrW"},
+    im.post.addPass("ssr", {"hdr", "gNormal", "gDepth", "gPbr"}, {"hdrS"}, // G16, after lighting
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawSsr(ctx); });
+    im.post.addPass("water", {"hdrS", "gDepth"}, {"hdrW"}, // G13 water shades the SSR result
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawWater(ctx); });
     im.post.addPass("particles", {"hdrW", "gDepth"}, {"hdrP"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawParticles(ctx); });
@@ -875,7 +880,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
 // foam). The post FBO has no depth attachment, so the fragment shader does the occlusion
 // test manually against the G-buffer depth (uGDepth).
 void DeferredRenderer::drawWater(fuhgl::render::RenderGraph::PassContext& ctx) {
-    ctx.bindInput(0, "hdr");
+    ctx.bindInput(0, "hdrS"); // G16: lighting + screen-space reflections
     ctx.bindInput(1, "gDepth");
     Impl& im = *impl_;
     drawFs(im.copyMat, [&](fuhgl::Program& p) { p.setUniform(p.uniformLocation("uSrc"), 0); });
@@ -1168,6 +1173,33 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
     });
 }
 
+// G16 SSR pass: raymarch the reflection vector against the G-buffer depth, add the hit HDR
+// color masked by fresnel/roughness/edge-fade. Plain copy when Effect::Ssr is off.
+void DeferredRenderer::drawSsr(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "hdr");
+    ctx.bindInput(1, "gNormal");
+    ctx.bindInput(2, "gDepth");
+    ctx.bindInput(3, "gPbr");
+    const fuhgl::render::SceneView& s = *curScene_;
+    const bool on = effectEnabled(Effect::Ssr);
+    drawFs(impl_->ssrMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uHdr"), 0);
+        p.setUniform(p.uniformLocation("uGNormal"), 1);
+        p.setUniform(p.uniformLocation("uGDepth"), 2);
+        p.setUniform(p.uniformLocation("uGPbr"), 3);
+        p.setUniform(p.uniformLocation("uSsrEnabled"), on ? 1 : 0);
+        p.setUniform("uInvViewProj", s.camera->viewProj(s.aspect).inverse());
+        p.setUniform("uViewProj", s.camera->viewProj(s.aspect)); // non-jittered
+        p.setUniform("uCamPos", s.camera->eye());
+        p.setUniform(p.uniformLocation("uMaxSteps"), std::min(std::max(ssrMaxSteps, 1), 128));
+        p.setUniform("uThickness", ssrThickness);
+        p.setUniform("uMaxDist", ssrMaxDist);
+        p.setUniform("uStrength", ssrStrength * (1.f + ssrWetnessBoost));
+        p.setUniform("uZNear", s.camera->zNear());
+        p.setUniform("uZFar", s.camera->zFar());
+    });
+}
+
 void DeferredRenderer::drawTaa(fuhgl::render::RenderGraph::PassContext& ctx) {
     ctx.bindInput(0, "hdrP"); // lighting + G5 particles
     ctx.bindInput(1, "gMotion");
@@ -1323,6 +1355,7 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::Water, waterEnabled_);
     gate(Effect::GpuSkinning, gpuSkinningEnabled_);
     gate(Effect::Ssao, ssaoEnabled_);
+    gate(Effect::Ssr, ssrEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -1346,6 +1379,7 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::Water: waterEnabled_ = on; break;
         case Effect::GpuSkinning: gpuSkinningEnabled_ = on; break;
         case Effect::Ssao: ssaoEnabled_ = on; break;
+        case Effect::Ssr: ssrEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -1379,6 +1413,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::Water: return waterEnabled_;
         case Effect::GpuSkinning: return gpuSkinningEnabled_;
         case Effect::Ssao: return ssaoEnabled_;
+        case Effect::Ssr: return ssrEnabled_;
     }
     return false;
 }
@@ -1386,7 +1421,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
 void DeferredRenderer::setAllEffects(bool on) {
     taaEnabled_ = upscaleEnabled_ = tonemapEnabled_ = iblEnabled_ = shadows_ = csmEnabled_ = on;
     pointShadows_ = contactShadowsEnabled = particlesEnabled_ = lightProbesEnabled_ = decalsEnabled_ = waterEnabled_ = on;
-    dofEnabled_ = hudEnabled_ = gpuSkinningEnabled_ = ssaoEnabled_ = on;
+    dofEnabled_ = hudEnabled_ = gpuSkinningEnabled_ = ssaoEnabled_ = ssrEnabled_ = on;
     applyCapabilities();
 }
 

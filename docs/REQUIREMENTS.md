@@ -203,6 +203,10 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   sampled by the lighting pass on unit 6): implemented — see `tests/test_ssao.cpp`,
   `tests/gl_smoke_ssao.cpp`, `examples/ssao_screenshot`, `docs/images/g15_ssao_*.png` and the
   [G15 tutorial](en/tutorials/g15_ssao.md).
+- **G16 — screen-space reflections** (`include/fuhglgraphics/render/ssr.hpp` pure helpers,
+  `kSsrFrag` + "ssr" post-graph pass in the G3 renderer, `Effect::Ssr`, output `hdrS` feeding
+  the water/particles passes): implemented — see `tests/test_ssr.cpp`, `tests/gl_smoke_ssr.cpp`,
+  `examples/ssr_screenshot`, `docs/images/g16_ssr_*.png` and the [G16 tutorial](en/tutorials/g16_ssr.md).
 - G2, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON

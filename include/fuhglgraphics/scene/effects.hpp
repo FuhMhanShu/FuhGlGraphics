@@ -57,6 +57,11 @@ struct EffectParams {
     float ssaoIntensity = 1.4f; ///< occlusion strength (occ fraction * intensity subtracted from 1)
     float ssaoBias = 0.03f;     ///< depth bias in world units (avoids self-occlusion acne)
     int ssaoSamples = 24;       ///< hemisphere kernel samples (max 64)
+    // --- G16 SSR (Effect::Ssr) ---
+    int ssrMaxSteps = 32;       ///< raymarch steps
+    float ssrThickness = 0.4f;  ///< hit thickness in world units
+    float ssrMaxDist = 30.f;    ///< max march distance in world units
+    float ssrStrength = 0.8f;   ///< reflection intensity (wetness adds on top, G22)
 };
 
 /// @brief Effect list + parameters of one scene node (or of a whole frame after merging).
