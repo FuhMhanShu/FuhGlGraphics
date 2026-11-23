@@ -57,6 +57,7 @@
 #include <fuhglgraphics/water/water_surface.hpp>
 
 #include <fuhglgraphics/procedural/noise.hpp>
+#include <fuhglgraphics/procedural/marching_cubes.hpp>
 
 // NOTE: editor/gl_viewport_widget.hpp (WITH_QT only) is deliberately NOT included here:
 // its Qt/GL headers would leak GL macros (e.g. GL_UNSIGNED_INT) into every core TU and

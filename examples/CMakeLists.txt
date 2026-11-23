@@ -124,3 +124,10 @@ target_link_libraries(fuhglgraphics_postfx_screenshot PRIVATE fuhglgraphics)
 # SSAO + volumetric fog + wetness + bloom, TAA + upscale + ACES — wide + ridge shots.
 add_executable(fuhglgraphics_noise_screenshot noise_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_noise_screenshot PRIVATE fuhglgraphics)
+
+# G25 marching-cubes showcase: cave terrain extracted from a G24-noise volume with chunked
+# marching cubes (one MeshData per chunk as MeshEntries of one node), emissive crystal blobs
+# with bloom, dusk sky + IBL, sun + CSM shadows + god rays, SSAO + volumetric fog,
+# TAA + upscale + ACES — cave overview + crystal closeup, headless to PNG.
+add_executable(fuhglgraphics_marching_cubes_screenshot marching_cubes_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_marching_cubes_screenshot PRIVATE fuhglgraphics)

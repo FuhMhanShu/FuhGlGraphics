@@ -9,6 +9,26 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G25 — marching cubes (voxel → mesh)** (`include/fuhglgraphics/procedural/marching_cubes.hpp`,
+  `src/procedural/marching_cubes.cpp`): `procedural::VolumeGrid` + `sampleField(field, min, max,
+  nx, ny, nz)` sample a scalar volume; `marchingCubes(grid, isolevel, color)` runs the classic
+  33-case Lorensen & Cline polygonisation with linear edge interpolation, central-difference
+  gradient normals (interpolated per edge) and a lattice-edge vertex cache, so the result is a
+  watertight indexed `fuhgl::render::MeshData` (11 floats/vertex) ready for
+  `Mesh::setMeshData`. `marchingCubesChunked(...)` splits large volumes into chunks that share
+  their boundary point planes (exact seams, every cell processed once). The canonical triTable
+  (public-domain reference, Paul Bourke) is validated by the unit tests (per-config crossing-edge
+  coverage, ≤5 triangles) plus geometric checks (sphere → closed manifold, Euler char 2, outward
+  normals; plane → exact triangle count; chunked triangle count == single). Tests:
+  `tests/test_procedural_mc.cpp` (unit) + `tests/gl_smoke_procedural.cpp` (label `gl_context`;
+  noise-metaball blob rendered through the G3 renderer, pixels verified). Demo:
+  `examples/marching_cubes_screenshot` — cave terrain from a G24-noise volume (112^3, chunked
+  4x1x4, ~115k triangles) + emissive crystal blobs with bloom, dusk sky cubemap + IBL, sun with
+  CSM shadows + god rays, SSAO + volumetric fog, TAA + upscale + ACES; references
+  `docs/images/g25_marching_cubes_{cave,blob}.png`. Tutorial:
+  `docs/en/tutorials/g25_marching_cubes.md` + German translation. Requirement entry G25 in
+  [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G24 — procedural noise module (CPU)** (`include/fuhglgraphics/procedural/noise.hpp`,
   header-only `procedural::Noise` value type, deterministic per seed): value noise 2D/3D,
   Perlin 2D/3D (delegates to `fuhgl::math::Noise`), Simplex 2D/3D (Gustavson scaling),

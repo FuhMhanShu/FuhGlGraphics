@@ -103,8 +103,12 @@ im Tonemap-Pass, reine CPU-Zwillinge in `render/tonemap.hpp`) + einstellbarer Bl
 Noise-Modul (`procedural::Noise` in `procedural/noise.hpp`: seeded, deterministischer
 Value-/Perlin-/Simplex-Noise 2D+3D mit fBm/Ridged/Turbulence und Domain-Warp; gemeinsame
 Noise-Quelle für die G25–G29-Generatoren) — siehe [G24-Tutorial](docs/de/tutorials/g24_procedural_noise.md)
-und Bilder in [docs/images/](docs/images/g24_noise_wide.png).
-Als Nächstes: **G25–G29** (Marching Cubes, L-Systeme, WFC, Voronoi, SDF/Fraktale) oder **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder
+und Bilder in [docs/images/](docs/images/g24_noise_wide.png) — und **G25** — Marching Cubes
+(`procedural::marchingCubes` / `marchingCubesChunked`: Voxel-Volumen → wasserdichtes
+indexiertes `MeshData`, für Höhlen-Terrain und SDF-Meshing) — siehe
+[G25-Tutorial](docs/de/tutorials/g25_marching_cubes.md) und Bilder in
+[docs/images/](docs/images/g25_marching_cubes_cave.png).
+Als Nächstes: **G26–G29** (L-Systeme, WFC, Voronoi, SDF/Fraktale) oder **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder
 **G2** (Qt-Editor).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.

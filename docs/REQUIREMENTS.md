@@ -268,9 +268,17 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   (`warp2`/`warp3`), `height2` terrain field. See `tests/test_procedural_noise.cpp`,
   `examples/noise_screenshot`, `docs/images/g24_noise_*.png` and the
   [G24 tutorial](en/tutorials/g24_procedural_noise.md).
-- **G25–G29 — procedural generation algorithms** — planned (same `procedural/` module,
+- **G25 — marching cubes (voxel → mesh)** — implemented: `procedural::VolumeGrid` +
+  `sampleField()` + `marchingCubes()` (classic 33-case Lorensen & Cline polygonisation,
+  linear edge interpolation, gradient normals, lattice-edge vertex welding → watertight
+  indexed `MeshData`) and `marchingCubesChunked()` (one MeshData per chunk, shared boundary
+  point planes → exact seams) in `include/fuhglgraphics/procedural/marching_cubes.hpp` +
+  `src/procedural/marching_cubes.cpp`. See `tests/test_procedural_mc.cpp`,
+  `tests/gl_smoke_procedural.cpp`, `examples/marching_cubes_screenshot`,
+  `docs/images/g25_marching_cubes_*.png` and the
+  [G25 tutorial](en/tutorials/g25_marching_cubes.md).
+- **G26–G29 — procedural generation algorithms** — planned (same `procedural/` module,
   one feature per PR with unit test + gl_smoke + example screenshot + tutorial en/de):
-  G25 marching cubes (chunked, `MeshData` out), G26 L-systems (3D turtle → `MeshData`),
-  G27 wave function collapse (tiled, edge tags + rotations, backtracking → scene
-  placements), G28 2D Voronoi cells + extrusion meshes, G29 SDF/3D fractals
-  (Mandelbulb) meshed via G25.
+  G26 L-systems (3D turtle → `MeshData`), G27 wave function collapse (tiled, edge tags +
+  rotations, backtracking → scene placements), G28 2D Voronoi cells + extrusion meshes,
+  G29 SDF/3D fractals (Mandelbulb) meshed via G25.

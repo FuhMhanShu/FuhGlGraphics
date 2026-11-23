@@ -22,3 +22,4 @@ void runTonemapTests();
 void runParallaxTests();
 void runHbaoTests();
 void runProceduralNoiseTests();
+void runProceduralMcTests();
