@@ -11,7 +11,8 @@
 //   anim/     G6   keyframe AnimationPlayer + skeletal skinning (CPU palette) (implemented)
 //   probes/   G7   SH L2 light-probe grid, CPU bake + 3D-texture sampling (implemented)
 //   water/    G13  realistic water: Gerstner waves + planar reflection + foam (implemented)
-//   editor/   G2+G11  minimal Qt6 editor (only built with FUHGLGRAPHICS_WITH_QT=1)
+//   editor/   G2+G11  Qt6 editor code (only built with FUHGLGRAPHICS_WITH_QT=1):
+//                   gl_viewport_widget.hpp = GL viewport widget (fps limiter, frame stats)
 // Additionally planned: G10 quick upgrades, G11 engine infrastructure.
 //
 // The library core stays Qt-free; build with -DFUHGLGRAPHICS_WITH_QT=OFF for
@@ -49,3 +50,8 @@
 #include <fuhglgraphics/probes/light_probes.hpp>
 
 #include <fuhglgraphics/water/water_surface.hpp>
+
+// NOTE: editor/gl_viewport_widget.hpp (WITH_QT only) is deliberately NOT included here:
+// its Qt/GL headers would leak GL macros (e.g. GL_UNSIGNED_INT) into every core TU and
+// clash with FuhGLCore's fuhgl::gl constants. Editor code includes it directly:
+//   #include <fuhglgraphics/editor/gl_viewport_widget.hpp>

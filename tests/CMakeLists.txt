@@ -173,3 +173,11 @@ add_executable(fuhglgraphics_gl_smoke_tonemap gl_smoke_tonemap.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_tonemap PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_tonemap COMMAND fuhglgraphics_gl_smoke_tonemap)
 set_tests_properties(fuhglgraphics_gl_smoke_tonemap PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+# Qt editor-widget unit test (only with FUHGLGRAPHICS_WITH_QT=ON): runs offscreen
+# (QT_QPA_PLATFORM=offscreen), no GL context required — label "unit".
+if(FUHGLGRAPHICS_WITH_QT)
+    add_executable(fuhglgraphics_editor_tests test_editor_widget.cpp)
+    target_link_libraries(fuhglgraphics_editor_tests PRIVATE fuhglgraphics)
+    add_test(NAME fuhglgraphics_editor_tests COMMAND fuhglgraphics_editor_tests)
+    set_tests_properties(fuhglgraphics_editor_tests PROPERTIES LABELS "unit")
+endif()
