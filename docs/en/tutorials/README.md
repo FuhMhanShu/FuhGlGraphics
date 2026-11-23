@@ -65,6 +65,7 @@ One small tutorial per feature. Each is self-contained: goal → code → result
 - [G24 — Procedural noise (CPU)](g24_procedural_noise.md) — `procedural::Noise`: seeded value/Perlin/Simplex noise 2D+3D, fBm/ridged/turbulence, domain warp; height fields for terrain carving, sky cubemaps, volume fields; screenshots in [docs/images/](../../images/g24_noise_wide.png)
 - [G25 — Marching cubes (voxel → mesh)](g25_marching_cubes.md) — `procedural::marchingCubes`/`marchingCubesChunked`: extract iso-surfaces from volumes (watertight, indexed), cave terrain from noise volumes; screenshots in [docs/images/](../../images/g25_marching_cubes_cave.png)
 - [G26 — L-systems (turtle → mesh)](g26_lsystem.md) — `procedural::LSystem`: rule rewriting (`derive`) + 3D turtle (`generate`) → trees/ferns/bushes as `MeshData`; screenshots in [docs/images/](../../images/g26_lsystem_forest.png)
+- [G27 — Wave function collapse](g27_wfc.md) — `procedural::Wfc`: edge-tag tiles + rotations, min-entropy + propagation + backtracking → dungeon layouts as scene nodes; screenshots in [docs/images/](../../images/g27_wfc_overview.png)
 - [G17 — Bloom](g17_bloom.md) — post pass after particles, before TAA: bright-pass above
   an adjustable `bloomThreshold` + 9-tap blur + add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   screenshots in [docs/images/](../../images/g17_bloom_on.png)

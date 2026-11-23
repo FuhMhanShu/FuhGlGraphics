@@ -110,8 +110,12 @@ indexiertes `MeshData`, für Höhlen-Terrain und SDF-Meshing) — siehe
 [docs/images/](docs/images/g25_marching_cubes_cave.png) — und **G26** — L-Systeme
 (`procedural::LSystem`: Regel-Ersetzung + 3D-Turtle → `MeshData` für Bäume/Farne/Büsche, Presets
 `makeTree`/`makeFern`/`makeBush`) — siehe [G26-Tutorial](docs/de/tutorials/g26_lsystem.md) und
-Bilder in [docs/images/](docs/images/g26_lsystem_forest.png).
-Als Nächstes: **G27–G29** (WFC, Voronoi, SDF/Fraktale) oder **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder
+Bilder in [docs/images/](docs/images/g26_lsystem_forest.png) — und **G27** — Wave Function
+Collapse (`procedural::Wfc`: Edge-Tag-Tiles + Rotationen, Min-Entropie + Propagation +
+Backtracking → Dungeon-/Stadt-Layouts als Szenen-Knoten) — siehe
+[G27-Tutorial](docs/de/tutorials/g27_wfc.md) und Bilder in
+[docs/images/](docs/images/g27_wfc_overview.png).
+Als Nächstes: **G28–G29** (Voronoi, SDF/Fraktale) oder **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder
 **G2** (Qt-Editor).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.

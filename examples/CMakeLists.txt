@@ -138,3 +138,10 @@ target_link_libraries(fuhglgraphics_marching_cubes_screenshot PRIVATE fuhglgraph
 # tree closeup, headless to PNG.
 add_executable(fuhglgraphics_lsystem_screenshot lsystem_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_lsystem_screenshot PRIVATE fuhglgraphics)
+
+# G27 WFC showcase: dungeon layout solved by procedural::Wfc (edge-tag tiles + rotations +
+# backtracking) instantiated as merged per-(tile,rot) scene nodes, torches (emissive + point
+# lights + bloom), wear decals (G8), dim directional light + CSM shadows, SSAO, volumetric
+# fog, TAA + upscale + ACES — interior + top-down overview, headless to PNG.
+add_executable(fuhglgraphics_wfc_screenshot wfc_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_wfc_screenshot PRIVATE fuhglgraphics)

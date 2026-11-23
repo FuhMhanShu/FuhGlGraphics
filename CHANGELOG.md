@@ -9,6 +9,23 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G27 — wave function collapse (tiled)** (`include/fuhglgraphics/procedural/wfc.hpp`,
+  `src/procedural/wfc.cpp`): `procedural::Wfc` over a width x height grid. Tiles
+  (`WfcTile`) carry 4 edge tags in cyclic dir order (E, S, W, N); rotations map
+  `rotatedTags(rot)[d] = tags[(d + rot) mod 4]`; adjacency = equal touching tags; the grid
+  border is a fixed tag (default "w", so dungeons ring themselves in walls). `solve(seed,
+  maxBacktracks)` = min-entropy cell selection (weighted random collapse) + AC-3-style
+  constraint propagation + seeded backtracking on contradiction; deterministic per seed.
+  Preset `Wfc::makeDungeonTiles()` (floor, wallH/wallV bands, wallCap, corner, doorH/doorV,
+  pillar). Unit tests `tests/test_procedural_wfc.cpp`: rotation mapping, compatibility,
+  full-solve adjacency validity incl. border, determinism, dungeon structure (walled ring,
+  open floor), contradiction termination. Demo `examples/wfc_screenshot`: 14x14 dungeon
+  solved by WFC, instantiated as merged per-(tile,rot) scene nodes, torches (emissive +
+  point lights + bloom), wear decals (G8), dim directional light with CSM shadows, SSAO,
+  volumetric fog, TAA + upscale + ACES; references `docs/images/g27_wfc_{dungeon,overview}.png`.
+  Tutorial `docs/en/tutorials/g27_wfc.md` + German translation. Requirement entry G27 in
+  [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G26 — L-systems (Lindenmayer) → mesh** (`include/fuhglgraphics/procedural/lsystem.hpp`,
   `src/procedural/lsystem.cpp`): `procedural::LSystem` with axiom + production rules +
   iterations; `derive()` rewrites the string deterministically; `generate()` interprets it

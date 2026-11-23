@@ -24,3 +24,4 @@ void runHbaoTests();
 void runProceduralNoiseTests();
 void runProceduralMcTests();
 void runProceduralLsystemTests();
+void runProceduralWfcTests();
