@@ -33,8 +33,8 @@ Skeleton skel = makeQuadruped();          // oder makeReptile()
 CreatureParams pr;
 pr.seed = 21u;
 pr.smoothK = 0.22f;                       // smooth-min-Blendenradius
-pr.detailAmp = 0.035f;                    // Geometrie-Noise (Falten), Amplitude
-pr.detailFreq = 5.f;
+pr.detailAmp = 0.02f;                     // Geometrie-Noise (Falten), Amplitude
+pr.detailFreq = 6.f;
 pr.scaleFreq = 5.5f;                      // gebachte Schuppenzellen-Frequenz
 pr.bodyColor = {0.48f, 0.38f, 0.24f};     // Palette: Körper / Bauch / Akzent (Streifen)
 pr.bellyColor = {0.78f, 0.70f, 0.55f};

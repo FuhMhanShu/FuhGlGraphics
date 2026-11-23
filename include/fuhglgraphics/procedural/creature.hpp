@@ -76,12 +76,12 @@ private:
 struct CreatureParams {
     unsigned seed = 1u;
     float smoothK = 0.22f;        ///< smooth-min radius (organic muscle/skin transitions)
-    float detailAmp = 0.035f;     ///< 3D-noise modulation amplitude on the SDF (world units)
-    float detailFreq = 5.f;       ///< noise frequency of the geometry detail
-    int detailOctaves = 3;
+    float detailAmp = 0.02f;      ///< 3D-noise modulation amplitude on the SDF (world units)
+    float detailFreq = 6.f;       ///< noise frequency of the geometry detail
+    int detailOctaves = 2;
     float scaleFreq = 9.f;        ///< scale-cell frequency for the baked texture (object space)
     float stripeFreq = 1.4f;      ///< stripes along the body axis (per world unit z)
-    float bumpStrength = 2.2f;    ///< normal-map strength of the baked detail
+    float bumpStrength = 1.5f;    ///< normal-map strength of the baked detail
     fuhgl::math::Vec3 bodyColor{0.42f, 0.40f, 0.30f};
     fuhgl::math::Vec3 bellyColor{0.72f, 0.66f, 0.52f};
     fuhgl::math::Vec3 accentColor{0.50f, 0.22f, 0.15f}; ///< stripes / horns
