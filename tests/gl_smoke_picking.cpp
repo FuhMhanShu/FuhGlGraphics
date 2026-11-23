@@ -115,7 +115,7 @@ int main() {
         frame.effects.enable(render::Effect::Tonemap);
         frame.effects.applyTo(renderer);
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                        frame.lightProbes, &frame.decals, frame.water, &frame.skins);
+                        frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
         return readOutput(renderer, W, H);
     };
     const std::vector<unsigned char> before = renderFrame();

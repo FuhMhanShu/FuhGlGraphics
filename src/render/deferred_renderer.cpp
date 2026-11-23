@@ -52,7 +52,7 @@ struct DeferredRenderer::Impl {
         rMotion{fuhgl::Texture::Target::Tex2D}, rMatId{fuhgl::Texture::Target::Tex2D};
     fuhgl::Texture texOutput{fuhgl::Texture::Target::Tex2D};
 
-    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, hbaoMat, ssrMat, bloomMat, flareMat, volumetricMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
+    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, hbaoMat, ssrMat, bloomMat, flareMat, volumetricMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat, giMat, caMat;
     std::vector<fuhgl::math::Vec3> ssaoKernel; ///< G15: generated once per createInternal
     bool skinProgramReady = false; ///< G14: the GLSL 430 skinning G-buffer program (GL >= 4.3)
     fuhgl::render::Mesh decalBox; ///< G8: unit box for the decal projection pass
@@ -281,6 +281,8 @@ bool DeferredRenderer::createInternal() {
         !compilePostFs(im.ssrMat, kSsrFrag, "ssr") ||
         !compilePostFs(im.bloomMat, kBloomFrag, "bloom") ||
         !compilePostFs(im.flareMat, kFlareFrag, "flare") ||
+        !compilePostFs(im.giMat, kGiFrag, "gi") ||
+        !compilePostFs(im.caMat, kCaFrag, "ca") ||
         !compilePostFs(im.volumetricMat, kVolumetricFrag, "volumetric") ||
         !compilePostFs(im.taaMat, kTaaFrag, "taa") ||
         !compilePostFs(im.upscaleMat, kUpscaleFrag, "upscale") ||
@@ -393,24 +395,28 @@ bool DeferredRenderer::createInternal() {
     im.post.addExternal("gMatId", &(msaa_ > 0 ? im.rMatId : im.texMatId), iw, ih);
     im.post.addExternal("gDepth", &im.texDepth, iw, ih);
     im.post.addResource("ssao", iw, ih, fuhgl::gl::GL_RG16F); // G15 AO factor in .r
-    im.post.addResource("hbao", iw, ih, fuhgl::gl::GL_RG16F); // G25 horizon-based AO factor in .r
+    im.post.addResource("hbao", iw, ih, fuhgl::gl::GL_RG16F); // G31 horizon-based AO factor in .r
     im.post.addResource("hdr", iw, ih, fuhgl::gl::GL_RGBA16F);
-    im.post.addResource("hdrS", iw, ih, fuhgl::gl::GL_RGBA16F); // G16: hdr + screen-space reflections
+    im.post.addResource("hdrG", iw, ih, fuhgl::gl::GL_RGBA16F); // G34: hdr + screen-space GI
+    im.post.addResource("hdrS", iw, ih, fuhgl::gl::GL_RGBA16F); // G16: hdrG + screen-space reflections
     im.post.addResource("hdrW", iw, ih, fuhgl::gl::GL_RGBA16F); // hdr + G13 water
     im.post.addResource("hdrP", iw, ih, fuhgl::gl::GL_RGBA16F); // hdrW + G5 particles
     im.post.addResource("hdrV", iw, ih, fuhgl::gl::GL_RGBA16F); // G21: hdrP + volumetric fog
     im.post.addResource("hdrB", iw, ih, fuhgl::gl::GL_RGBA16F); // G17: hdrV + bloom
-    im.post.addResource("hdrF", iw, ih, fuhgl::gl::GL_RGBA16F); // G24: hdrB + lens flare/anamorphic
+    im.post.addResource("hdrF", iw, ih, fuhgl::gl::GL_RGBA16F); // G30: hdrB + lens flare/anamorphic
     im.post.addResource("taa", iw, ih, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("up", width_, height_, fuhgl::gl::GL_RGBA16F);
+    im.post.addResource("ca", width_, height_, fuhgl::gl::GL_RGBA16F);  // G32 chromatic aberration at output res
     im.post.addResource("dof", width_, height_, fuhgl::gl::GL_RGBA16F); // G10 DoF at output res
     im.post.addPass("ssao", {"gNormal", "gDepth"}, {"ssao"}, // G15, runs before lighting
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawSsao(ctx); });
-    im.post.addPass("hbao", {"gNormal", "gDepth"}, {"hbao"}, // G25, runs before lighting (next to SSAO)
+    im.post.addPass("hbao", {"gNormal", "gDepth"}, {"hbao"}, // G31, runs before lighting (next to SSAO)
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawHbao(ctx); });
     im.post.addPass("lighting", {"gAlbedo", "gNormal", "gPbr", "gEmissive", "gDepth", "ssao", "hbao"}, {"hdr"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawLighting(ctx); });
-    im.post.addPass("ssr", {"hdr", "gNormal", "gDepth", "gPbr"}, {"hdrS"}, // G16, after lighting
+    im.post.addPass("gi", {"hdr", "gAlbedo", "gNormal", "gDepth"}, {"hdrG"}, // G34, after lighting
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawGi(ctx); });
+    im.post.addPass("ssr", {"hdrG", "gNormal", "gDepth", "gPbr"}, {"hdrS"}, // G16, after GI
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawSsr(ctx); });
     im.post.addPass("water", {"hdrS", "gDepth"}, {"hdrW"}, // G13 water shades the SSR result
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawWater(ctx); });
@@ -420,13 +426,15 @@ bool DeferredRenderer::createInternal() {
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawVolumetric(ctx); });
     im.post.addPass("bloom", {"hdrV"}, {"hdrB"}, // G17, after volumetric fog, before TAA
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawBloom(ctx); });
-    im.post.addPass("flare", {"hdrB"}, {"hdrF"}, // G24 lens flare + anamorphic, after bloom, before TAA
+    im.post.addPass("flare", {"hdrB"}, {"hdrF"}, // G30 lens flare + anamorphic, after bloom, before TAA
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawFlare(ctx); });
     im.post.addPass("taa", {"hdrF", "gMotion", "taa"}, {"taa"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTaa(ctx); }, /*feedback=*/true);
     im.post.addPass("upscale", {"taa"}, {"up"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawUpscale(ctx); });
-    im.post.addPass("dof", {"up", "gDepth"}, {"dof"},
+    im.post.addPass("ca", {"up"}, {"ca"}, // G32 chromatic aberration, after upscale, before DoF
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawCa(ctx); });
+    im.post.addPass("dof", {"ca", "gDepth"}, {"dof"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawDof(ctx); });
     im.post.addPass("tonemap", {"dof", "gDepth"}, {},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTonemap(ctx); });
@@ -442,7 +450,8 @@ bool DeferredRenderer::createInternal() {
 
 void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
                                      const std::vector<std::uint32_t>* materialIds,
-                                     const std::vector<const anim::GpuSkinner*>* skins) {
+                                     const std::vector<const anim::GpuSkinner*>* skins,
+                                     const std::vector<float>* subsurface) {
     Impl& im = *impl_;
     auto& f = fuhgl::gl::functions();
     fuhgl::gl::enable(fuhgl::gl::Cap::DepthTest);
@@ -522,12 +531,15 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
             p.setUniform("uMetallic", preset->metallic);
             p.setUniform("uRoughness", preset->roughness);
             p.setUniform("uAo", preset->ao);
+            // G33: per-item subsurface factor -> oPbr.a (parallel array, 0 when absent)
+            p.setUniform("uSss", subsurface && i < subsurface->size() ? (*subsurface)[i] : 0.f);
         } else {
             p.setUniform("uAlbedo", fuhgl::math::Vec3{1.f, 1.f, 1.f});
             p.setUniform("uEmissive", fuhgl::math::Vec3{0.f, 0.f, 0.f});
             p.setUniform("uUseTex", 0);
             p.setUniform("uUseNormalMap", 0);
             p.setUniform("uUseHeightMap", 0);
+            p.setUniform("uSss", 0.f);
             p.setUniform("uMetallic", 0.f);
             p.setUniform("uRoughness", 0.5f);
             p.setUniform("uAo", 1.f);
@@ -774,7 +786,8 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
                               const probes::LightProbeGrid* lightProbes,
                               const std::vector<Decal>* decals,
                               const water::WaterSurface* water,
-                              const std::vector<const anim::GpuSkinner*>* skins) {
+                              const std::vector<const anim::GpuSkinner*>* skins,
+                              const std::vector<float>* subsurface) {
     if (!scene.camera || width_ <= 0) return;
     const auto t0 = std::chrono::steady_clock::now();
     fuhgl::render::SceneView s = scene;
@@ -888,7 +901,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     }
 
     curScene_ = &s;
-    renderGBuffer(s, materialIds, skins); // G14 skins forwarded to the G-buffer pass
+    renderGBuffer(s, materialIds, skins, subsurface); // G14 skins + G33 SSS factors forwarded to the G-buffer pass
     scene.lastLodLevel = s.lastLodLevel;  // G20: propagate the resolved LOD level (F41) to the caller
     // remember this frame's (jittered) viewProj for next frame's motion vectors
     prevViewProj_ = fuhgl::math::jitterViewProj(s.camera->viewProj(s.aspect), s.jitter);
@@ -1049,7 +1062,7 @@ void DeferredRenderer::drawSsao(fuhgl::render::RenderGraph::PassContext& ctx) {
     });
 }
 
-// G25 HBAO pass: G-buffer normal + depth -> horizon-based AO factor (resource "hbao",
+// G31 HBAO pass: G-buffer normal + depth -> horizon-based AO factor (resource "hbao",
 // RG16F). Runs before lighting next to G15 SSAO; writes 1.0 everywhere when Effect::Hbao is
 // off so the lighting pass can sample the resource unconditionally. March mirrors the CPU
 // twin render/hbao.hpp.
@@ -1083,7 +1096,7 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
     ctx.bindInput(3, "gEmissive");
     ctx.bindInput(5, "gDepth");
     ctx.bindInput(6, "ssao"); // G15
-    ctx.bindInput(24, "hbao"); // G25 (unit 24: sky cube = 16, probes = 17..23)
+    ctx.bindInput(24, "hbao"); // G31 (unit 24: sky cube = 16, probes = 17..23)
     // shadow samplers (units 4 / 10; dummies when off)
     fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitShadowMap);
     f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, s.shadowMap ? s.shadowMap->textureId() : im.dummyShadowTex.id());
@@ -1135,8 +1148,14 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
         // G15 SSAO (unit 6)
         p.setUniform(p.uniformLocation("uSsao"), 6);
         p.setUniform(p.uniformLocation("uSsaoEnabled"), effectEnabled(Effect::Ssao) ? 1 : 0);
-        p.setUniform(p.uniformLocation("uHbao"), 24); // G25
+        p.setUniform(p.uniformLocation("uHbao"), 24); // G31
         p.setUniform(p.uniformLocation("uHbaoEnabled"), effectEnabled(Effect::Hbao) ? 1 : 0);
+        // G33 subsurface scattering
+        p.setUniform(p.uniformLocation("uSssEnabled"), effectEnabled(Effect::Subsurface) ? 1 : 0);
+        p.setUniform("uSssDistortion", sssDistortion);
+        p.setUniform("uSssPower", sssPower);
+        p.setUniform("uSssScale", sssScale);
+        p.setUniform("uSssThickness", sssThickness);
         // G22 wetness
         p.setUniform(p.uniformLocation("uWetnessEnabled"), effectEnabled(Effect::Wetness) ? 1 : 0);
         p.setUniform("uWetness", wetnessAmount);
@@ -1241,8 +1260,34 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
 
 // G16 SSR pass: raymarch the reflection vector against the G-buffer depth, add the hit HDR
 // color masked by fresnel/roughness/edge-fade. Plain copy when Effect::Ssr is off.
-void DeferredRenderer::drawSsr(fuhgl::render::RenderGraph::PassContext& ctx) {
+// G34 screen-space GI pass: lit HDR + albedo + G-buffer -> HDR + single-bounce indirect
+// (hdr -> hdrG, which the SSR pass then consumes). Plain copy when Effect::Gi is off.
+void DeferredRenderer::drawGi(fuhgl::render::RenderGraph::PassContext& ctx) {
     ctx.bindInput(0, "hdr");
+    ctx.bindInput(1, "gAlbedo");
+    ctx.bindInput(2, "gNormal");
+    ctx.bindInput(3, "gDepth");
+    const fuhgl::render::SceneView& s = *curScene_;
+    const bool on = effectEnabled(Effect::Gi);
+    drawFs(impl_->giMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uHdr"), 0);
+        p.setUniform(p.uniformLocation("uGAlbedo"), 1);
+        p.setUniform(p.uniformLocation("uGNormal"), 2);
+        p.setUniform(p.uniformLocation("uGDepth"), 3);
+        p.setUniform(p.uniformLocation("uGiEnabled"), on ? 1 : 0);
+        p.setUniform("uInvViewProj", s.camera->viewProj(s.aspect).inverse());
+        p.setUniform("uViewProj", s.camera->viewProj(s.aspect)); // non-jittered
+        p.setUniform("uStrength", giStrength);
+        p.setUniform(p.uniformLocation("uCones"), std::min(std::max(giCones, 1), 4));
+        p.setUniform(p.uniformLocation("uSteps"), std::min(std::max(giSteps, 1), 32));
+        p.setUniform("uMaxDist", giMaxDist);
+        p.setUniform("uThickness", giThickness);
+        p.setUniform("uRotSeed", static_cast<float>(frameIndex_ % 64) * 0.7f);
+    });
+}
+
+void DeferredRenderer::drawSsr(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "hdrG"); // G34: hdr + GI
     ctx.bindInput(1, "gNormal");
     ctx.bindInput(2, "gDepth");
     ctx.bindInput(3, "gPbr");
@@ -1317,7 +1362,7 @@ void DeferredRenderer::drawBloom(fuhgl::render::RenderGraph::PassContext& ctx) {
     });
 }
 
-// G24 lens flare + anamorphic streaks pass: hdrB -> hdrF (the TAA pass blends hdrF). The
+// G30 lens flare + anamorphic streaks pass: hdrB -> hdrF (the TAA pass blends hdrF). The
 // sun's screen position comes from projecting SceneView::sunDirection at infinity
 // (w = 0 direction; valid when the sun is in front of the camera). Plain copy when both
 // Effect::LensFlare and Effect::Anamorphic are off.
@@ -1348,7 +1393,7 @@ void DeferredRenderer::drawFlare(fuhgl::render::RenderGraph::PassContext& ctx) {
 }
 
 void DeferredRenderer::drawTaa(fuhgl::render::RenderGraph::PassContext& ctx) {
-    ctx.bindInput(0, "hdrF"); // lighting + water + particles + G17 bloom + G24 flare/anamorphic
+    ctx.bindInput(0, "hdrF"); // lighting + water + particles + G17 bloom + G30 flare/anamorphic
     ctx.bindInput(1, "gMotion");
     ctx.bindInput(2, "taa");
     const bool taaOn = effectEnabled(Effect::Taa);
@@ -1377,8 +1422,21 @@ void DeferredRenderer::drawUpscale(fuhgl::render::RenderGraph::PassContext& ctx)
 
 // G10 DoF pass: hexagonal bokeh gather on the upscaled HDR image ("up" -> "dof"),
 // CoC from the G-buffer depth; plain copy when Effect::Dof is off.
-void DeferredRenderer::drawDof(fuhgl::render::RenderGraph::PassContext& ctx) {
+// G32 chromatic aberration pass: upscaled HDR -> ca (output resolution, feeds DoF).
+// Radial R/B split around caCenter. Plain copy when Effect::ChromaticAberration is off.
+void DeferredRenderer::drawCa(fuhgl::render::RenderGraph::PassContext& ctx) {
     ctx.bindInput(0, "up");
+    const bool on = effectEnabled(Effect::ChromaticAberration);
+    drawFs(impl_->caMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uSrc"), 0);
+        p.setUniform(p.uniformLocation("uCaEnabled"), on ? 1 : 0);
+        p.setUniform("uCaStrength", caStrength);
+        p.setUniform("uCaCenter", caCenter);
+    });
+}
+
+void DeferredRenderer::drawDof(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "ca"); // G32 output (copy of "up" when CA is off)
     ctx.bindInput(1, "gDepth");
     const bool on = effectEnabled(Effect::Dof);
     drawFs(impl_->dofMat, [&](fuhgl::Program& p) {
@@ -1510,6 +1568,9 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::LensFlare, lensFlareEnabled_);
     gate(Effect::Anamorphic, anamorphicEnabled_);
     gate(Effect::Hbao, hbaoEnabled_);
+    gate(Effect::ChromaticAberration, caEnabled_);
+    gate(Effect::Subsurface, sssEnabled_);
+    gate(Effect::Gi, giEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -1540,6 +1601,9 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::LensFlare: lensFlareEnabled_ = on; break;
         case Effect::Anamorphic: anamorphicEnabled_ = on; break;
         case Effect::Hbao: hbaoEnabled_ = on; break;
+        case Effect::ChromaticAberration: caEnabled_ = on; break;
+        case Effect::Subsurface: sssEnabled_ = on; break;
+        case Effect::Gi: giEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -1580,6 +1644,9 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::LensFlare: return lensFlareEnabled_;
         case Effect::Anamorphic: return anamorphicEnabled_;
         case Effect::Hbao: return hbaoEnabled_;
+        case Effect::ChromaticAberration: return caEnabled_;
+        case Effect::Subsurface: return sssEnabled_;
+        case Effect::Gi: return giEnabled_;
     }
     return false;
 }
@@ -1591,6 +1658,7 @@ void DeferredRenderer::setAllEffects(bool on) {
     volumetricEnabled_ = on;
     wetnessEnabled_ = on;
     lensFlareEnabled_ = anamorphicEnabled_ = hbaoEnabled_ = on;
+    caEnabled_ = sssEnabled_ = giEnabled_ = on;
     applyCapabilities();
 }
 

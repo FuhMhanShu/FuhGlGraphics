@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
         frame.view.fogColor = {0.10f, 0.07f, 0.12f};
         frame.view.fogDensity = 0.004f;
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                        frame.lightProbes, &frame.decals, frame.water, &frame.skins);
+                        frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
     }
     fuhgl::gl::flush();
 

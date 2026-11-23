@@ -157,3 +157,8 @@ target_link_libraries(fuhglgraphics_voronoi_screenshot PRIVATE fuhglgraphics)
 # CSM + god rays, dusk sky + IBL, SSAO + volumetric fog, TAA + upscale + ACES — wide + closeup.
 add_executable(fuhglgraphics_mandelbulb_screenshot mandelbulb_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_mandelbulb_screenshot PRIVATE fuhglgraphics)
+# G32/G33/G34 post-effect showcase: chromatic aberration (dusk lamps, on/off), subsurface
+# scattering (backlit thin panel, on/off) and screen-space GI (red-wall bounce on a box,
+# on/off) — headless to PNG.
+add_executable(fuhglgraphics_postfx2_screenshot postfx2_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_postfx2_screenshot PRIVATE fuhglgraphics)

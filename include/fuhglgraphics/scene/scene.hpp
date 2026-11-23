@@ -56,6 +56,7 @@ struct FrameData {
     std::vector<render::Decal> decals;                              ///< G8 decals
     const water::WaterSurface* water = nullptr;                    ///< G13 water surface (first wins)
     std::vector<const anim::GpuSkinner*> skins;                    ///< G14 GPU skinning, parallel to view.items (MeshEntry::gpuSkin)
+    std::vector<float> subsurface;                                 ///< G33 SSS factors, parallel to view.items (MeshEntry::subsurface)
 };
 
 /// @brief The G9 scene graph (root node + frame filling with frustum culling).

@@ -56,7 +56,7 @@ bool renderToPng(fuhglgraphics::scene::Scene& scn, fuhgl::FirstPersonCamera& cam
         renderer.setEffectEnabled(render::Effect::Bloom, bloom);
         renderer.bloomThreshold = bloomThreshold;
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                        frame.lightProbes, &frame.decals, frame.water, &frame.skins);
+                        frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
     }
     fuhgl::gl::flush();
     renderer.output().bind();

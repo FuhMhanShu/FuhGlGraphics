@@ -50,7 +50,7 @@ std::vector<unsigned char> renderFrame(fuhglgraphics::scene::Scene& scene,
         renderer.wetnessAmount = wet ? 1.f : 0.f;
         renderer.wetnessPuddle = 0.8f;
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                        frame.lightProbes, &frame.decals, frame.water, &frame.skins);
+                        frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
     }
     renderer.output().bind();
     std::vector<unsigned char> px(static_cast<std::size_t>(W) * H * 4, 0);

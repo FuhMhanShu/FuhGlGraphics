@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
         frame.view.fogColor = skyHorizon;
         frame.view.fogDensity = 0.0015f;
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                        frame.lightProbes, &frame.decals, frame.water, &frame.skins);
+                        frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
     }
     fuhgl::gl::flush();
 

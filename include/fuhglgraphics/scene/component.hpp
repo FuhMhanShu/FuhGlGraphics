@@ -72,6 +72,7 @@ struct MeshEntry {
     float metallic = 0.f;
     float roughness = 0.5f;
     float ao = 1.f;
+    float subsurface = 0.f;                          ///< G33 subsurface scattering factor 0..1 (thin materials: leaves, skin, wax) -> G-buffer pbr.a
 
     // --- culling: optional explicit local AABB (overrides the mesh bounding sphere) ---
     bool hasAabb = false;

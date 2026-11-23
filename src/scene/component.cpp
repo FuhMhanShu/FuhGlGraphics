@@ -42,7 +42,8 @@ void MeshComponent::fill(const Node& node, FrameData& frame) const {
             fuhgl::render::DrawItem{mesh, mat, node.worldMatrix() * e.localOffset, e.lod});
         frame.materialIds.push_back(e.materialId);
         frame.castShadow.push_back(e.castShadow);
-        frame.skins.push_back(e.gpuSkin); // G14: parallel to view.items
+        frame.skins.push_back(e.gpuSkin);       // G14: parallel to view.items
+        frame.subsurface.push_back(e.subsurface); // G33: parallel to view.items
     }
 }
 

@@ -1,4 +1,4 @@
-// Headless G24 smoke test (label "gl_context"): a scene with the sun low in front of the
+// Headless G30 smoke test (label "gl_context"): a scene with the sun low in front of the
 // camera. Effect::LensFlare + Effect::Anamorphic on vs off must change the frame measurably,
 // and the added light must concentrate on the sun's screen row (anamorphic = horizontal
 // streak through the sun). Skips (exit code 77) without GL >= 3.3.

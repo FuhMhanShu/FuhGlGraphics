@@ -214,7 +214,7 @@ jobs:
           cmake --build build -j --target fuhglgraphics_parallax_house_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_parallax_house_screenshot --prefix docs/images/ci/parallax_house --width 1280 --height 720 --frames 16
 
-      - name: Build + render G24/G25 post-effect screenshots (lens flare + anamorphic on/off, HBAO vs SSAO)
+      - name: Build + render G30/G31 post-effect screenshots (lens flare + anamorphic on/off, HBAO vs SSAO)
         run: |
           cmake --build build -j --target fuhglgraphics_postfx_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_postfx_screenshot --prefix docs/images/ci/postfx --width 1280 --height 720 --frames 16
@@ -232,6 +232,10 @@ jobs:
         run: |
           cmake --build build -j --target fuhglgraphics_lsystem_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_lsystem_screenshot --prefix docs/images/ci/g26_lsystem --width 1280 --height 720 --frames 16
+      - name: Build + render G32-G34 post-effect screenshots (chromatic aberration, SSS, screen-space GI; each on/off)
+        run: |
+          cmake --build build -j --target fuhglgraphics_postfx2_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_postfx2_screenshot --prefix docs/images/ci/postfx2 --width 1280 --height 720 --frames 16
 
       - name: Build + render G27 WFC screenshots (WFC dungeon — torches+bloom, wear decals, CSM shadows, SSAO, volumetric fog; interior + top-down overview)
         run: |

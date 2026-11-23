@@ -109,7 +109,8 @@ public:
                 const probes::LightProbeGrid* lightProbes = nullptr,
                 const std::vector<Decal>* decals = nullptr,
                 const water::WaterSurface* water = nullptr, // G13 water surface (FrameData::water)
-                const std::vector<const anim::GpuSkinner*>* skins = nullptr); // G14 (FrameData::skins)
+                const std::vector<const anim::GpuSkinner*>* skins = nullptr, // G14 (FrameData::skins)
+                const std::vector<float>* subsurface = nullptr); // G33 SSS factors, parallel to scene.items (FrameData::subsurface)
 
     /// @brief LDR output target (RGBA8, tonemapped when Effect::Tonemap is on).
     fuhgl::Framebuffer& output();
@@ -297,7 +298,7 @@ public:
     float wetnessPuddle = 0.7f;    ///< puddle mask strength (0 = flat film, 1 = depressions only)
     float wetnessNoiseScale = 3.5f; ///< world units per puddle-noise cell
 
-    /// @brief G25 HBAO (Effect::Hbao): the "hbao" post pass runs before lighting (next to G15
+    /// @brief G31 HBAO (Effect::Hbao): the "hbao" post pass runs before lighting (next to G15
     /// SSAO) and writes the horizon-based AO factor into the "hbao" resource (RG16F, .r),
     /// sampled by the lighting pass on unit 24 when enabled (preferred over SSAO). Off by
     /// default. Pure CPU twin of the march: render/hbao.hpp.
@@ -307,7 +308,31 @@ public:
     int hbaoSteps = 4;           ///< march steps per direction (clamped 1..8)
     float hbaoPower = 1.6f;      ///< final exponent on the combined factor
 
-    /// @brief G24 lens flare (Effect::LensFlare) + anamorphic streaks (Effect::Anamorphic):
+    /// @brief G32 chromatic aberration (Effect::ChromaticAberration): the "ca" post pass runs
+    /// after the upscale (up -> ca -> dof) and splits the R/B channels radially around
+    /// `caCenter` (lens dispersion). Off by default.
+    float caStrength = 0.006f;   ///< uv offset of R/B at the frame corners (r^2 = 0.5)
+    fuhgl::math::Vec2 caCenter{0.5f, 0.5f}; ///< radial center (usually the frame center)
+
+    /// @brief G33 subsurface scattering (Effect::Subsurface): per-item factor rides in
+    /// G-buffer pbr.a (set from the `subsurface` parallel array of render(), filled from
+    /// scene::MeshEntry::subsurface); the lighting pass adds wrap diffuse + backlit
+    /// translucency for those items. Off by default.
+    float sssDistortion = 0.4f;  ///< translucency normal shift
+    float sssPower = 3.f;        ///< translucency pow
+    float sssScale = 1.f;        ///< translucency intensity
+    float sssThickness = 1.f;    ///< effective object thickness
+
+    /// @brief G34 screen-space GI (Effect::Gi): the "gi" post pass runs after lighting
+    /// (hdr -> hdrG, which SSR then consumes) — cosine cones marched against the G-buffer
+    /// depth, sampling the lit HDR as the single-bounce indirect source. Off by default.
+    float giStrength = 0.6f;     ///< indirect intensity
+    int giCones = 3;             ///< cones per pixel (clamped 1..4)
+    int giSteps = 12;            ///< march steps per cone (clamped 1..32)
+    float giMaxDist = 8.f;       ///< cone length in world units
+    float giThickness = 0.3f;    ///< hit band in world units
+
+    /// @brief G30 lens flare (Effect::LensFlare) + anamorphic streaks (Effect::Anamorphic):
     /// the "flare" post pass runs after bloom and before TAA (hdrB -> hdrF). The sun's screen
     /// position is derived from SceneView::sunDirection. Off by default.
     float lensFlareStrength = 0.8f;   ///< glow/ghost/streak intensity around the sun
@@ -336,7 +361,8 @@ private:
     bool createInternal(); ///< (re)builds all GL resources at the current sizes
     void renderGBuffer(const fuhgl::render::SceneView& scene,
                        const std::vector<std::uint32_t>* materialIds,
-                       const std::vector<const anim::GpuSkinner*>* skins);
+                       const std::vector<const anim::GpuSkinner*>* skins,
+                       const std::vector<float>* subsurface);
     void drawDecals(const fuhgl::render::SceneView& scene);
     void drawFs(fuhgl::render::Material& mat, const std::function<void(fuhgl::Program&)>& setUniforms);
     /// @brief G13: planar reflection of the scene (without the water mesh) from the
@@ -344,10 +370,12 @@ private:
     void renderReflection(const fuhgl::render::SceneView& scene, const fuhgl::math::Mat4& reflViewProj,
                           const fuhgl::math::Vec4& clipPlane, const fuhgl::math::Vec3& reflEye);
     void drawSsao(fuhgl::render::RenderGraph::PassContext& ctx); ///< G15, runs before lighting
-    void drawHbao(fuhgl::render::RenderGraph::PassContext& ctx); ///< G25, runs before lighting (next to SSAO)
+    void drawHbao(fuhgl::render::RenderGraph::PassContext& ctx); ///< G31, runs before lighting (next to SSAO)
+    void drawGi(fuhgl::render::RenderGraph::PassContext& ctx);   ///< G34, runs after lighting (hdr -> hdrG)
     void drawSsr(fuhgl::render::RenderGraph::PassContext& ctx);   ///< G16, runs after lighting
     void drawBloom(fuhgl::render::RenderGraph::PassContext& ctx); ///< G17, after particles, before TAA
-    void drawFlare(fuhgl::render::RenderGraph::PassContext& ctx); ///< G24, after bloom, before TAA
+    void drawFlare(fuhgl::render::RenderGraph::PassContext& ctx); ///< G30, after bloom, before TAA
+    void drawCa(fuhgl::render::RenderGraph::PassContext& ctx);    ///< G32, after upscale, before DoF
     void drawVolumetric(fuhgl::render::RenderGraph::PassContext& ctx); ///< G21, after particles, before bloom
     void drawLighting(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawWater(fuhgl::render::RenderGraph::PassContext& ctx);
@@ -386,6 +414,9 @@ private:
     bool lensFlareEnabled_ = false;  ///< Effect::LensFlare (off by default)
     bool anamorphicEnabled_ = false; ///< Effect::Anamorphic (off by default)
     bool hbaoEnabled_ = false;       ///< Effect::Hbao (off by default)
+    bool caEnabled_ = false;         ///< Effect::ChromaticAberration (off by default)
+    bool sssEnabled_ = false;        ///< Effect::Subsurface (off by default)
+    bool giEnabled_ = false;         ///< Effect::Gi (off by default)
     const water::WaterSurface* curWater_ = nullptr; ///< G13: active water surface this frame
     fuhgl::math::Mat4 waterModel_{};                 ///< its draw item's model matrix
     fuhgl::math::Vec4 waterClipPlane_{0.f, 1.f, 0.f, 0.f}; ///< world plane (n, d) for clipping

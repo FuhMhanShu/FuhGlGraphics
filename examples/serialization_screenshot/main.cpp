@@ -108,7 +108,7 @@ bool renderToPng(fuhglgraphics::scene::Scene& scn, fuhgl::FirstPersonCamera& cam
         frame.view.fogColor = {0.88f, 0.84f, 0.74f};
         frame.view.fogDensity = 0.0015f;
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                        frame.lightProbes, &frame.decals, frame.water, &frame.skins);
+                        frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
     }
     fuhgl::gl::flush();
     renderer.output().bind();

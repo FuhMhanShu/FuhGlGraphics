@@ -1,7 +1,7 @@
 #pragma once
 
 /// @file hbao.hpp
-/// @brief Horizon-based ambient occlusion (HBAO, G25) — pure (GL-free) CPU twin of the
+/// @brief Horizon-based ambient occlusion (HBAO, G31) — pure (GL-free) CPU twin of the
 /// horizon march in kHbaoFrag: for `dirs` tangent-plane directions the march samples the
 /// occluder height above the tangent plane along each ray; the maximum horizon elevation
 /// beta (sin beta = height / distance) occludes the cosine-weighted hemisphere around N

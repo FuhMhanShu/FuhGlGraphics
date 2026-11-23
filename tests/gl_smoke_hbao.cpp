@@ -1,4 +1,4 @@
-// Headless G25 smoke test (label "gl_context"): box on ground — with Effect::Hbao on vs off
+// Headless G31 smoke test (label "gl_context"): box on ground — with Effect::Hbao on vs off
 // the frames must differ and the changed pixels must mostly get darker (horizon-based AO is
 // multiplicative), concentrated at the contact corner. Skips (exit code 77) without GL >= 3.3.
 

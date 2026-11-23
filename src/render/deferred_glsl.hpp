@@ -58,6 +58,7 @@ uniform int uParallaxLayers;   // POM linear search steps
 uniform float uMetallic;
 uniform float uRoughness;
 uniform float uAo;
+uniform float uSss;            // G33: subsurface scattering factor 0..1 -> oPbr.a
 uniform uint uMaterialId;      // -> GBufferAttachment::MaterialId
 uniform mat4 uPrevViewProj;     // previous frame's (jittered) view-projection, for motion vectors
 uniform vec2 uResolution;       // internal G-buffer resolution in pixels
@@ -105,7 +106,7 @@ void main() {
     }
     oAlbedo = vec4(albedo, 1.0);
     oNormal = vec4(N * 0.5 + 0.5, 1.0);
-    oPbr = vec4(uMetallic, uRoughness, uAo, 1.0);
+    oPbr = vec4(uMetallic, uRoughness, uAo, uSss); // .a = subsurface factor (G33)
     oEmissive = vec4(uEmissive, 1.0);
     vec2 curUV = gl_FragCoord.xy / uResolution;
     vec4 prevClip = uPrevViewProj * vec4(vWorldPos, 1.0);
@@ -206,7 +207,7 @@ void main() {
 }
 )GLSL";
 
-// --- G25 HBAO pass: G-buffer normal + depth -> horizon-based AO factor (resource "hbao",
+// --- G31 HBAO pass: G-buffer normal + depth -> horizon-based AO factor (resource "hbao",
 // RG16F, .r), runs before lighting next to G15 SSAO; the lighting pass prefers it when
 // Effect::Hbao is on. For uDirs tangent-plane directions (per-pixel rotated by uRotSeed)
 // the march samples the scene surface at radius*r along each direction (world space,
@@ -366,6 +367,84 @@ void main() {
 }
 )GLSL";
 
+// --- G34 screen-space GI pass: hdr -> hdrG (runs after lighting, feeds SSR). For uCones
+// cosine-weighted cones around the surface normal, march uSteps steps up to uMaxDist
+// (world units) against the G-buffer depth; each hit contributes the lit HDR color there
+// (direct light + emissive = the "bounce" source), attenuated by distance and cone width.
+// Added as albedo * irradiance * uStrength. Plain copy when Effect::Gi is off.
+// Units: uHdr 0, uGAlbedo 1, uGNormal 2, uGDepth 3.
+constexpr const char* kGiFrag = R"GLSL(#version 330 core
+in vec2 vUV;
+uniform sampler2D uHdr;     // unit 0: lit HDR scene
+uniform sampler2D uGAlbedo; // unit 1
+uniform sampler2D uGNormal; // unit 2
+uniform sampler2D uGDepth;  // unit 3
+uniform mat4 uInvViewProj;
+uniform mat4 uViewProj;     // non-jittered (march projection)
+uniform int uGiEnabled;
+uniform float uStrength;
+uniform int uCones;         // 1..4
+uniform int uSteps;         // 1..32
+uniform float uMaxDist;     // world units
+uniform float uThickness;   // hit thickness in world units
+uniform float uRotSeed;
+out vec4 FragColor;
+float edgeFade(vec2 uv) {
+    const float m = 0.08;
+    float fx = min(min(uv.x, 1.0 - uv.x) / m, 1.0);
+    float fy = min(min(uv.y, 1.0 - uv.y) / m, 1.0);
+    return min(fx, fy) * min(fx, fy) * (3.0 - 2.0 * min(fx, fy));
+}
+void main() {
+    vec3 hdr = texture(uHdr, vUV).rgb;
+    if (uGiEnabled != 1) { FragColor = vec4(hdr, 1.0); return; }
+    float depth = texture(uGDepth, vUV).r;
+    if (depth >= 0.99999) { FragColor = vec4(hdr, 1.0); return; } // sky: no GI
+    vec4 wp = uInvViewProj * vec4(vUV * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec3 P = wp.xyz / wp.w;
+    vec3 N = normalize(texture(uGNormal, vUV).rgb * 2.0 - 1.0);
+    vec3 albedo = texture(uGAlbedo, vUV).rgb;
+    vec3 up = abs(N.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 T = normalize(cross(up, N));
+    vec3 B = cross(N, T);
+    float rot = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + uRotSeed) * 43758.5453) * 6.2831853;
+    float cr = cos(rot), sr = sin(rot);
+    int cones = clamp(uCones, 1, 4);
+    int steps = clamp(uSteps, 1, 32);
+    vec3 irradiance = vec3(0.0);
+    for (int c = 0; c < 4; ++c) {
+        if (c >= cones) break;
+        float phi = 6.2831853 * float(c) / float(cones) + 0.0;
+        vec2 dir2 = vec2(cos(phi) * cr - sin(phi) * sr, cos(phi) * sr + sin(phi) * cr);
+        // cone axis tilted 45 deg from N toward the tangent direction, spread by the cone
+        vec3 axis = normalize(N * 0.7071 + (T * dir2.x + B * dir2.y) * 0.7071);
+        float coneW = 0.35; // half-angle-ish weight falloff
+        for (int s = 1; s <= 32; ++s) {
+            if (s > steps) break;
+            float t = uMaxDist * float(s) / float(steps);
+            vec3 sp = P + axis * t;
+            vec4 clip = uViewProj * vec4(sp, 1.0);
+            if (clip.w <= 0.0) break;
+            vec2 suv = clip.xy / clip.w * 0.5 + 0.5;
+            if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) break;
+            float sd = texture(uGDepth, suv).r;
+            vec4 swp = uInvViewProj * vec4(suv * 2.0 - 1.0, sd * 2.0 - 1.0, 1.0);
+            vec3 S = swp.xyz / swp.w;
+            float dist = length(S - P);
+            if (dist > t + uThickness) continue; // surface still beyond the march point: keep marching
+            // hit: sample the lit scene color, weight by cone solid angle + distance falloff
+            vec3 hitCol = texture(uHdr, suv).rgb;
+            float w = exp(-dist * 0.35) * (1.0 - coneW * (float(s) / float(steps)));
+            irradiance += hitCol * max(w, 0.0);
+            break; // one bounce per cone step (single-bounce GI)
+        }
+    }
+    irradiance /= float(cones);
+    vec3 indirect = albedo * irradiance * uStrength * edgeFade(vUV);
+    FragColor = vec4(hdr + indirect, 1.0);
+}
+)GLSL";
+
 // --- G17 bloom pass: HDR -> HDR + bloom (resource "hdrB", feeds TAA). Bright-pass above
 // uThreshold, 9-tap golden-angle blur at uRadius texels, added with uStrength. Plain copy
 // when Effect::Bloom is off. Unit: uSrc 0.
@@ -394,7 +473,7 @@ void main() {
 }
 )GLSL";
 
-// --- G24 lens flare + anamorphic streaks pass: hdrB -> hdrF (feeds TAA), runs after bloom.
+// --- G30 lens flare + anamorphic streaks pass: hdrB -> hdrF (feeds TAA), runs after bloom.
 // Anamorphic (Effect::Anamorphic): wide horizontal blur of the HDR bright-pass above
 // uAnamorphicThreshold 4 every bright light (sun, lamps) gets a horizontal streak.
 // Lens flare (Effect::LensFlare): around the sun's screen position uSunUV \u2014 central glow,
@@ -448,6 +527,31 @@ void main() {
         float streakV = exp(-abs(d.x) * 900.0) * exp(-abs(d.y) * 18.0); // vertical diffraction streak
         col += uFlareTint * uFlareStrength * 0.35 * streakV;
     }
+    FragColor = vec4(col, 1.0);
+}
+)GLSL";
+
+// --- G32 chromatic aberration pass: up -> ca (output resolution, feeds DoF). Radial RGB
+// channel split around uCaCenter: red shifted outward, blue inward, green centered —
+// the classic lens dispersion. Plain copy when Effect::ChromaticAberration is off.
+// Unit: uSrc 0.
+constexpr const char* kCaFrag = R"GLSL(#version 330 core
+in vec2 vUV;
+uniform sampler2D uSrc;      // unit 0: upscaled HDR
+uniform int uCaEnabled;
+uniform float uCaStrength;   // uv offset at the frame corner (r^2 = 0.5)
+uniform vec2 uCaCenter;      // usually the frame center (0.5, 0.5)
+out vec4 FragColor;
+void main() {
+    vec3 c = texture(uSrc, vUV).rgb;
+    if (uCaEnabled != 1) { FragColor = vec4(c, 1.0); return; }
+    vec2 dir = vUV - uCaCenter;
+    float r2 = dot(dir, dir);
+    float k = uCaStrength * r2 * 2.0; // 0 at the center, uCaStrength at the corners
+    vec3 col;
+    col.r = texture(uSrc, clamp(vUV + dir * k, 0.0, 1.0)).r;
+    col.g = c.g;
+    col.b = texture(uSrc, clamp(vUV - dir * k, 0.0, 1.0)).b;
     FragColor = vec4(col, 1.0);
 }
 )GLSL";
@@ -549,7 +653,7 @@ void main() {
 constexpr const char* kLightFragSsao = R"GLSL(
 uniform sampler2D uSsao;      // unit 6: G15 AO factor (1 = unoccluded)
 uniform int uSsaoEnabled;
-uniform sampler2D uHbao;      // unit 24: G25 horizon-based AO factor (preferred when on)
+uniform sampler2D uHbao;      // unit 24: G31 horizon-based AO factor (preferred when on)
 uniform int uHbaoEnabled;
 )GLSL";
 
@@ -729,6 +833,12 @@ vec3 probeIrradiance(vec3 worldPos, vec3 N) {
 )GLSL";
 
 constexpr const char* kLightFragPbr = R"GLSL(
+// G33 subsurface scattering (Effect::Subsurface): wrap diffuse + backlit translucency
+uniform int uSssEnabled;
+uniform float uSssDistortion; // how much the "light through the object" shifts toward the normal
+uniform float uSssPower;      // translucency pow
+uniform float uSssScale;      // translucency intensity
+uniform float uSssThickness;  // effective object thickness (scales the translucency term)
 float distributionGGX(float ndoth, float roughness) {
     float a2 = roughness * roughness * roughness * roughness;
     float d = ndoth * ndoth * (a2 - 1.0) + 1.0;
@@ -890,7 +1000,7 @@ vec3 pbrAmbient(vec3 albedo, float metallic, float roughness, float ao, vec3 N, 
     }
     return diff + spec;
 }
-vec3 shade(vec3 albedo, float metallic, float roughness, float ao, vec3 N, vec3 worldPos, vec3 V) {
+vec3 shade(vec3 albedo, float metallic, float roughness, float ao, float sss, vec3 N, vec3 worldPos, vec3 V) {
     vec3 acc = pbrAmbient(albedo, metallic, roughness, ao, N, V, worldPos);
     for (int i = 0; i < uLightCount && i < 64; ++i) {
         vec3 L;
@@ -909,7 +1019,18 @@ vec3 shade(vec3 albedo, float metallic, float roughness, float ao, vec3 N, vec3 
                                      uContactShadowSteps, jitter);
             sh *= mix(1.0, cs, uContactShadowStrength);
         }
-        acc += pbrDirect(albedo, metallic, roughness, N, V, L, lightColor[i].rgb * atten) * sh;
+        vec3 direct = pbrDirect(albedo, metallic, roughness, N, V, L, lightColor[i].rgb * atten) * sh;
+        if (sss > 0.0) {
+            // G33 thin-object SSS: wrapped diffuse (light bleeding around the terminator) +
+            // backlit translucency (light seen through the object against the view)
+            float wrap = 0.5;
+            float ndlW = clamp((dot(N, L) + wrap) / (1.0 + wrap), 0.0, 1.0);
+            vec3 Hv = normalize(L + N * uSssDistortion);
+            float trans = pow(clamp(dot(V, -Hv), 0.0, 1.0), uSssPower) * uSssScale;
+            direct += albedo * lightColor[i].rgb * atten * sh * sss * (1.0 - metallic) *
+                      (ndlW * ndlW * 0.5 + trans * uSssThickness);
+        }
+        acc += direct;
     }
     return acc;
 }
@@ -939,10 +1060,12 @@ void main() {
     vec3 V = normalize(uCamPos - worldPos);
     // G22: wetness/rain film modulates albedo + roughness before shading
     applyWetness(albedo, pbr.g, worldPos, N);
-    // G15/G25: multiply the material AO with the screen-space AO factor (HBAO preferred when on)
+    // G15/G31: multiply the material AO with the screen-space AO factor (HBAO preferred when on)
     float ssao = (uHbaoEnabled == 1) ? texture(uHbao, vUV).r
                                      : ((uSsaoEnabled == 1) ? texture(uSsao, vUV).r : 1.0);
-    vec3 lit = shade(albedo, pbr.r, pbr.g, pbr.b * ssao, N, worldPos, V) + emissive;
+    // G33: per-item subsurface factor rides in gPbr.a
+    float sss = (uSssEnabled == 1) ? pbr.a : 0.0;
+    vec3 lit = shade(albedo, pbr.r, pbr.g, pbr.b * ssao, sss, N, worldPos, V) + emissive;
     if (uFogDensity > 0.0) {
         float d = length(worldPos - uCamPos);
         lit = mix(lit, uFogColor, 1.0 - exp(-uFogDensity * d));

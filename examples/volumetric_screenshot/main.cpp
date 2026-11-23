@@ -55,7 +55,7 @@ bool renderToPng(fuhglgraphics::scene::Scene& scn, fuhgl::FirstPersonCamera& cam
         renderer.volumetricDensity = density;
         renderer.volumetricTime = 0.35f * i; // slow cloud drift between frames
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                        frame.lightProbes, &frame.decals, frame.water, &frame.skins);
+                        frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
     }
     fuhgl::gl::flush();
     renderer.output().bind();

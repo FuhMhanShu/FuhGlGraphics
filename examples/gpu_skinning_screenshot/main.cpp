@@ -194,7 +194,7 @@ int main(int argc, char** argv) {
         skeleton.updatePalette(jointPtrs);
         if (gpuSkin) armSkinner.uploadPalette(skeleton.palette); // GPU path: palette -> SSBO
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                        frame.lightProbes, &frame.decals, frame.water, &frame.skins);
+                        frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
     }
     fuhgl::gl::flush();
 

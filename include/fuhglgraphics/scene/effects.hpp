@@ -81,17 +81,30 @@ struct EffectParams {
     float wetnessNoiseScale = 3.5f; ///< world units per puddle-noise cell
     // --- G23 tonemapping operator (Effect::Tonemap) ---
     int tonemapOperator = 0;      ///< render::TonemapOperator: 0 = ACES, 1 = Reinhard, 2 = Uncharted2, 3 = linear
-    // --- G24 lens flare + anamorphic streaks (Effect::LensFlare / Effect::Anamorphic) ---
+    // --- G30 lens flare + anamorphic streaks (Effect::LensFlare / Effect::Anamorphic) ---
     float lensFlareStrength = 0.8f;   ///< glow/ghost/streak intensity around the sun
     float anamorphicStrength = 0.5f;  ///< horizontal streak intensity
     float anamorphicStretch = 10.f;   ///< horizontal blur width in texels per tap
     float anamorphicThreshold = 1.0f; ///< HDR luminance threshold of the streak source
-    // --- G25 HBAO (Effect::Hbao) ---
+    // --- G31 HBAO (Effect::Hbao) ---
     float hbaoRadius = 1.5f;     ///< world-space horizon-march radius
     float hbaoBias = 0.05f;      ///< height-above-plane bias (self-occlusion), world units
     int hbaoDirections = 8;      ///< tangent directions (clamped 1..16)
     int hbaoSteps = 4;           ///< march steps per direction (clamped 1..8)
     float hbaoPower = 1.6f;      ///< final exponent on the combined AO factor
+    // --- G32 chromatic aberration (Effect::ChromaticAberration) ---
+    float caStrength = 0.006f;   ///< R/B uv offset at the frame corners
+    // --- G33 subsurface scattering (Effect::Subsurface) ---
+    float sssDistortion = 0.4f;  ///< translucency normal shift
+    float sssPower = 3.f;        ///< translucency pow
+    float sssScale = 1.f;        ///< translucency intensity
+    float sssThickness = 1.f;    ///< effective object thickness
+    // --- G34 screen-space GI (Effect::Gi) ---
+    float giStrength = 0.6f;     ///< indirect intensity
+    int giCones = 3;             ///< cones per pixel (clamped 1..4)
+    int giSteps = 12;            ///< march steps per cone (clamped 1..32)
+    float giMaxDist = 8.f;       ///< cone length in world units
+    float giThickness = 0.3f;    ///< hit band in world units
 };
 
 /// @brief Effect list + parameters of one scene node (or of a whole frame after merging).

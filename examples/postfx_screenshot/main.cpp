@@ -1,4 +1,4 @@
-// G24/G25 post-effect showcase, headless to PNG:
+// G30/G31 post-effect showcase, headless to PNG:
 //  - Lens flare (Effect::LensFlare) + anamorphic streaks (Effect::Anamorphic): dusk plaza
 //    with a low HDR sun and lamp cores, camera aimed at the sun -> glow + ghosts + vertical
 //    diffraction streak + horizontal anamorphic streak through every bright light.
@@ -73,7 +73,7 @@ bool shoot(fuhglgraphics::scene::Scene& scene, fuhgl::FirstPersonCamera& cam,
         frame.effects.applyTo(renderer);
         renderer.setRenderScale(scale);
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                        frame.lightProbes, &frame.decals, frame.water, &frame.skins);
+                        frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
     }
     fuhgl::gl::flush();
     renderer.output().bind();
@@ -261,7 +261,7 @@ int main(int argc, char** argv) {
     cam.fovY = fuhgl::math::radians(52.f);
     bool ok = true;
 
-    // --- G24: dusk plaza, camera aimed at the low sun ---
+    // --- G30: dusk plaza, camera aimed at the low sun ---
     {
         scene::Scene scene;
         fuhgl::render::Mesh ground, lamp, crate;
@@ -297,7 +297,7 @@ int main(int argc, char** argv) {
                     args.prefix + "_noflare.png");
     }
 
-    // --- G25: daylight courtyard, HBAO vs SSAO ---
+    // --- G31: daylight courtyard, HBAO vs SSAO ---
     {
         scene::Scene scene;
         fuhgl::render::Mesh ground, box, wall;

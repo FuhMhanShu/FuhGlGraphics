@@ -38,13 +38,16 @@ enum class Effect {
     Bloom,          ///< G17 bloom: bright-pass (adjustable threshold) + blur + add in the HDR chain before TAA
     VolumetricFog,  ///< G21 volumetric fog/clouds: raymarched 3D-noise volume with height falloff + HG phase (post pass after particles, before bloom)
     Wetness,        ///< G22 wetness/rain on PBR: lighting-pass roughness/albedo modulation + puddle mask + SSR boost
-    LensFlare,      ///< G24 lens flare around the sun: glow + inverted ghosts + diffraction streak (post pass after bloom)
-    Anamorphic,     ///< G24 anamorphic streaks: wide horizontal blur of the HDR bright-pass (same post pass, own toggle)
-    Hbao,           ///< G25 horizon-based ambient occlusion from the G-buffer (pass before lighting, preferred over G15 SSAO)
+    LensFlare,      ///< G30 lens flare around the sun: glow + inverted ghosts + diffraction streak (post pass after bloom)
+    Anamorphic,     ///< G30 anamorphic streaks: wide horizontal blur of the HDR bright-pass (same post pass, own toggle)
+    Hbao,           ///< G31 horizon-based ambient occlusion from the G-buffer (pass before lighting, preferred over G15 SSAO)
+    ChromaticAberration, ///< G32 chromatic aberration: radial RGB channel split from the frame center (post pass after upscale)
+    Subsurface,     ///< G33 subsurface scattering: wrap diffuse + backlit translucency for thin materials (lighting pass, G-buffer pbr.a)
+    Gi,             ///< G34 screen-space global illumination: cone march against the lit HDR buffer (post pass after lighting)
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 24;
+constexpr int kEffectCount = 27;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -73,6 +76,9 @@ inline const char* effectName(Effect e) {
         case Effect::LensFlare: return "lens flare";
         case Effect::Anamorphic: return "anamorphic streaks";
         case Effect::Hbao: return "HBAO";
+        case Effect::ChromaticAberration: return "chromatic aberration";
+        case Effect::Subsurface: return "subsurface scattering";
+        case Effect::Gi: return "GI";
     }
     return "unknown";
 }

@@ -64,17 +64,30 @@ void Effects::applyTo(render::DeferredRenderer& renderer) const {
     renderer.wetnessNoiseScale = params.wetnessNoiseScale;
     // G23 tonemap operator
     renderer.tonemapOperator = static_cast<render::TonemapOperator>(params.tonemapOperator);
-    // G24 lens flare + anamorphic streaks
+    // G30 lens flare + anamorphic streaks
     renderer.lensFlareStrength = params.lensFlareStrength;
     renderer.anamorphicStrength = params.anamorphicStrength;
     renderer.anamorphicStretch = params.anamorphicStretch;
     renderer.anamorphicThreshold = params.anamorphicThreshold;
-    // G25 HBAO
+    // G31 HBAO
     renderer.hbaoRadius = params.hbaoRadius;
     renderer.hbaoBias = params.hbaoBias;
     renderer.hbaoDirections = params.hbaoDirections;
     renderer.hbaoSteps = params.hbaoSteps;
     renderer.hbaoPower = params.hbaoPower;
+    // G32 chromatic aberration
+    renderer.caStrength = params.caStrength;
+    // G33 subsurface scattering
+    renderer.sssDistortion = params.sssDistortion;
+    renderer.sssPower = params.sssPower;
+    renderer.sssScale = params.sssScale;
+    renderer.sssThickness = params.sssThickness;
+    // G34 screen-space GI
+    renderer.giStrength = params.giStrength;
+    renderer.giCones = params.giCones;
+    renderer.giSteps = params.giSteps;
+    renderer.giMaxDist = params.giMaxDist;
+    renderer.giThickness = params.giThickness;
     // (width() > 0: the renderer was create()d, so a GL context is current and the
     //  cube map can be allocated)
     if (enabled(render::Effect::PointShadows) && !renderer.pointShadowEnabled() && renderer.width() > 0)

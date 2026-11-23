@@ -197,7 +197,7 @@ target_link_libraries(fuhglgraphics_gl_smoke_flare PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_flare COMMAND fuhglgraphics_gl_smoke_flare)
 set_tests_properties(fuhglgraphics_gl_smoke_flare PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
 
-# G25 HBAO smoke test (label "gl_context"): box on ground — HBAO on vs off must differ and
+# G31 HBAO smoke test (label "gl_context"): box on ground — HBAO on vs off must differ and
 # the changed pixels must mostly get darker (AO is multiplicative). Skips (exit code 77).
 add_executable(fuhglgraphics_gl_smoke_hbao gl_smoke_hbao.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_hbao PRIVATE fuhglgraphics)
@@ -211,6 +211,27 @@ add_executable(fuhglgraphics_gl_smoke_procedural gl_smoke_procedural.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_procedural PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_procedural COMMAND fuhglgraphics_gl_smoke_procedural)
 set_tests_properties(fuhglgraphics_gl_smoke_procedural PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# G32 chromatic aberration smoke test (label "gl_context"): high-contrast box — CA on vs off
+# must differ, with R/B shifted at the corners and G untouched. Skips (exit code 77) no GL.
+add_executable(fuhglgraphics_gl_smoke_ca gl_smoke_ca.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_ca PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_ca COMMAND fuhglgraphics_gl_smoke_ca)
+set_tests_properties(fuhglgraphics_gl_smoke_ca PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# G33 subsurface scattering smoke test (label "gl_context"): backlit thin panel — SSS on vs
+# off must brighten the dark side (wrap + translucency). Skips (exit code 77) without GL.
+add_executable(fuhglgraphics_gl_smoke_sss gl_smoke_sss.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_sss PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_sss COMMAND fuhglgraphics_gl_smoke_sss)
+set_tests_properties(fuhglgraphics_gl_smoke_sss PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# G34 screen-space GI smoke test (label "gl_context"): white box next to a red wall — GI on
+# must add (red) bounce light on the shadowed side. Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_gi gl_smoke_gi.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_gi PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_gi COMMAND fuhglgraphics_gl_smoke_gi)
+set_tests_properties(fuhglgraphics_gl_smoke_gi PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
 # Qt editor-widget unit test (only with FUHGLGRAPHICS_WITH_QT=ON): runs offscreen
 # (QT_QPA_PLATFORM=offscreen), no GL context required — label "unit".
 if(FUHGLGRAPHICS_WITH_QT)

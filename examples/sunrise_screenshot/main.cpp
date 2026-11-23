@@ -603,7 +603,7 @@ int main(int argc, char** argv) {
             frame.effects.applyTo(renderer);
             renderer.setRenderScale(args.scale);
             renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                            frame.lightProbes, &frame.decals, frame.water, &frame.skins);
+                            frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
         }
         fuhgl::gl::flush();
         renderer.output().bind();
