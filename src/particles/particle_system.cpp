@@ -26,6 +26,7 @@ void CpuSim::emit(const EmitterConfig& cfg, float dt) {
     const fuhgl::math::Vec3 dir = fuhgl::math::normalize(cfg.direction);
     for (int i = 0; i < n; ++i) {
         const float r1 = nextRand(), r2 = nextRand(), r3 = nextRand(), r4 = nextRand();
+        const float r5 = nextRand();
         const fuhgl::math::Vec3 jitter{(r1 - 0.5f) * 2.f, (r2 - 0.5f) * 2.f, (r3 - 0.5f) * 2.f};
         Particle p;
         p.pos = cfg.position;
@@ -35,6 +36,7 @@ void CpuSim::emit(const EmitterConfig& cfg, float dt) {
         p.size = cfg.size;
         p.color = cfg.color;
         p.alpha = cfg.alpha;
+        p.seed = r5 * 1000.f;
         particles.push_back(p);
     }
 }
@@ -180,6 +182,7 @@ void ParticleSystem::setEmitter(const EmitterConfig& cfg) { emitter_ = cfg; }
 
 void ParticleSystem::update(float dt) {
     if (!ready_ || dt <= 0.f) return;
+    time_ += dt; // G35: drives the uTime flame-flicker uniform in beginPass
     Impl& im = *impl_;
     if (gpu_) {
         im.emitAcc += emitter_.rate * dt;
@@ -232,7 +235,7 @@ void ParticleSystem::update(float dt) {
             const float a[4] = {p.pos.x, p.pos.y, p.pos.z, p.size};
             const float b[4] = {p.vel.x, p.vel.y, p.vel.z, p.life};
             const float c[4] = {p.color.x, p.color.y, p.color.z, p.alpha};
-            const float d[4] = {p.maxLife, 0.f, 0.f, 0.f};
+            const float d[4] = {p.maxLife, p.seed, 0.f, 0.f};
             data.insert(data.end(), a, a + 4);
             data.insert(data.end(), b, b + 4);
             data.insert(data.end(), c, c + 4);
@@ -268,6 +271,8 @@ void ParticleSystem::beginPass(const fuhgl::Camera& camera, float aspect, int vi
     p.setUniform("uCsZNear", camera.zNear());
     p.setUniform("uCsZFar", camera.zFar());
     p.setUniform("uBlendMode", emitter_.blend == BlendMode::Additive ? 0 : 1);
+    p.setUniform("uFlame", emitter_.flame ? 1 : 0); // G35 flame mode
+    p.setUniform("uTime", time_);
 }
 
 void ParticleSystem::drawPass() const {

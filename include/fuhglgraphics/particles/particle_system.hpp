@@ -48,6 +48,10 @@ struct EmitterConfig {
     float drag = 0.5f;        ///< exponential velocity damping (1/s)
     unsigned seed = 7u;       ///< deterministic per-particle randomness
     BlendMode blend = BlendMode::Additive;
+    bool flame = false;       ///< G35: render billboards as animated teardrop flames
+                              ///< (fbm-flicker + white->orange->red heat ramp in the FS)
+                              ///< instead of round soft sprites; the VS stretches them
+                              ///< vertically. Embers/sparks stay plain additive sprites.
 };
 
 /// @brief Pure CPU simulation core — the same math as the integrate/emit compute shaders,
@@ -58,6 +62,7 @@ struct CpuSim {
         float life = 0.f, maxLife = 1.f, size = 0.f;
         fuhgl::math::Vec3 color{1.f};
         float alpha = 1.f;
+        float seed = 0.f; ///< G35: per-particle random seed, uploaded as aMaxLife.y (flame flicker)
     };
     std::vector<Particle> particles; ///< alive particles (life > 0), compacted on integrate
     float emitAcc = 0.f;             ///< fractional emission accumulator
@@ -100,6 +105,8 @@ public:
 
     /// @brief Emits + integrates one step (GPU: compute dispatch; CPU: CpuSim).
     void update(float dt);
+    /// @brief Accumulated simulation time in seconds (drives the flame flicker uniform).
+    float time() const { return time_; }
     /// @brief Alive particle count (exact on CPU; GPU reads the atomic counter back).
     int aliveCount();
 
@@ -118,6 +125,7 @@ private:
     int maxParticles_ = 0;
     bool ready_ = false;
     bool gpu_ = false;
+    float time_ = 0.f; ///< G35: total simulated seconds, forwarded as uTime to the billboard FS
 };
 
 } // namespace fuhglgraphics::particles

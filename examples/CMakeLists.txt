@@ -170,3 +170,9 @@ target_link_libraries(fuhglgraphics_creature_screenshot PRIVATE fuhglgraphics)
 # on/off) — headless to PNG.
 add_executable(fuhglgraphics_postfx2_screenshot postfx2_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_postfx2_screenshot PRIVATE fuhglgraphics)
+# G36 ice-cave showcase: procedural SDF cave (marching cubes) with a campfire INSIDE the
+# cave (G35 realistic flame particles + embers + smoke), ice crystals (SSR + SSS), a water
+# puddle (planar reflection), HBAO, bloom, volumetric fog, CSM + point shadows, dark entrance
+# glow + IBL — wide + crystals + entrance shots, headless to PNG.
+add_executable(fuhglgraphics_cave_screenshot cave_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_cave_screenshot PRIVATE fuhglgraphics)
