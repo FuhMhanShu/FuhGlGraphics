@@ -210,6 +210,14 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
                   frame.lightProbes, &frame.decals, frame.water);
   ```
+- **Picking (G18).** `scene/picking.hpp` (pure CPU, no GL): `scene::rayFromScreen()` builds
+  the world ray through a pixel, `rayIntersectAabb()` / `rayIntersectTriangle()`
+  (Möller–Trumbore) do the intersection math, and `scene::pick(scene, camera, w, h, px, py,
+  hit)` returns the nearest `PickHit` {node, meshEntry, distance, point, triangle} — node
+  world AABBs cull subtrees, triangles come from `MeshEntry::meshData` (set by the glTF
+  loader for every primitive). Basis for editor selection/gizmos. Quick start:
+  [G18 tutorial](en/tutorials/g18_picking.md), demo `examples/picking_screenshot`,
+  screenshots: [marker at hit](images/g18_picking_marker.png).
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

@@ -75,8 +75,12 @@ Fresnel/Roughness/Edge-Maske, Ausgabe `hdrS`) — siehe [G16-Tutorial](docs/de/t
 und Bilder in [docs/images/](docs/images/g16_ssr_on.png) — und **G17** — Bloom
 (`Effect::Bloom`: Post-Pass nach den Partikeln, vor TAA; Bright-Pass oberhalb des einstellbaren
 `bloomThreshold` + 9-Tap-Blur + Add in `hdrB`) — siehe [G17-Tutorial](docs/de/tutorials/g17_bloom.md)
-und Bilder in [docs/images/](docs/images/g17_bloom_on.png).
-Als Nächstes: **G18–G23** (technische Erweiterungen: SSAO, SSR, Bloom, Picking,
+und Bilder in [docs/images/](docs/images/g17_bloom_on.png) — und **G18** — Picking /
+Ray-Casting auf dem Szenengraphen (`scene::pick()`: Strahl von der Kamera durch ein Pixel,
+World-AABB-Culling, Möller–Trumbore-Dreieckstests auf `MeshEntry::meshData`) — siehe
+[G18-Tutorial](docs/de/tutorials/g18_picking.md) und Bilder in
+[docs/images/](docs/images/g18_picking_marker.png).
+Als Nächstes: **G19–G23** (technische Erweiterungen: SSAO, SSR, Bloom, Picking,
 Szenen-Serialisierung, Terrain/LOD, volumetrischer Nebel, Wetness, Tonemap-Operatoren), dann
 **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder **G2** (Qt-Editor).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen

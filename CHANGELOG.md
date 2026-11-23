@@ -9,6 +9,21 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G18 — picking / ray-casting on the scene graph** (`fuhglgraphics::scene::picking`,
+  `include/fuhglgraphics/scene/picking.hpp`, `src/scene/picking.cpp`): pure CPU module (no GL) —
+  `rayFromScreen()` (world ray through a pixel), `rayIntersectAabb()` (slab test, culls node
+  subtrees by their world AABBs), `rayIntersectTriangle()` (Möller–Trumbore), and
+  `scene::pick()` returning the nearest `PickHit` (node, mesh entry, distance, world point,
+  triangle). Triangle tests run against `MeshEntry::meshData` — the CPU `MeshData` copy that
+  the glTF loader now sets for every primitive (and that apps set for procedural meshes).
+  Basis for editor selection/gizmos (G2/G11/G12). Tests: `tests/test_picking.cpp` (unit: ray
+  construction, AABB/triangle intersection, full pick near/far/miss/null-camera) +
+  `tests/gl_smoke_picking.cpp` (label `gl_context`; center-pixel pick on a rendered scene +
+  marker visibility). Demo: `examples/picking_screenshot` (plaza crates, marker at the hit
+  point) headless to PNG; references `docs/images/g18_picking_{marker,nomarker}.png`.
+  Tutorial: `docs/en/tutorials/g18_picking.md` + German translation.
+  Requirement entry G18 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G17 — bloom** (`include/fuhglgraphics/render/bloom.hpp`, `kBloomFrag` in
   `src/render/deferred_glsl.hpp`, "bloom" post-graph pass in the G3 renderer): after the
   particles pass and before TAA, the HDR image gets a per-channel bright-pass above the

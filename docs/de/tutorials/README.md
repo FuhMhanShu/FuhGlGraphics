@@ -39,6 +39,9 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   per Fresnel, Kamm- + Uferschaum, Sonnen-Glint); See-Bilder in
   [docs/images/](../../images/g13_water_1280x720.png)
 
+- [G18 — Picking / Ray-Casting](g18_picking.md) — `scene::pick()`: Kamera-Strahl durch ein
+  Pixel + AABB-Culling + Möller–Trumbore-Dreieckstests auf `MeshEntry::meshData`; Marker am
+  Trefferpunkt; Bilder in [docs/images/](../../images/g18_picking_marker.png)
 - [G17 — Bloom](g17_bloom.md) — Post-Pass nach den Partikeln, vor TAA: Bright-Pass oberhalb
   eines einstellbaren `bloomThreshold` + 9-Tap-Blur + Add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   Bilder in [docs/images/](../../images/g17_bloom_on.png)
@@ -53,7 +56,7 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   G3-G-Buffer-Passes, wenn `Effect::GpuSkinning` an ist (CPU-Fallback darunter); Bilder in
   [docs/images/](../../images/g14_gpu_skinning_on.png)
 
-Als Nächstes: **G18–G23** (technische Erweiterungen: Picking,
+Als Nächstes: **G19–G23** (technische Erweiterungen:
 Szenen-Serialisierung, Terrain/LOD, volumetrischer Nebel, Wetness, Tonemap-Operatoren) /
 **G11** (Engine-Infrastruktur) / **G2** (Qt-Editor) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
 

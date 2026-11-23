@@ -178,6 +178,12 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_bloom_screenshot --out docs/images/ci/g17_bloom_off.png --width 1280 --height 720 --frames 16 --no-bloom
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_bloom_screenshot --out docs/images/ci/g17_bloom_thr4.png --width 1280 --height 720 --frames 16 --threshold 4
 
+      - name: Build + render G18 picking screenshots (marker at the picked point)
+        run: |
+          cmake --build build -j --target fuhglgraphics_picking_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_picking_screenshot --out docs/images/ci/g18_picking_marker.png --width 1280 --height 720 --frames 16 --px 560 --py 400
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_picking_screenshot --out docs/images/ci/g18_picking_nomarker.png --width 1280 --height 720 --frames 16 --px 560 --py 400 --no-marker
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)

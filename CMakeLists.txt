@@ -44,6 +44,7 @@ add_library(fuhglgraphics STATIC
     src/scene/effects.cpp
     src/scene/node.cpp
     src/scene/scene.cpp
+    src/scene/picking.cpp
     src/io/json.cpp
     src/io/gltf.cpp
     src/particles/particle_system.cpp

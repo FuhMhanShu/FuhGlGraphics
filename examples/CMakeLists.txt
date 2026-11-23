@@ -68,3 +68,8 @@ target_link_libraries(fuhglgraphics_ssr_screenshot PRIVATE fuhglgraphics)
 # (bright-pass + blur + add before TAA, Effect::Bloom, adjustable threshold) — headless to PNG.
 add_executable(fuhglgraphics_bloom_screenshot bloom_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_bloom_screenshot PRIVATE fuhglgraphics)
+
+# G18 picking demo: plaza with crates — scene::pick() ray-casts a pixel (AABB + triangle
+# tests on MeshEntry::meshData) and a marker cube is rendered at the hit point — headless to PNG.
+add_executable(fuhglgraphics_picking_screenshot picking_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_picking_screenshot PRIVATE fuhglgraphics)

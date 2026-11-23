@@ -13,3 +13,4 @@ void runWaterTests();
 void runSsaoTests();
 void runSsrTests();
 void runBloomTests();
+void runPickingTests();

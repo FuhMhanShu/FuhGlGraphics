@@ -212,6 +212,11 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   adjustable `bloomThreshold`): implemented — see `tests/test_bloom.cpp`,
   `tests/gl_smoke_bloom.cpp`, `examples/bloom_screenshot`, `docs/images/g17_bloom_*.png` and
   the [G17 tutorial](en/tutorials/g17_bloom.md).
+- **G18 — picking / ray-casting on the scene graph** (`include/fuhglgraphics/scene/picking.hpp`,
+  `src/scene/picking.cpp`): implemented — `scene::pick()` (ray from screen pixel, world-AABB
+  culling, Möller–Trumbore on `MeshEntry::meshData`), pure + unit-tested; see
+  `tests/test_picking.cpp`, `tests/gl_smoke_picking.cpp`, `examples/picking_screenshot`,
+  `docs/images/g18_picking_*.png` and the [G18 tutorial](en/tutorials/g18_picking.md).
 - G2, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON

@@ -11,6 +11,7 @@ add_executable(fuhglgraphics_tests
     test_ssao.cpp
     test_ssr.cpp
     test_bloom.cpp
+    test_picking.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -127,3 +128,11 @@ add_executable(fuhglgraphics_gl_smoke_bloom gl_smoke_bloom.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_bloom PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_bloom COMMAND fuhglgraphics_gl_smoke_bloom)
 set_tests_properties(fuhglgraphics_gl_smoke_bloom PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G18 picking (label "gl_context"): picks the center pixel of
+# a scene with a box (meshData set), checks the hit node/distance, then renders a marker at
+# the hit point and verifies it is visible. Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_picking gl_smoke_picking.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_picking PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_picking COMMAND fuhglgraphics_gl_smoke_picking)
+set_tests_properties(fuhglgraphics_gl_smoke_picking PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
