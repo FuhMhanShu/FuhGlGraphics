@@ -213,7 +213,7 @@ int main(int argc, char** argv) {
         fernMeshes.push_back(std::make_unique<fuhgl::render::Mesh>());
         fernMeshes.back()->setMeshData(md);
         scene::Node& n = scene.root().createChild("fern" + std::to_string(i));
-        const float s = 1.2f + 0.3f * (i % 3);
+        const float s = 0.7f + 0.2f * (i % 3);
         n.translation = {fernSpots[i].x, tc.heightAt(fernSpots[i].x, fernSpots[i].y), fernSpots[i].y};
         n.scale = {s, s, s};
         scene::MeshEntry& e = n.attach<scene::MeshComponent>().addMesh(fernMeshes.back().get());
@@ -291,10 +291,10 @@ int main(int argc, char** argv) {
     }
     std::fprintf(stderr, "lsystem_screenshot: wrote %s\n", forestPath.c_str());
 
-    // shot 2: closeup of tree0 (variant 0) with fern
-    cam.position = {treeSpots[0].x + 7.f, tc.heightAt(treeSpots[0].x, treeSpots[0].y) + 3.2f,
-                    treeSpots[0].y + 7.f};
-    aimAt(cam, {treeSpots[0].x, tc.heightAt(treeSpots[0].x, treeSpots[0].y) + 3.5f, treeSpots[0].y});
+    // shot 2: closeup of tree0 (variant 0) — camera pulled back and raised to frame the crown
+    cam.position = {treeSpots[0].x + 11.f, tc.heightAt(treeSpots[0].x, treeSpots[0].y) + 14.f,
+                    treeSpots[0].y + 11.f};
+    aimAt(cam, {treeSpots[0].x, tc.heightAt(treeSpots[0].x, treeSpots[0].y) + 13.f, treeSpots[0].y});
     const std::string treePath = args.prefix + "_tree.png";
     if (!renderToPng(scene, cam, renderer, &env, args.frames, args.width, args.height, treePath)) {
         std::fprintf(stderr, "lsystem_screenshot: failed to write %s\n", treePath.c_str());

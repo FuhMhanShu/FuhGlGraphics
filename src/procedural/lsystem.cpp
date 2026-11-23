@@ -183,25 +183,33 @@ LSystem LSystem::makeTree(int variant, unsigned seedJitter) {
     s.radius0 = 0.11f;
     s.radiusTaper = 0.7f;
     const float jitter = 1.f + static_cast<float>(seedJitter % 5u) * 0.03f;
+    // NOTE: the turtle grows along +Y, and '+/-' only ROLL around the heading — a rule that
+    // uses just '+/-' draws every segment straight up (a stick). Real 3D branches need a
+    // pitch ('&') or yaw ('\\') per branch, with '+/-' rolls in front to vary the azimuth.
     switch (variant % 3) {
-        case 0: // classic branching tree
+        case 0: // broadleaf: trunk + two sub-branches per segment, rolled to varying azimuths
             s.axiom = "F";
-            s.rules = {{'F', "FF+[+F-F-FL]-[-F+F+FL]"}};
+            s.rules = {{'F', "FF+[+&F-FL]-[-&F+FL]"}};
             s.angleDeg = 22.5f * jitter;
             break;
-        case 1: // narrow conifer-like
+        case 1: // narrow conifer: whorls of two branches pitched ~45 deg off vertical
             s.axiom = "F";
-            s.rules = {{'F', "F[+F]F[-F][FL]"}};
-            s.angleDeg = 28.f * jitter;
+            s.rules = {{'F', "FF[&+F][&-F]"}};
+            s.iterations = 5;
+            s.angleDeg = 45.f * jitter;
             s.step = 0.7f;
             s.radius0 = 0.07f;
+            s.radiusTaper = 0.75f;
             break;
-        default: // Barnsley-style tree on X
+        default: // gnarled Barnsley-style tree on X, pitched branches in 3D
             s.axiom = "X";
-            s.rules = {{'X', "F[+X]L[-X]LX"}, {'F', "FF"}};
+            s.rules = {{'X', "F[+&X]L[-&X]&LX"}, {'F', "FF"}};
+            s.iterations = 5;
             s.angleDeg = 25.f * jitter;
             s.step = 0.55f;
             s.radius0 = 0.06f;
+            s.radiusTaper = 0.72f;
+            s.leafSize = 0.45f;
             break;
     }
     return s;
@@ -210,24 +218,25 @@ LSystem LSystem::makeTree(int variant, unsigned seedJitter) {
 LSystem LSystem::makeFern() {
     LSystem s;
     s.axiom = "X";
-    s.rules = {{'X', "F+[[X]-X]L-F[-FX]+XL"}, {'F', "FF"}};
+    // classic fern frond, with '&' pitches so the frond arches sideways instead of stacking up
+    s.rules = {{'X', "F[+&[X]-X]L-F[-&FX]+X"}, {'F', "FF"}};
     s.iterations = 5;
     s.angleDeg = 25.f;
-    s.step = 0.32f;
-    s.radius0 = 0.025f;
+    s.step = 0.16f;
+    s.radius0 = 0.02f;
     s.radiusTaper = 0.8f;
     s.sides = 4;
     s.leaves = true;
-    s.leafSize = 0.22f;
+    s.leafSize = 0.18f;
     return s;
 }
 
 LSystem LSystem::makeBush() {
     LSystem s;
     s.axiom = "F";
-    s.rules = {{'F', "FF+[+F-F-FL]-[-F+F+FL]"}};
+    s.rules = {{'F', "FF[+&F&F-L][-&F&FL]"}};
     s.iterations = 3;
-    s.angleDeg = 32.f;
+    s.angleDeg = 35.f;
     s.step = 0.5f;
     s.radius0 = 0.06f;
     s.radiusTaper = 0.6f;

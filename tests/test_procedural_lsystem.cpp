@@ -76,6 +76,25 @@ void testGenerate() {
     CHECK_NEAR(md.vertices[6], 0.3f, 1e-6f);
 }
 
+void testPresetsSpread3D() {
+    // Regression: rules that only roll ('+/-') draw every segment straight up (a stick);
+    // every preset must spread horizontally by a decent fraction of its height.
+    for (const LSystem& s : {LSystem::makeTree(0), LSystem::makeTree(1), LSystem::makeTree(2),
+                             LSystem::makeFern(), LSystem::makeBush()}) {
+        const fuhgl::render::MeshData md = s.generate();
+        fuhgl::math::Vec3 mn{1e9f, 1e9f, 1e9f}, mx{-1e9f, -1e9f, -1e9f};
+        for (std::uint32_t i = 0; i < md.vertexCount(); ++i) {
+            const float* v = &md.vertices[i * 11];
+            mn = {std::fmin(mn.x, v[0]), std::fmin(mn.y, v[1]), std::fmin(mn.z, v[2])};
+            mx = {std::fmax(mx.x, v[0]), std::fmax(mx.y, v[1]), std::fmax(mx.z, v[2])};
+        }
+        const float height = mx.y - mn.y;
+        const float width = std::fmax(mx.x - mn.x, mx.z - mn.z);
+        CHECK(height > 1.f);
+        CHECK(width > 0.3f * height); // real branches, not a vertical stick
+    }
+}
+
 void testPresetsDiffer() {
     const auto a = LSystem::makeTree(0).generate();
     const auto b = LSystem::makeTree(1).generate();
@@ -101,5 +120,6 @@ void runProceduralLsystemTests() {
     testDerive();
     testPresetBrackets();
     testGenerate();
+    testPresetsSpread3D();
     testPresetsDiffer();
 }
