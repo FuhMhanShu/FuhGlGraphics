@@ -22,6 +22,7 @@ add_executable(fuhglgraphics_tests
     test_procedural_noise.cpp
     test_procedural_mc.cpp
     test_procedural_lsystem.cpp
+    test_procedural_wfc.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
