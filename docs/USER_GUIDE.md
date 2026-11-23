@@ -293,7 +293,13 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   per tile+rotation into one mesh). Quick start: [G27 tutorial](en/tutorials/g27_wfc.md),
   demo `examples/wfc_screenshot`, screenshots: [dungeon interior](images/g27_wfc_dungeon.png),
   [top-down overview](images/g27_wfc_overview.png).
-  Planned on top: G28 voronoi, G29 SDF fractals.
+- **Voronoi diagrams (G28).** `procedural::voronoi2d(n, min, max, seed)` → `Voronoi2D`
+  (seed points, convex cell polygons, adjacency edges); `voronoiDistances(v, p, f1, f2)`;
+  `procedural::extrudeCells(v, y0, y1, gap, heightJitter, jitterSeed, color, colorJitter)`
+  → prism `MeshData` (gap = cracks, heightJitter = crystal shards). Quick start:
+  [G28 tutorial](en/tutorials/g28_voronoi.md), demo `examples/voronoi_screenshot`,
+  screenshots: [shattered plaza](images/g28_voronoi_shattered.png),
+  [crystals](images/g28_voronoi_crystals.png).
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

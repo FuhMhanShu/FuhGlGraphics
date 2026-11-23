@@ -238,6 +238,11 @@ jobs:
           cmake --build build -j --target fuhglgraphics_wfc_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_wfc_screenshot --prefix docs/images/ci/g27_wfc --width 1280 --height 720 --frames 16
 
+      - name: Build + render G28 Voronoi screenshots (shattered plaza with glowing cracks + bloom, crystal cluster; sunset sky + IBL, sun/CSM/god rays, SSAO/volumetric)
+        run: |
+          cmake --build build -j --target fuhglgraphics_voronoi_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_voronoi_screenshot --prefix docs/images/ci/g28_voronoi --width 1280 --height 720 --frames 16
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)
