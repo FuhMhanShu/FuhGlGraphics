@@ -113,3 +113,10 @@ target_link_libraries(fuhglgraphics_sunrise_screenshot PRIVATE fuhglgraphics)
 # wide shot + wall closeup with POM vs without, headless to PNG.
 add_executable(fuhglgraphics_parallax_house_screenshot parallax_house_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_parallax_house_screenshot PRIVATE fuhglgraphics)
+
+# G24 procedural-noise showcase: terrain heightmap carved with procedural::Noise
+# (domain-warped ridged fBm + simplex detail + carved lake basin), G13 lake water,
+# cloud-sky cubemap from the same noise source + IBL, sun + CSM shadows + god rays,
+# SSAO + volumetric fog + wetness + bloom, TAA + upscale + ACES — wide + ridge shots.
+add_executable(fuhglgraphics_noise_screenshot noise_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_noise_screenshot PRIVATE fuhglgraphics)
