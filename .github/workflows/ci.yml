@@ -189,6 +189,11 @@ jobs:
           cmake --build build -j --target fuhglgraphics_serialization_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_serialization_screenshot --prefix docs/images/ci/g19_serialization --width 1280 --height 720 --frames 16
 
+      - name: Build + render G20 terrain+LOD screenshots (near = LOD 0, far = higher LOD)
+        run: |
+          cmake --build build -j --target fuhglgraphics_terrain_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_terrain_screenshot --prefix docs/images/ci/g20_terrain --width 1280 --height 720 --frames 16
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)

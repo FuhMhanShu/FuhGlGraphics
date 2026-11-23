@@ -83,8 +83,12 @@ World-AABB-Culling, Möller–Trumbore-Dreieckstests auf `MeshEntry::meshData`) 
 (`scene/serialize.hpp`: Scene <-> JSON-Round-Trip über `io::writeJson`, Mesh-Specs über einen
 `MeshResolver`-Callback aufgelöst, `saveScene`/`loadScene` für .json-Dateien) — siehe
 [G19-Tutorial](docs/de/tutorials/g19_serialization.md) und Bilder in
-[docs/images/](docs/images/g19_serialization_loaded.png).
-Als Nächstes: **G20–G23** (Terrain/LOD, volumetrischer Nebel, Wetness, Tonemap-Operatoren), dann
+[docs/images/](docs/images/g19_serialization_loaded.png) — und **G20** — Terrain + LOD
+(`scene::TerrainComponent`: FuhGLCore-F38/F41-`terrainLods`-LodMesh im `fillFrame()`-Pfad,
+pro Frame LOD-Level aus der Kamera-Distanz über `DrawItem::lod`, `heightAt()` zum Platzieren
+von Objekten) — siehe [G20-Tutorial](docs/de/tutorials/g20_terrain_lod.md) und Bilder in
+[docs/images/](docs/images/g20_terrain_far.png).
+Als Nächstes: **G21–G23** (volumetrischer Nebel, Wetness, Tonemap-Operatoren), dann
 **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder **G2** (Qt-Editor).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.

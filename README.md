@@ -85,8 +85,12 @@ AABB culling, Möller–Trumbore triangle tests on `MeshEntry::meshData`) — se
 (`scene/serialize.hpp`: Scene <-> JSON round-trip via `io::writeJson`, mesh specs resolved
 through a `MeshResolver` callback, `saveScene`/`loadScene` for .json files) — see the
 [G19 tutorial](docs/en/tutorials/g19_serialization.md) and screenshots in
-[docs/images/](docs/images/g19_serialization_loaded.png).
-Next up: **G20–G23** (terrain/LOD, volumetric fog, wetness, tonemap operators), then **G11**
+[docs/images/](docs/images/g19_serialization_loaded.png) — and **G20** — terrain + LOD
+(`scene::TerrainComponent`: FuhGLCore F38/F41 `terrainLods` LodMesh in the `fillFrame()` path,
+per-frame LOD level from the camera distance via `DrawItem::lod`, `heightAt()` for object
+placement) — see the [G20 tutorial](docs/en/tutorials/g20_terrain_lod.md) and screenshots in
+[docs/images/](docs/images/g20_terrain_far.png).
+Next up: **G21–G23** (volumetric fog, wetness, tonemap operators), then **G11**
 (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2** (Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.

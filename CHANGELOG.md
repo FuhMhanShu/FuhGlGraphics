@@ -9,6 +9,23 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G20 — terrain + LOD integration** (`scene::TerrainComponent`,
+  `include/fuhglgraphics/scene/component.hpp`, `src/scene/component.cpp`): owns a FuhGLCore
+  F38/F41 `terrainLods()` LodMesh (procedural heightmap + `levels` grid resolutions, switch
+  distances from `LodMesh::defaultDistances` or `customDistances`). `create()` needs a GL
+  context; `heightAt(x, z)` is a bilinear CPU heightmap sample for placing objects; `fill()`
+  appends one draw item with `lod` set, so the G3 renderer resolves the level per frame from
+  the camera distance (`resolveLodMesh`; `SceneView::lodEnabled = false` forces level 0) and
+  `DeferredRenderer::render()` now propagates the chosen level back to the caller's
+  `SceneView::lastLodLevel`. The terrain node also contributes its bounding-sphere AABB to
+  frustum culling (`Node::computeAabb`). Any `MeshEntry::lod` works the same way. Tests:
+  `tests/test_terrain_lod.cpp` (unit: selectLevel/defaultDistances/resolveLodMesh/heightAt/
+  fillFrame path) + `tests/gl_smoke_terrain.cpp` (label `gl_context`; near camera -> level 0,
+  far -> level > 0, lod off -> -1). Demo: `examples/terrain_screenshot` (near/far PNGs with
+  printed levels) headless to PNG; references `docs/images/g20_terrain_{near,far}.png`.
+  Tutorial: `docs/en/tutorials/g20_terrain_lod.md` + German translation.
+  Requirement entry G20 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G19 — scene serialization** (`fuhglgraphics::scene::serialize`,
   `include/fuhglgraphics/scene/serialize.hpp`, `src/scene/serialize.cpp`): Scene <-> `io::Json`
   round-trip — node hierarchy (name + TRS), per-node effects (list + params), instancing and the

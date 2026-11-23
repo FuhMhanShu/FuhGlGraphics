@@ -47,6 +47,10 @@ One small tutorial per feature. Each is self-contained: goal → code → result
   `io::Json` round-trip (`io::writeJson` pretty-printer, mesh specs via `MeshResolver`,
   `saveScene`/`loadScene` for .json files); original vs. loaded-from-file renders match;
   screenshots in [docs/images/](../../images/g19_serialization_loaded.png)
+- [G20 — Terrain + LOD](g20_terrain_lod.md) — `scene::TerrainComponent`: FuhGLCore F38/F41
+  `terrainLods` LodMesh in the `fillFrame()` path (`DrawItem::lod` -> per-frame level from the
+  camera distance, `SceneView::lastLodLevel`), `heightAt()` for object placement; screenshots
+  in [docs/images/](../../images/g20_terrain_far.png)
 - [G17 — Bloom](g17_bloom.md) — post pass after particles, before TAA: bright-pass above
   an adjustable `bloomThreshold` + 9-tap blur + add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   screenshots in [docs/images/](../../images/g17_bloom_on.png)

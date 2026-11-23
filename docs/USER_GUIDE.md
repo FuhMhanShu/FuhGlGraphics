@@ -227,6 +227,14 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   pretty-printer. Quick start: [G19 tutorial](en/tutorials/g19_serialization.md), demo
   `examples/serialization_screenshot`, screenshots: [original](images/g19_serialization_original.png),
   [loaded from JSON](images/g19_serialization_loaded.png).
+- **Terrain + LOD (G20).** `scene::TerrainComponent` (needs a GL context for `create()`):
+  builds a procedural heightmap + `levels` LOD grids (`terrainLods`, switch distances from
+  `LodMesh::defaultDistances` or `customDistances`), `heightAt(x, z)` places objects on the
+  terrain. `fillFrame()` emits one draw item with `lod` set — the renderer picks the level per
+  frame from the camera distance (`resolveLodMesh`) and reports it in `view.lastLodLevel`;
+  `view.lodEnabled = false` forces level 0. Any `MeshEntry::lod` works the same way. Quick
+  start: [G20 tutorial](en/tutorials/g20_terrain_lod.md), demo `examples/terrain_screenshot`,
+  screenshots: [near, LOD 0](images/g20_terrain_near.png), [far, LOD 3](images/g20_terrain_far.png).
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

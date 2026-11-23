@@ -15,3 +15,4 @@ void runSsrTests();
 void runBloomTests();
 void runPickingTests();
 void runSerializeTests();
+void runTerrainLodTests();

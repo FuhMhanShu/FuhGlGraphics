@@ -79,3 +79,8 @@ target_link_libraries(fuhglgraphics_picking_screenshot PRIVATE fuhglgraphics)
 # both PNGs must match (round-trip) — headless to PNG.
 add_executable(fuhglgraphics_serialization_screenshot serialization_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_serialization_screenshot PRIVATE fuhglgraphics)
+
+# G20 terrain + LOD demo: TerrainComponent (F38/F41 heightmap terrain as a LodMesh) with crates
+# placed via heightAt(), rendered near (LOD 0) and far (higher LOD level) — headless to PNG.
+add_executable(fuhglgraphics_terrain_screenshot terrain_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_terrain_screenshot PRIVATE fuhglgraphics)

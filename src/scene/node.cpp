@@ -115,6 +115,15 @@ void Node::computeAabb() {
         unionPoint({s.x - s.w, s.y - s.w - margin, s.z - s.w});
         unionPoint({s.x + s.w, s.y + s.w + margin, s.z + s.w});
     }
+    // G20: a terrain contributes the world AABB of its LOD level-0 bounding sphere
+    for (const auto& comp : components_) {
+        const TerrainComponent* tc = dynamic_cast<const TerrainComponent*>(comp.get());
+        if (!tc || tc->lodMesh.levelCount() <= 0) continue;
+        const fuhgl::math::Vec4 s =
+            fuhgl::math::transformSphere(worldMatrix_, tc->lodMesh.boundingSphere());
+        unionPoint({s.x - s.w, s.y - s.w, s.z - s.w});
+        unionPoint({s.x + s.w, s.y + s.w, s.z + s.w});
+    }
     for (const auto& ch : children_) {
         if (ch->hasAabb()) {
             unionPoint(ch->aabbMin_);

@@ -75,4 +75,51 @@ void WaterComponent::fill(const Node& node, FrameData& frame) const {
     if (!frame.water) frame.water = &surface; // the first water component in the graph wins
 }
 
+bool TerrainComponent::create(int gridWidth, int gridHeight, float sizeX_, float sizeZ_,
+                              float heightScale_) {
+    if (gridWidth < 2 || gridHeight < 2 || sizeX_ <= 0.f || sizeZ_ <= 0.f || heightScale_ <= 0.f)
+        return false;
+    const fuhgl::render::procedural::Image img =
+        fuhgl::render::procedural::heightmap(gridWidth, gridHeight, seed, octaves, noiseScale);
+    heights.assign(static_cast<std::size_t>(gridWidth) * gridHeight, 0.f);
+    for (int j = 0; j < gridHeight; ++j)
+        for (int i = 0; i < gridWidth; ++i)
+            heights[static_cast<std::size_t>(j) * gridWidth + i] =
+                img.at(i, j)[0] / 255.f;
+    gridW = gridWidth;
+    gridH = gridHeight;
+    sizeX = sizeX_;
+    sizeZ = sizeZ_;
+    heightScale = heightScale_;
+    lodMesh = fuhgl::render::terrainLods(heights.data(), gridW, gridH, sizeX, sizeZ, heightScale,
+                                         levels, fovYDeg);
+    if (lodMesh.levelCount() <= 0) return false;
+    if (!customDistances.empty()) lodMesh.setDistances(customDistances);
+    return true;
+}
+
+float TerrainComponent::heightAt(float x, float z) const {
+    if (heights.empty() || gridW < 2 || gridH < 2) return 0.f;
+    // node-local xz -> normalized uv (the terrain grid is centered at the node origin)
+    const float u = x / sizeX + 0.5f;
+    const float v = z / sizeZ + 0.5f;
+    return fuhgl::render::heightmapSample(heights.data(), gridW, gridH, u, v) * heightScale;
+}
+
+void TerrainComponent::fill(const Node& node, FrameData& frame) const {
+    if (lodMesh.levelCount() <= 0) return;
+    ownedPreset_ = fuhgl::render::Material{};
+    ownedPreset_.builtinShader = true;
+    ownedPreset_.albedo = albedo;
+    ownedPreset_.metallic = metallic;
+    ownedPreset_.roughness = roughness;
+    ownedPreset_.ao = ao;
+    // entry.lod set -> the renderer resolves the level from the camera distance (F41)
+    frame.view.items.push_back(
+        fuhgl::render::DrawItem{&lodMesh.level(0), &ownedPreset_, node.worldMatrix(), &lodMesh});
+    frame.materialIds.push_back(materialId);
+    frame.castShadow.push_back(castShadow);
+    frame.skins.push_back(nullptr); // G14: parallel to view.items
+}
+
 } // namespace fuhglgraphics::scene

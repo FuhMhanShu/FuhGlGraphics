@@ -224,6 +224,14 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   light/decal/animation components) plus `saveScene`/`loadScene` (.json files); see
   `tests/test_serialize.cpp`, `tests/gl_smoke_serialize.cpp`, `examples/serialization_screenshot`,
   `docs/images/g19_serialization_*.png` and the [G19 tutorial](en/tutorials/g19_serialization.md).
+- **G20 — terrain + LOD integration** (`scene::TerrainComponent` in `scene/component.hpp` +
+  `src/scene/component.cpp`, FuhGLCore F38/F41 `terrainLods`/`LodMesh`/`resolveLodMesh`,
+  `DrawItem::lod` in `Scene::fillFrame()`, terrain AABB in `Node::computeAabb`,
+  `SceneView::lastLodLevel` propagated by `DeferredRenderer::render()`): implemented —
+  `create()` builds a procedural heightmap + LOD levels (GL), `heightAt()` places objects,
+  per-frame level selection by camera distance; see `tests/test_terrain_lod.cpp`,
+  `tests/gl_smoke_terrain.cpp`, `examples/terrain_screenshot`,
+  `docs/images/g20_terrain_*.png` and the [G20 tutorial](en/tutorials/g20_terrain_lod.md).
 - G2, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON

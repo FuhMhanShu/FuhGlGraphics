@@ -5,7 +5,8 @@
 /// Implemented now: MeshComponent (a node can hold *several* meshes — one MeshEntry each,
 /// with its own local offset, material parameters, textures, castShadow flag and material
 /// ID), LightComponent, CameraComponent, ParticleEmitterComponent (G5),
-/// AnimationComponent (G6), LightProbeComponent (G7), DecalComponent (G8).
+/// AnimationComponent (G6), LightProbeComponent (G7), DecalComponent (G8),
+/// WaterComponent (G13), TerrainComponent (G20).
 
 #include "../anim/animation.hpp"
 #include "../anim/gpu_skinner.hpp"
@@ -20,6 +21,7 @@
 #include <fuhgl/render/lod.hpp>
 #include <fuhgl/render/material.hpp>
 #include <fuhgl/render/mesh.hpp>
+#include <fuhgl/render/terrain.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -165,6 +167,46 @@ public:
     water::WaterSurface surface;
 
     void fill(const Node& node, FrameData& frame) const override; // defined in component.cpp
+};
+
+/// @brief G20 terrain component: owns a FuhGLCore F38/F41 heightmap terrain as a LodMesh
+/// (terrainLods(): `levels` grid resolutions with screen-space switch distances from
+/// LodMesh::defaultDistances). create() generates a procedural heightmap
+/// (procedural::heightmap) and uploads the LOD levels — needs a current GL context.
+/// fill() appends one draw item whose `lod` points at the LodMesh, so the renderer picks
+/// the level from the camera distance per frame (resolveLodMesh; SceneView::lastLodLevel
+/// exposes the chosen level for introspection/tests; view.lodEnabled = false forces
+/// level 0). heightAt() places objects on the terrain (bilinear CPU heightmap sample,
+/// node-local xz, terrain centered at the node origin).
+class TerrainComponent : public Component {
+public:
+    fuhgl::render::LodMesh lodMesh;   ///< terrain LOD levels (level 0 = full grid)
+    std::vector<float> heights;       ///< CPU heightmap copy (heightAt, 0..1 row-major)
+    int gridW = 0, gridH = 0;
+    float sizeX = 0.f, sizeZ = 0.f, heightScale = 1.f;
+    // create() parameters:
+    unsigned seed = 11u;              ///< procedural::heightmap seed
+    int octaves = 6;                  ///< procedural::heightmap octaves
+    float noiseScale = 0.045f;        ///< procedural::heightmap scale
+    int levels = 4;                   ///< LOD levels (1 = plain mesh, no switching)
+    float fovYDeg = 60.f;             ///< for the default LOD switch distances
+    std::vector<float> customDistances; ///< when non-empty: overrides the default distances
+    // material (inline, like MeshEntry):
+    fuhgl::math::Vec3 albedo{1.f, 1.f, 1.f};
+    float metallic = 0.f;
+    float roughness = 1.f;
+    float ao = 1.f;
+    bool castShadow = false;
+    std::uint32_t materialId = 1;
+
+    /// @brief Generates the heightmap and the LOD meshes. Needs a current GL context.
+    bool create(int gridWidth, int gridHeight, float sizeX_, float sizeZ_, float heightScale_);
+    /// @brief Terrain height at node-local (x, z) — bilinear heightmap sample * heightScale.
+    float heightAt(float x, float z) const;
+    void fill(const Node& node, FrameData& frame) const override; // defined in component.cpp
+
+private:
+    mutable fuhgl::render::Material ownedPreset_; ///< stable pointer for the DrawItem
 };
 
 } // namespace fuhglgraphics::scene

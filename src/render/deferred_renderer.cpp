@@ -861,6 +861,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
 
     curScene_ = &s;
     renderGBuffer(s, materialIds, skins); // G14 skins forwarded to the G-buffer pass
+    scene.lastLodLevel = s.lastLodLevel;  // G20: propagate the resolved LOD level (F41) to the caller
     // remember this frame's (jittered) viewProj for next frame's motion vectors
     prevViewProj_ = fuhgl::math::jitterViewProj(s.camera->viewProj(s.aspect), s.jitter);
     impl_->post.execute();

@@ -46,6 +46,10 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   `io::Json`-Round-Trip (`io::writeJson`-Pretty-Printer, Mesh-Specs über `MeshResolver`,
   `saveScene`/`loadScene` für .json-Dateien); Original- vs. aus-Datei-geladen-Render stimmen
   überein; Bilder in [docs/images/](../../images/g19_serialization_loaded.png)
+- [G20 — Terrain + LOD](g20_terrain_lod.md) — `scene::TerrainComponent`: FuhGLCore-F38/F41
+  `terrainLods`-LodMesh im `fillFrame()`-Pfad (`DrawItem::lod` -> pro Frame Level aus der
+  Kamera-Distanz, `SceneView::lastLodLevel`), `heightAt()` zum Platzieren von Objekten; Bilder
+  in [docs/images/](../../images/g20_terrain_far.png)
 - [G17 — Bloom](g17_bloom.md) — Post-Pass nach den Partikeln, vor TAA: Bright-Pass oberhalb
   eines einstellbaren `bloomThreshold` + 9-Tap-Blur + Add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   Bilder in [docs/images/](../../images/g17_bloom_on.png)
