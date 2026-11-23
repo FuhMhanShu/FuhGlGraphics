@@ -23,6 +23,19 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   sun with CSM shadows + god rays, SSAO + volumetric fog, TAA + upscale + ACES; references
   `docs/images/g28_voronoi_{shattered,crystals}.png`. Tutorial
   `docs/en/tutorials/g28_voronoi.md` + German translation. Requirement entry G28 in
+- **G29 — SDF / 3D fractals (Mandelbulb)** (`include/fuhglgraphics/procedural/sdf.hpp`,
+  `src/procedural/sdf.cpp`): `procedural::sdf` distance primitives (sphere, box, roundedBox,
+  plane, cylinder), `smoothMin` (polynomial smin) and `mandelbulb` (distance estimator, power 8,
+  bailout 2); `procedural::meshFromSdf(field, min, max, resolution, color)` samples the field
+  into a `VolumeGrid` and polygonises it with the G25 marching cubes at isolevel 0 -> indexed
+  `MeshData`. Unit tests `tests/test_procedural_sdf.cpp`: primitive signs/values, smooth-min
+  properties, DE sanity (origin ~0, far point large, finite), sphere SDF -> closed manifold mesh
+  with correct shell radius, mandelbulb mesh bounded + finite + indexed. Demo
+  `examples/mandelbulb_screenshot`: Mandelbulb (56^3 samples, ~22.5k tris) scaled x5 as a
+  floating emissive sculpture + 3 satellite bulbs, violet core point light (bloom), warm low
+  sun with CSM shadows + god rays, dusk sky cubemap + IBL, SSAO + volumetric fog, TAA + upscale
+  + ACES; references `docs/images/g29_mandelbulb_{wide,closeup}.png`. Tutorial
+  `docs/en/tutorials/g29_mandelbulb.md` + German translation. Requirement entry G29 in
   [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 - **G27 — wave function collapse (tiled)** (`include/fuhglgraphics/procedural/wfc.hpp`,

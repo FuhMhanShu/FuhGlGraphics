@@ -300,6 +300,11 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   [G28 tutorial](en/tutorials/g28_voronoi.md), demo `examples/voronoi_screenshot`,
   screenshots: [shattered plaza](images/g28_voronoi_shattered.png),
   [crystals](images/g28_voronoi_crystals.png).
+- **SDF / 3D fractals (G29).** `procedural::sdf::{sphere, box, roundedBox, plane, cylinder,
+  smoothMin, mandelbulb}` (`procedural/sdf.hpp`); `procedural::meshFromSdf(field, min, max,
+  resolution, color)` meshes any SDF into `MeshData` via the G25 marching cubes. Quick start:
+  [G29 tutorial](en/tutorials/g29_mandelbulb.md), demo `examples/mandelbulb_screenshot`,
+  screenshots: [wide](images/g29_mandelbulb_wide.png), [closeup](images/g29_mandelbulb_closeup.png).
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

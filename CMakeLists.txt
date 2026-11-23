@@ -57,6 +57,7 @@ add_library(fuhglgraphics STATIC
     src/procedural/lsystem.cpp
     src/procedural/wfc.cpp
     src/procedural/voronoi.cpp
+    src/procedural/sdf.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 

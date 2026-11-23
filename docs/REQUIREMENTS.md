@@ -299,5 +299,9 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   `src/procedural/voronoi.cpp`. See `tests/test_procedural_voronoi.cpp`,
   `examples/voronoi_screenshot`, `docs/images/g28_voronoi_*.png` and the
   [G28 tutorial](en/tutorials/g28_voronoi.md).
-- **G29 — SDF / 3D fractals** — implemented (merged separately): `procedural::sdf` +
-  `procedural::meshFromSdf` via G25.
+- **G29 — SDF / 3D fractals (Mandelbulb)** — implemented: `procedural::sdf` primitives
+  (sphere, box, roundedBox, plane, cylinder), `smoothMin`, `mandelbulb` (DE, power 8) in
+  `include/fuhglgraphics/procedural/sdf.hpp` + `src/procedural/sdf.cpp`, and
+  `procedural::meshFromSdf(field, min, max, res)` which meshes any SDF via the G25 marching
+  cubes. See `tests/test_procedural_sdf.cpp`, `examples/mandelbulb_screenshot`,
+  `docs/images/g29_mandelbulb_*.png` and the [G29 tutorial](en/tutorials/g29_mandelbulb.md).

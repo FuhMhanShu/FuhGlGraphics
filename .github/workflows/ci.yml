@@ -242,6 +242,10 @@ jobs:
         run: |
           cmake --build build -j --target fuhglgraphics_voronoi_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_voronoi_screenshot --prefix docs/images/ci/g28_voronoi --width 1280 --height 720 --frames 16
+      - name: Build + render G29 SDF-mandelbulb screenshots (fractal sculpture meshed via marching cubes, emissive + bloom, core point light, sun/CSM/god rays, SSAO/volumetric)
+        run: |
+          cmake --build build -j --target fuhglgraphics_mandelbulb_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_mandelbulb_screenshot --prefix docs/images/ci/g29_mandelbulb --width 1280 --height 720 --frames 16
 
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
