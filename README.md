@@ -106,8 +106,12 @@ screenshots in [docs/images/](docs/images/g23_tonemap_uncharted2.png) — and **
 procedural noise module (`procedural::Noise` in `procedural/noise.hpp`: seeded, deterministic
 value/Perlin/Simplex noise 2D+3D with fBm/ridged/turbulence and domain warp; shared noise
 source for the G25–G29 generators) — see the [G24 tutorial](docs/en/tutorials/g24_procedural_noise.md)
-and screenshots in [docs/images/](docs/images/g24_noise_wide.png).
-Next: **G25–G29** (marching cubes, L-systems, WFC, voronoi, SDF/fractals) or **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
+and screenshots in [docs/images/](docs/images/g24_noise_wide.png) — and **G25** — marching
+cubes (`procedural::marchingCubes` / `marchingCubesChunked`: voxel volume → watertight indexed
+`MeshData`, used for cave terrain and SDF meshing) — see the
+[G25 tutorial](docs/en/tutorials/g25_marching_cubes.md) and screenshots in
+[docs/images/](docs/images/g25_marching_cubes_cave.png).
+Next: **G26–G29** (L-systems, WFC, voronoi, SDF/fractals) or **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
 (Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.

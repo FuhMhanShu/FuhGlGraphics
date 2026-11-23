@@ -268,7 +268,16 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   fields for G25 marching cubes, or sky cubemaps. Quick start:
   [G24 tutorial](en/tutorials/g24_procedural_noise.md), demo `examples/noise_screenshot`,
   screenshots: [wide](images/g24_noise_wide.png), [ridge + wetness](images/g24_noise_ridge.png).
-  Planned on top of it: G25 marching cubes, G26 L-systems, G27 WFC, G28 voronoi, G29 SDF fractals.
+- **Marching cubes (G25).** `procedural::sampleField(field, min, max, nx, ny, nz)` samples a
+  scalar volume into a `procedural::VolumeGrid`; `procedural::marchingCubes(grid, isolevel,
+  color)` extracts the iso-surface as a watertight indexed `fuhgl::render::MeshData` (linear
+  edge interpolation + gradient normals, lattice-edge vertex welding);
+  `procedural::marchingCubesChunked(...)` splits big volumes into seam-exact chunks.
+  Upload with `mesh.setMeshData(md)` and attach via `MeshComponent`. Quick start:
+  [G25 tutorial](en/tutorials/g25_marching_cubes.md), demo `examples/marching_cubes_screenshot`,
+  screenshots: [cave terrain](images/g25_marching_cubes_cave.png),
+  [crystal blob](images/g25_marching_cubes_blob.png).
+  Planned on top: G26 L-systems, G27 WFC, G28 voronoi, G29 SDF fractals.
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

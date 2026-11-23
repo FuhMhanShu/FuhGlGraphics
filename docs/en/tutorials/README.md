@@ -63,6 +63,7 @@ One small tutorial per feature. Each is self-contained: goal → code → result
   `render/tonemap.hpp`; adjustable bloom threshold (`bloomThreshold`, G17); screenshots in
   [docs/images/](../../images/g23_tonemap_uncharted2.png)
 - [G24 — Procedural noise (CPU)](g24_procedural_noise.md) — `procedural::Noise`: seeded value/Perlin/Simplex noise 2D+3D, fBm/ridged/turbulence, domain warp; height fields for terrain carving, sky cubemaps, volume fields; screenshots in [docs/images/](../../images/g24_noise_wide.png)
+- [G25 — Marching cubes (voxel → mesh)](g25_marching_cubes.md) — `procedural::marchingCubes`/`marchingCubesChunked`: extract iso-surfaces from volumes (watertight, indexed), cave terrain from noise volumes; screenshots in [docs/images/](../../images/g25_marching_cubes_cave.png)
 - [G17 — Bloom](g17_bloom.md) — post pass after particles, before TAA: bright-pass above
   an adjustable `bloomThreshold` + 9-tap blur + add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   screenshots in [docs/images/](../../images/g17_bloom_on.png)

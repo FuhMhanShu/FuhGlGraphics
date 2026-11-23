@@ -223,6 +223,11 @@ jobs:
           cmake --build build -j --target fuhglgraphics_noise_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_noise_screenshot --prefix docs/images/ci/g24_noise --width 1280 --height 720 --frames 16
 
+      - name: Build + render G25 marching-cubes screenshots (noise-volume cave terrain, chunked; emissive crystals + bloom; dusk sky + IBL, sun/CSM/god rays, SSAO/volumetric)
+        run: |
+          cmake --build build -j --target fuhglgraphics_marching_cubes_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_marching_cubes_screenshot --prefix docs/images/ci/g25_marching_cubes --width 1280 --height 720 --frames 16
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)

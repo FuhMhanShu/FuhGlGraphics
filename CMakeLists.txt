@@ -53,6 +53,7 @@ add_library(fuhglgraphics STATIC
     src/anim/gpu_skinner.cpp
     src/probes/light_probes.cpp
     src/water/water_surface.cpp
+    src/procedural/marching_cubes.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 

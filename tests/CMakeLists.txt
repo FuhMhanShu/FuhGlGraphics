@@ -20,6 +20,7 @@ add_executable(fuhglgraphics_tests
     test_parallax.cpp
     test_hbao.cpp
     test_procedural_noise.cpp
+    test_procedural_mc.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -198,6 +199,14 @@ add_executable(fuhglgraphics_gl_smoke_hbao gl_smoke_hbao.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_hbao PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_hbao COMMAND fuhglgraphics_gl_smoke_hbao)
 set_tests_properties(fuhglgraphics_gl_smoke_hbao PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+# Headless GL smoke test for the G24/G25 procedural module (label "gl_context"): builds a
+# metaball-style blob from a G24 noise volume with G25 marching cubes, uploads the MeshData,
+# renders it through the G3 renderer and verifies the blob pixels are lit and differ from a
+# mesh-less frame. Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_procedural gl_smoke_procedural.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_procedural PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_procedural COMMAND fuhglgraphics_gl_smoke_procedural)
+set_tests_properties(fuhglgraphics_gl_smoke_procedural PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
 # Qt editor-widget unit test (only with FUHGLGRAPHICS_WITH_QT=ON): runs offscreen
 # (QT_QPA_PLATFORM=offscreen), no GL context required — label "unit".
 if(FUHGLGRAPHICS_WITH_QT)
