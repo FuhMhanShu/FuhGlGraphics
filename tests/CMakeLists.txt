@@ -18,6 +18,7 @@ add_executable(fuhglgraphics_tests
     test_wetness.cpp
     test_tonemap.cpp
     test_parallax.cpp
+    test_hbao.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -181,6 +182,21 @@ add_executable(fuhglgraphics_gl_smoke_parallax gl_smoke_parallax.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_parallax PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_parallax COMMAND fuhglgraphics_gl_smoke_parallax)
 set_tests_properties(fuhglgraphics_gl_smoke_parallax PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# G24 lens flare + anamorphic smoke test (label "gl_context"): sun in front of the camera —
+# flare/anamorphic on vs off must differ, and the anamorphic streak must concentrate on the
+# sun's screen row. Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_flare gl_smoke_flare.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_flare PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_flare COMMAND fuhglgraphics_gl_smoke_flare)
+set_tests_properties(fuhglgraphics_gl_smoke_flare PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# G25 HBAO smoke test (label "gl_context"): box on ground — HBAO on vs off must differ and
+# the changed pixels must mostly get darker (AO is multiplicative). Skips (exit code 77).
+add_executable(fuhglgraphics_gl_smoke_hbao gl_smoke_hbao.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_hbao PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_hbao COMMAND fuhglgraphics_gl_smoke_hbao)
+set_tests_properties(fuhglgraphics_gl_smoke_hbao PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
 # Qt editor-widget unit test (only with FUHGLGRAPHICS_WITH_QT=ON): runs offscreen
 # (QT_QPA_PLATFORM=offscreen), no GL context required — label "unit".
 if(FUHGLGRAPHICS_WITH_QT)

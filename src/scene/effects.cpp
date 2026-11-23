@@ -64,6 +64,17 @@ void Effects::applyTo(render::DeferredRenderer& renderer) const {
     renderer.wetnessNoiseScale = params.wetnessNoiseScale;
     // G23 tonemap operator
     renderer.tonemapOperator = static_cast<render::TonemapOperator>(params.tonemapOperator);
+    // G24 lens flare + anamorphic streaks
+    renderer.lensFlareStrength = params.lensFlareStrength;
+    renderer.anamorphicStrength = params.anamorphicStrength;
+    renderer.anamorphicStretch = params.anamorphicStretch;
+    renderer.anamorphicThreshold = params.anamorphicThreshold;
+    // G25 HBAO
+    renderer.hbaoRadius = params.hbaoRadius;
+    renderer.hbaoBias = params.hbaoBias;
+    renderer.hbaoDirections = params.hbaoDirections;
+    renderer.hbaoSteps = params.hbaoSteps;
+    renderer.hbaoPower = params.hbaoPower;
     // (width() > 0: the renderer was create()d, so a GL context is current and the
     //  cube map can be allocated)
     if (enabled(render::Effect::PointShadows) && !renderer.pointShadowEnabled() && renderer.width() > 0)
