@@ -17,7 +17,7 @@ namespace fuhglgraphics::procedural {
 /// @brief One L-system: axiom, production rules, iterations + turtle parameters.
 /// Turtle symbols: F = draw forward (cylinder), f = move forward, + - = roll around the
 /// heading, & ^ = pitch, \\ | = yaw, [ = push frame (branch, radius tapers), ] = pop,
-/// L = leaf quad pair at the current frame. The turtle starts with heading +Y, so roll
+/// L = two crossed leaf-shaped kite quads (pointed tip forward) at the current frame. The turtle starts with heading +Y, so roll
 /// (+ -) alone never changes the drawing direction — combine it with pitch (& ^) or yaw
 /// (\\ |) to get real 3D branches (see the presets below).
 struct LSystem {

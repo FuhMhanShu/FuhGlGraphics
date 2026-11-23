@@ -116,10 +116,30 @@ void testPresetsDiffer() {
 
 } // namespace
 
+void testLeafShape() {
+    // a single 'L' at the origin with the default frame must produce leaf-shaped kites
+    // (pointed tip at 1.35*leafSize along the heading), not square quads (extent == leafSize)
+    LSystem s;
+    s.axiom = "L";
+    s.iterations = 0;
+    s.leaves = true;
+    s.leafSize = 0.5f;
+    const fuhgl::render::MeshData md = s.generate({1.f, 1.f, 1.f}, {0.f, 1.f, 0.f});
+    CHECK(md.vertexCount() == 8); // two crossed kites x 4 vertices
+    CHECK(md.indices.size() == 12);
+    float maxExtent = 0.f;
+    for (std::uint32_t i = 0; i < md.vertexCount(); ++i) {
+        const float* v = &md.vertices[i * 11];
+        maxExtent = std::fmax(maxExtent, std::fmax(std::fabs(v[0]), std::fmax(std::fabs(v[1]), std::fabs(v[2]))));
+    }
+    CHECK_NEAR(maxExtent, 1.35f * 0.5f, 1e-4f); // pointed tip; a square quad would give 0.5
+}
+
 void runProceduralLsystemTests() {
     testDerive();
     testPresetBrackets();
     testGenerate();
     testPresetsSpread3D();
     testPresetsDiffer();
+    testLeafShape();
 }
