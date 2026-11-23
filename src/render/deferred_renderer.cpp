@@ -470,6 +470,7 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
     prog.use();
     prog.setUniform("uViewProj", viewProj);
     prog.setUniform("uPrevViewProj", prevViewProj);
+    prog.setUniform("uCamPos", scene.camera->eye()); // POM view ray
     prog.setUniform("uResolution", fuhgl::math::Vec2(static_cast<float>(internalWidth_),
                                                       static_cast<float>(internalHeight_)));
     // per-item uniforms, shared by the plain and the G14 skinning program
@@ -497,6 +498,19 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
                                 preset->normalMap->id());
                 p.setUniform("uNormalTex", fuhgl::render::kTextureUnitNormalMap);
             }
+            // POM: parallax height map on unit kTextureUnitHeightMap (5)
+            p.setUniform("uUseHeightMap", preset->heightMap ? 1 : 0);
+            if (preset->heightMap) {
+                fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitHeightMap);
+                f.glBindTexture(static_cast<fuhgl::gl::GLenum>(preset->heightMap->target()),
+                                preset->heightMap->id());
+                p.setUniform("uHeightTex", fuhgl::render::kTextureUnitHeightMap);
+                p.setUniform("uParallaxScale", preset->parallaxScale);
+                p.setUniform("uParallaxLayers", preset->parallaxLayers);
+            } else {
+                p.setUniform("uParallaxScale", 0.f);
+                p.setUniform("uParallaxLayers", 1);
+            }
             p.setUniform("uMetallic", preset->metallic);
             p.setUniform("uRoughness", preset->roughness);
             p.setUniform("uAo", preset->ao);
@@ -505,6 +519,7 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
             p.setUniform("uEmissive", fuhgl::math::Vec3{0.f, 0.f, 0.f});
             p.setUniform("uUseTex", 0);
             p.setUniform("uUseNormalMap", 0);
+            p.setUniform("uUseHeightMap", 0);
             p.setUniform("uMetallic", 0.f);
             p.setUniform("uRoughness", 0.5f);
             p.setUniform("uAo", 1.f);
@@ -526,6 +541,7 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
             sp.use();
             sp.setUniform("uViewProj", viewProj);
             sp.setUniform("uPrevViewProj", prevViewProj);
+            sp.setUniform("uCamPos", scene.camera->eye()); // POM view ray
             sp.setUniform("uResolution", fuhgl::math::Vec2(static_cast<float>(internalWidth_),
                                                            static_cast<float>(internalHeight_)));
             setItemUniforms(sp, item, i, 0);

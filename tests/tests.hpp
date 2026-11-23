@@ -19,3 +19,4 @@ void runTerrainLodTests();
 void runVolumetricTests();
 void runWetnessTests();
 void runTonemapTests();
+void runParallaxTests();

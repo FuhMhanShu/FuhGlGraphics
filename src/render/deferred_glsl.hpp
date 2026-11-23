@@ -50,6 +50,11 @@ uniform int uUseTex;
 uniform sampler2D uMatTex;      // unit kTextureUnitAlbedo (3)
 uniform int uUseNormalMap;
 uniform sampler2D uNormalTex;   // unit kTextureUnitNormalMap (4)
+uniform vec3 uCamPos;           // POM: camera position for the view ray
+uniform int uUseHeightMap;     // POM: parallax occlusion mapping on the material's height map
+uniform sampler2D uHeightTex;  // unit kTextureUnitHeightMap (5)
+uniform float uParallaxScale;  // POM depth scale
+uniform int uParallaxLayers;   // POM linear search steps
 uniform float uMetallic;
 uniform float uRoughness;
 uniform float uAo;
@@ -63,18 +68,39 @@ layout(location = 3) out vec4 oEmissive;
 layout(location = 4) out vec2 oMotion;
 layout(location = 5) out vec4 oMatId;
 void main() {
-    vec3 albedo = uAlbedo * vColor;
-    if (uUseTex == 1) albedo *= texture(uMatTex, vUV).rgb;
+    vec2 uv = vUV;
     vec3 N = normalize(vNormal);
+    // tangent frame from screen-space derivatives (no tangent attribute needed)
+    vec3 dp1 = dFdx(vWorldPos);
+    vec3 dp2 = dFdy(vWorldPos);
+    vec2 duv1 = dFdx(vUV);
+    vec2 duv2 = dFdy(vUV);
+    vec3 T = normalize(dp1 * duv2.y - dp2 * duv1.y);
+    vec3 B = normalize(-dp1 * duv2.x + dp2 * duv1.x);
+    if (uUseHeightMap == 1) {
+        // parallax occlusion mapping (POM): march the view ray through the height layers
+        // in tangent space, then sample albedo/normal at the offset UV (mirrors
+        // render/parallax.hpp on the CPU)
+        vec3 V = normalize(uCamPos - vWorldPos);
+        vec3 viewTS = vec3(dot(T, V), dot(B, V), dot(N, V));
+        vec2 p = viewTS.xy / max(viewTS.z, 0.05) * uParallaxScale;
+        float layers = float(max(uParallaxLayers, 1));
+        vec2 duv = p / layers;
+        float layerDepth = 0.0;
+        vec2 curUV = uv;
+        float h = texture(uHeightTex, curUV).r;
+        for (int i = 0; i < 64 && float(i) < layers; ++i) {
+            if (layerDepth >= h) break;
+            curUV -= duv;
+            layerDepth += 1.0 / layers;
+            h = texture(uHeightTex, curUV).r;
+        }
+        uv = curUV;
+    }
+    vec3 albedo = uAlbedo * vColor;
+    if (uUseTex == 1) albedo *= texture(uMatTex, uv).rgb;
     if (uUseNormalMap == 1) {
-        // tangent frame from screen-space derivatives (no tangent attribute needed)
-        vec3 dp1 = dFdx(vWorldPos);
-        vec3 dp2 = dFdy(vWorldPos);
-        vec2 duv1 = dFdx(vUV);
-        vec2 duv2 = dFdy(vUV);
-        vec3 T = normalize(dp1 * duv2.y - dp2 * duv1.y);
-        vec3 B = normalize(-dp1 * duv2.x + dp2 * duv1.x);
-        vec3 nTS = texture(uNormalTex, vUV).rgb * 2.0 - 1.0;
+        vec3 nTS = texture(uNormalTex, uv).rgb * 2.0 - 1.0;
         N = normalize(T * nTS.x + B * nTS.y + N * nTS.z);
     }
     oAlbedo = vec4(albedo, 1.0);
