@@ -13,7 +13,7 @@ using namespace fuhglgraphics::render;
 
 void runRenderTests() {
     // --- effectName / kEffectCount ---
-    CHECK(kEffectCount == 19);
+    CHECK(kEffectCount == 20);
     CHECK(std::string(effectName(Effect::Taa)) == "TAA");
     CHECK(std::string(effectName(Effect::Upscale)) == "upscaling");
     CHECK(std::string(effectName(Effect::Tonemap)) == "tonemap");
@@ -33,6 +33,7 @@ void runRenderTests() {
     CHECK(std::string(effectName(Effect::Ssao)) == "SSAO");
     CHECK(std::string(effectName(Effect::Ssr)) == "SSR");
     CHECK(std::string(effectName(Effect::Bloom)) == "bloom");
+    CHECK(std::string(effectName(Effect::VolumetricFog)) == "volumetric fog");
 
     // --- effectFromName: inverse of effectName for every effect ---
     for (int e = 0; e < kEffectCount; ++e) {

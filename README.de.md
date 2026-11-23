@@ -87,8 +87,12 @@ World-AABB-Culling, Möller–Trumbore-Dreieckstests auf `MeshEntry::meshData`) 
 (`scene::TerrainComponent`: FuhGLCore-F38/F41-`terrainLods`-LodMesh im `fillFrame()`-Pfad,
 pro Frame LOD-Level aus der Kamera-Distanz über `DrawItem::lod`, `heightAt()` zum Platzieren
 von Objekten) — siehe [G20-Tutorial](docs/de/tutorials/g20_terrain_lod.md) und Bilder in
-[docs/images/](docs/images/g20_terrain_far.png).
-Als Nächstes: **G21–G23** (volumetrischer Nebel, Wetness, Tonemap-Operatoren), dann
+[docs/images/](docs/images/g20_terrain_far.png) — und **G21** — volumetrischer Nebel/Wolken
+(`Effect::VolumetricFog`: "volumetric"-Post-Pass nach den Partikeln, vor Bloom — rayge-marchtes
+3D-Noise-Volumen mit Höhen-Falloff + Henyey–Greenstein-Sonnenstreuung gegen die G-Buffer-Tiefe;
+reine CPU-Zwillinge in `render/volumetric.hpp`) — siehe [G21-Tutorial](docs/de/tutorials/g21_volumetric_fog.md)
+und Bilder in [docs/images/](docs/images/g21_volumetric_on.png).
+Als Nächstes: **G22–G23** (Wetness, Tonemap-Operatoren), dann
 **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder **G2** (Qt-Editor).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.

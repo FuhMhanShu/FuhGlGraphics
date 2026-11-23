@@ -269,6 +269,22 @@ public:
     float bloomStrength = 0.6f;
     float bloomRadius = 1.0f;
 
+    /// @brief G21 volumetric fog / clouds (Effect::VolumetricFog): the "volumetric" post pass
+    /// runs after particles and before bloom — it raymarches each pixel's view ray through a
+    /// 3D-noise volume (height falloff + fBm clouds, Henyey–Greenstein phase for the sun),
+    /// ending at the G-buffer depth for geometry or `volumetricMaxDist` for sky (inputs
+    /// hdrP/gDepth -> hdrV, consumed by bloom). Off by default. Pure twins of the formulas:
+    /// render/volumetric.hpp.
+    float volumetricDensity = 0.02f;      ///< fog density at ground level (per world unit)
+    float volumetricCloudiness = 0.6f;     ///< 0 = uniform fog, 1 = fully noise-driven clouds
+    float volumetricHeightFalloff = 8.f;   ///< scale height of the exponential falloff
+    float volumetricNoiseScale = 6.f;      ///< world units per 3D-noise cell
+    float volumetricAnisotropy = 0.6f;     ///< Henyey–Greenstein g
+    float volumetricMaxDist = 120.f;       ///< march end for sky pixels
+    float volumetricStrength = 1.f;        ///< in-scatter scale
+    int volumetricSteps = 24;              ///< march samples (max 64)
+    float volumetricTime = 0.f;            ///< noise field drift (world units/frame step)
+
     /// @brief G10 debug HUD (Effect::DebugHud): fps / frame time / effect toggles panel.
     DebugHud& hud() { return hud_; }
     const DebugHud& hud() const { return hud_; }
@@ -298,6 +314,7 @@ private:
     void drawSsao(fuhgl::render::RenderGraph::PassContext& ctx); ///< G15, runs before lighting
     void drawSsr(fuhgl::render::RenderGraph::PassContext& ctx);   ///< G16, runs after lighting
     void drawBloom(fuhgl::render::RenderGraph::PassContext& ctx); ///< G17, after particles, before TAA
+    void drawVolumetric(fuhgl::render::RenderGraph::PassContext& ctx); ///< G21, after particles, before bloom
     void drawLighting(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawWater(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawParticles(fuhgl::render::RenderGraph::PassContext& ctx);
@@ -330,6 +347,7 @@ private:
     bool ssaoEnabled_ = false;   ///< Effect::Ssao (off by default)
     bool ssrEnabled_ = false;    ///< Effect::Ssr (off by default)
     bool bloomEnabled_ = false;  ///< Effect::Bloom (off by default)
+    bool volumetricEnabled_ = false; ///< Effect::VolumetricFog (off by default)
     const water::WaterSurface* curWater_ = nullptr; ///< G13: active water surface this frame
     fuhgl::math::Mat4 waterModel_{};                 ///< its draw item's model matrix
     fuhgl::math::Vec4 waterClipPlane_{0.f, 1.f, 0.f, 0.f}; ///< world plane (n, d) for clipping

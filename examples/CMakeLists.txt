@@ -84,3 +84,8 @@ target_link_libraries(fuhglgraphics_serialization_screenshot PRIVATE fuhglgraphi
 # placed via heightAt(), rendered near (LOD 0) and far (higher LOD level) — headless to PNG.
 add_executable(fuhglgraphics_terrain_screenshot terrain_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_terrain_screenshot PRIVATE fuhglgraphics)
+
+# G21 volumetric fog demo: terrain scene rendered with Effect::VolumetricFog off / on / dense
+# (raymarched 3D-noise volume, height falloff + Henyey-Greenstein sun scattering) — headless to PNG.
+add_executable(fuhglgraphics_volumetric_screenshot volumetric_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_volumetric_screenshot PRIVATE fuhglgraphics)

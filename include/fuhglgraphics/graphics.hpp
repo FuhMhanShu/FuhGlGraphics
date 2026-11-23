@@ -27,6 +27,7 @@
 #include <fuhglgraphics/render/ssao.hpp>
 #include <fuhglgraphics/render/ssr.hpp>
 #include <fuhglgraphics/render/bloom.hpp>
+#include <fuhglgraphics/render/volumetric.hpp>
 
 #include <fuhglgraphics/scene/component.hpp>
 #include <fuhglgraphics/scene/effects.hpp>

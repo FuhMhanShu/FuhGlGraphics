@@ -9,6 +9,23 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G21 — volumetric fog / clouds** (`include/fuhglgraphics/render/volumetric.hpp` pure
+  helpers, `kVolumetricFrag` + "volumetric" post pass in the G3 renderer, `Effect::VolumetricFog`
+  (kEffectCount = 20, off by default), `EffectParams::volumetric*`): after the particles pass
+  and before bloom (hdrP -> hdrV -> hdrB), each pixel's view ray is reconstructed from the
+  G-buffer depth (sky marches to `volumetricMaxDist`) and raymarched in `volumetricSteps`
+  samples through a 3D-noise volume — exponential height falloff (`volumetricHeightFalloff`)
+  times fBm clouds (`volumetricCloudiness`, `volumetricNoiseScale`, `volumetricTime` drift) —
+  accumulating transmittance and Henyey–Greenstein sun scattering (`volumetricAnisotropy`) plus
+  sky ambient; output `hdr * T + inscatter`. Geometry and sky are fogged. Pure CPU twins
+  (`volumetricHash/Noise/Fbm/Density`, `henyeyGreenstein`, `volumetricMarch`) are
+  unit-tested. Tests: `tests/test_volumetric.cpp` (unit) + `tests/gl_smoke_volumetric.cpp`
+  (label `gl_context`; fog on vs off measurably different, no GL error). Demo:
+  `examples/volumetric_screenshot` (terrain scene, off/on/dense) headless to PNG; references
+  `docs/images/g21_volumetric_{off,on,dense}.png`. Tutorial:
+  `docs/en/tutorials/g21_volumetric_fog.md` + German translation.
+  Requirement entry G21 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G20 — terrain + LOD integration** (`scene::TerrainComponent`,
   `include/fuhglgraphics/scene/component.hpp`, `src/scene/component.cpp`): owns a FuhGLCore
   F38/F41 `terrainLods()` LodMesh (procedural heightmap + `levels` grid resolutions, switch

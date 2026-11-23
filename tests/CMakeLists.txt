@@ -14,6 +14,7 @@ add_executable(fuhglgraphics_tests
     test_picking.cpp
     test_serialize.cpp
     test_terrain_lod.cpp
+    test_volumetric.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -152,3 +153,9 @@ add_executable(fuhglgraphics_gl_smoke_terrain gl_smoke_terrain.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_terrain PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_terrain COMMAND fuhglgraphics_gl_smoke_terrain)
 set_tests_properties(fuhglgraphics_gl_smoke_terrain PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# G21: volumetric fog smoke test (fog on vs off -> measurable difference, sky fogged too).
+add_executable(fuhglgraphics_gl_smoke_volumetric gl_smoke_volumetric.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_volumetric PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_volumetric COMMAND fuhglgraphics_gl_smoke_volumetric)
+set_tests_properties(fuhglgraphics_gl_smoke_volumetric PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

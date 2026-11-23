@@ -51,6 +51,10 @@ One small tutorial per feature. Each is self-contained: goal → code → result
   `terrainLods` LodMesh in the `fillFrame()` path (`DrawItem::lod` -> per-frame level from the
   camera distance, `SceneView::lastLodLevel`), `heightAt()` for object placement; screenshots
   in [docs/images/](../../images/g20_terrain_far.png)
+- [G21 — Volumetric fog / clouds](g21_volumetric_fog.md) — `Effect::VolumetricFog`: "volumetric"
+  post pass after particles, before bloom; raymarched 3D-noise volume (height falloff + fBm,
+  Henyey–Greenstein phase) against the G-buffer depth, fogs geometry and sky; pure CPU twins in
+  `render/volumetric.hpp`; screenshots in [docs/images/](../../images/g21_volumetric_on.png)
 - [G17 — Bloom](g17_bloom.md) — post pass after particles, before TAA: bright-pass above
   an adjustable `bloomThreshold` + 9-tap blur + add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   screenshots in [docs/images/](../../images/g17_bloom_on.png)

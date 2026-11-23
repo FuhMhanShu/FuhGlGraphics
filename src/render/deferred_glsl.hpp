@@ -276,7 +276,7 @@ void main() {
 // when Effect::Bloom is off. Unit: uSrc 0.
 constexpr const char* kBloomFrag = R"GLSL(#version 330 core
 in vec2 vUV;
-uniform sampler2D uSrc; // unit 0: hdrP (lighting + water + particles)
+uniform sampler2D uSrc; // unit 0: hdrV (lighting + water + particles + G21 fog)
 uniform int uBloomEnabled;
 uniform float uThreshold;
 uniform float uStrength;
@@ -296,6 +296,98 @@ void main() {
         acc += max(s - vec3(uThreshold), vec3(0.0)); // per-channel bright-pass
     }
     FragColor = vec4(c + (acc / 9.0) * uStrength, 1.0);
+}
+)GLSL";
+
+// --- G21 volumetric fog/clouds pass: HDR + fog in-scatter (resource "hdrV", feeds bloom).
+// Per pixel: reconstruct the world position from the G-buffer depth (sky -> march to
+// uMaxDist), raymarch the view ray through the 3D-noise volume (height falloff + fBm),
+// accumulate transmittance and single scattering (Henyey-Greenstein phase for the sun +
+// flat ambient). Plain copy when Effect::VolumetricFog is off. Units: uHdr 0, uGDepth 1.
+constexpr const char* kVolumetricFrag = R"GLSL(#version 330 core
+in vec2 vUV;
+uniform sampler2D uHdr;    // unit 0: hdrP (lighting + water + particles)
+uniform sampler2D uGDepth; // unit 1
+uniform int uFogEnabled;
+uniform mat4 uInvViewProj;
+uniform vec3 uCamPos;
+uniform vec3 uSunDir;    // normalized, pointing TO the sun
+uniform vec3 uSunColor;  // HDR sun radiance
+uniform vec3 uAmbient;   // sky ambient scattered into the volume
+uniform float uDensity;       // ground-level density per world unit
+uniform float uCloudiness;    // 0 = uniform fog, 1 = fully noise-driven
+uniform float uHeightFalloff; // scale height
+uniform float uNoiseScale;    // world units per noise cell
+uniform float uAnisotropy;    // HG g
+uniform float uMaxDist;       // sky march end
+uniform float uStrength;
+uniform int uSteps;
+uniform float uTime;
+uniform float uZNear, uZFar;
+out vec4 FragColor;
+float linearize(float d) { return 2.0 * uZNear * uZFar / max(uZFar + uZNear - d * (uZFar - uZNear), 1e-6); }
+float hash3(vec3 p) {
+    p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+    p += dot(p, p.yxz + 33.33);
+    return fract((p.x + p.y) * p.z);
+}
+float noise3(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float n000 = hash3(i);
+    float n100 = hash3(i + vec3(1.0, 0.0, 0.0));
+    float n010 = hash3(i + vec3(0.0, 1.0, 0.0));
+    float n110 = hash3(i + vec3(1.0, 1.0, 0.0));
+    float n001 = hash3(i + vec3(0.0, 0.0, 1.0));
+    float n101 = hash3(i + vec3(1.0, 0.0, 1.0));
+    float n011 = hash3(i + vec3(0.0, 1.0, 1.0));
+    float n111 = hash3(i + vec3(1.0, 1.0, 1.0));
+    return mix(mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+               mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);
+}
+float fbm3(vec3 p) {
+    float sum = 0.0, amp = 0.5, norm = 0.0;
+    for (int i = 0; i < 4; ++i) {
+        sum += amp * noise3(p);
+        norm += amp;
+        amp *= 0.5;
+        p = p * 2.03 + vec3(13.7, 7.1, 5.3);
+    }
+    return sum / max(norm, 1e-6);
+}
+float densityAt(vec3 wp) {
+    float fall = exp(-max(wp.y, 0.0) / max(uHeightFalloff, 1e-4));
+    float n = 1.0;
+    if (uCloudiness > 0.0)
+        n = 1.0 - uCloudiness + uCloudiness * 2.0 * fbm3(wp / max(uNoiseScale, 1e-6) + vec3(0.0, 0.0, uTime));
+    return uDensity * fall * n;
+}
+void main() {
+    vec3 hdr = texture(uHdr, vUV).rgb;
+    if (uFogEnabled != 1 || uDensity <= 0.0) { FragColor = vec4(hdr, 1.0); return; }
+    float depth = texture(uGDepth, vUV).r;
+    // view ray in world space
+    vec4 wp = uInvViewProj * vec4(vUV * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec3 P = wp.xyz / wp.w;
+    vec3 dir = normalize(P - uCamPos);
+    float tMax = (depth >= 0.99999) ? uMaxDist : min(linearize(depth), uMaxDist);
+    if (tMax <= 0.0) { FragColor = vec4(hdr, 1.0); return; }
+    float ds = tMax / max(float(uSteps), 1.0);
+    float cosT = -dot(dir, uSunDir);
+    float gg = uAnisotropy * uAnisotropy;
+    float denom = 1.0 + gg - 2.0 * uAnisotropy * cosT;
+    float phase = (1.0 - gg) / (4.0 * 3.14159265 * denom * sqrt(max(denom, 1e-6)));
+    float T = 1.0;
+    vec3 inscatter = vec3(0.0);
+    for (int i = 0; i < 64; ++i) {
+        if (i >= uSteps) break;
+        float t = (float(i) + 0.5) * ds;
+        float d = densityAt(uCamPos + dir * t);
+        inscatter += (uSunColor * phase + uAmbient) * (d * ds) * T * uStrength;
+        T *= exp(-d * ds);
+    }
+    FragColor = vec4(hdr * T + inscatter, 1.0);
 }
 )GLSL";
 

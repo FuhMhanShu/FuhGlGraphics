@@ -52,7 +52,7 @@ struct DeferredRenderer::Impl {
         rMotion{fuhgl::Texture::Target::Tex2D}, rMatId{fuhgl::Texture::Target::Tex2D};
     fuhgl::Texture texOutput{fuhgl::Texture::Target::Tex2D};
 
-    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, ssrMat, bloomMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
+    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, ssrMat, bloomMat, volumetricMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
     std::vector<fuhgl::math::Vec3> ssaoKernel; ///< G15: generated once per createInternal
     bool skinProgramReady = false; ///< G14: the GLSL 430 skinning G-buffer program (GL >= 4.3)
     fuhgl::render::Mesh decalBox; ///< G8: unit box for the decal projection pass
@@ -279,6 +279,7 @@ bool DeferredRenderer::createInternal() {
         !compilePostFs(im.ssaoMat, kSsaoFrag, "ssao") ||
         !compilePostFs(im.ssrMat, kSsrFrag, "ssr") ||
         !compilePostFs(im.bloomMat, kBloomFrag, "bloom") ||
+        !compilePostFs(im.volumetricMat, kVolumetricFrag, "volumetric") ||
         !compilePostFs(im.taaMat, kTaaFrag, "taa") ||
         !compilePostFs(im.upscaleMat, kUpscaleFrag, "upscale") ||
         !compilePostFs(im.dofMat, kDofFrag, "dof") ||
@@ -394,7 +395,8 @@ bool DeferredRenderer::createInternal() {
     im.post.addResource("hdrS", iw, ih, fuhgl::gl::GL_RGBA16F); // G16: hdr + screen-space reflections
     im.post.addResource("hdrW", iw, ih, fuhgl::gl::GL_RGBA16F); // hdr + G13 water
     im.post.addResource("hdrP", iw, ih, fuhgl::gl::GL_RGBA16F); // hdrW + G5 particles
-    im.post.addResource("hdrB", iw, ih, fuhgl::gl::GL_RGBA16F); // G17: hdrP + bloom
+    im.post.addResource("hdrV", iw, ih, fuhgl::gl::GL_RGBA16F); // G21: hdrP + volumetric fog
+    im.post.addResource("hdrB", iw, ih, fuhgl::gl::GL_RGBA16F); // G17: hdrV + bloom
     im.post.addResource("taa", iw, ih, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("up", width_, height_, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("dof", width_, height_, fuhgl::gl::GL_RGBA16F); // G10 DoF at output res
@@ -408,7 +410,9 @@ bool DeferredRenderer::createInternal() {
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawWater(ctx); });
     im.post.addPass("particles", {"hdrW", "gDepth"}, {"hdrP"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawParticles(ctx); });
-    im.post.addPass("bloom", {"hdrP"}, {"hdrB"}, // G17, after particles, before TAA
+    im.post.addPass("volumetric", {"hdrP", "gDepth"}, {"hdrV"}, // G21, after particles, before bloom
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawVolumetric(ctx); });
+    im.post.addPass("bloom", {"hdrV"}, {"hdrB"}, // G17, after volumetric fog, before TAA
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawBloom(ctx); });
     im.post.addPass("taa", {"hdrB", "gMotion", "taa"}, {"taa"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTaa(ctx); }, /*feedback=*/true);
@@ -1206,10 +1210,43 @@ void DeferredRenderer::drawSsr(fuhgl::render::RenderGraph::PassContext& ctx) {
     });
 }
 
-// G17 bloom pass: bright-pass + 9-tap blur + add on the HDR image (hdrP -> hdrB, which the
+// G21 volumetric fog/clouds pass: raymarch the view ray through the 3D-noise volume
+// (height falloff + fBm), accumulate transmittance + Henyey-Greenstein sun scattering and
+// ambient, output hdr * T + inscatter (hdrP -> hdrV, which bloom then consumes). Plain copy
+// when Effect::VolumetricFog is off.
+void DeferredRenderer::drawVolumetric(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "hdrP");
+    ctx.bindInput(1, "gDepth");
+    const fuhgl::render::SceneView& s = *curScene_;
+    const bool on = effectEnabled(Effect::VolumetricFog);
+    const fuhgl::math::Vec3 ambient = (skyTop + skyBottom) * 0.25f;
+    drawFs(impl_->volumetricMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uHdr"), 0);
+        p.setUniform(p.uniformLocation("uGDepth"), 1);
+        p.setUniform(p.uniformLocation("uFogEnabled"), on ? 1 : 0);
+        p.setUniform("uInvViewProj", s.camera->viewProj(s.aspect).inverse());
+        p.setUniform("uCamPos", s.camera->eye());
+        p.setUniform("uSunDir", s.sunDirection);
+        p.setUniform("uSunColor", s.sunColor);
+        p.setUniform("uAmbient", ambient);
+        p.setUniform("uDensity", volumetricDensity);
+        p.setUniform("uCloudiness", volumetricCloudiness);
+        p.setUniform("uHeightFalloff", volumetricHeightFalloff);
+        p.setUniform("uNoiseScale", volumetricNoiseScale);
+        p.setUniform("uAnisotropy", volumetricAnisotropy);
+        p.setUniform("uMaxDist", volumetricMaxDist);
+        p.setUniform("uStrength", volumetricStrength);
+        p.setUniform(p.uniformLocation("uSteps"), std::min(std::max(volumetricSteps, 1), 64));
+        p.setUniform("uTime", volumetricTime);
+        p.setUniform("uZNear", s.camera->zNear());
+        p.setUniform("uZFar", s.camera->zFar());
+    });
+}
+
+// G17 bloom pass: bright-pass + 9-tap blur + add on the HDR image (hdrV -> hdrB, which the
 // TAA pass then blends temporally). Plain copy when Effect::Bloom is off.
 void DeferredRenderer::drawBloom(fuhgl::render::RenderGraph::PassContext& ctx) {
-    ctx.bindInput(0, "hdrP");
+    ctx.bindInput(0, "hdrV");
     const bool on = effectEnabled(Effect::Bloom);
     drawFs(impl_->bloomMat, [&](fuhgl::Program& p) {
         p.setUniform(p.uniformLocation("uSrc"), 0);
@@ -1379,6 +1416,7 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::Ssao, ssaoEnabled_);
     gate(Effect::Ssr, ssrEnabled_);
     gate(Effect::Bloom, bloomEnabled_);
+    gate(Effect::VolumetricFog, volumetricEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -1404,6 +1442,7 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::Ssao: ssaoEnabled_ = on; break;
         case Effect::Ssr: ssrEnabled_ = on; break;
         case Effect::Bloom: bloomEnabled_ = on; break;
+        case Effect::VolumetricFog: volumetricEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -1439,6 +1478,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::Ssao: return ssaoEnabled_;
         case Effect::Ssr: return ssrEnabled_;
         case Effect::Bloom: return bloomEnabled_;
+        case Effect::VolumetricFog: return volumetricEnabled_;
     }
     return false;
 }
@@ -1447,6 +1487,7 @@ void DeferredRenderer::setAllEffects(bool on) {
     taaEnabled_ = upscaleEnabled_ = tonemapEnabled_ = iblEnabled_ = shadows_ = csmEnabled_ = on;
     pointShadows_ = contactShadowsEnabled = particlesEnabled_ = lightProbesEnabled_ = decalsEnabled_ = waterEnabled_ = on;
     dofEnabled_ = hudEnabled_ = gpuSkinningEnabled_ = ssaoEnabled_ = ssrEnabled_ = bloomEnabled_ = on;
+    volumetricEnabled_ = on;
     applyCapabilities();
 }
 

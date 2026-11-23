@@ -66,6 +66,15 @@ struct EffectParams {
     float bloomThreshold = 1.0f; ///< HDR luminance above which a pixel blooms
     float bloomStrength = 0.6f;  ///< added bloom intensity
     float bloomRadius = 1.0f;    ///< blur radius in texels (scaled by the tap pattern)
+    // --- G21 volumetric fog / clouds (Effect::VolumetricFog) ---
+    float volumetricDensity = 0.02f;     ///< fog density at ground level (per world unit)
+    float volumetricCloudiness = 0.6f;    ///< 0 = uniform fog, 1 = fully noise-driven clouds
+    float volumetricHeightFalloff = 8.f;  ///< scale height of the exponential height falloff
+    float volumetricNoiseScale = 6.f;     ///< world units per 3D-noise cell
+    float volumetricAnisotropy = 0.6f;    ///< Henyey–Greenstein g (forward scattering)
+    float volumetricMaxDist = 120.f;      ///< march end for sky pixels (world units)
+    float volumetricStrength = 1.f;       ///< in-scatter intensity scale
+    int volumetricSteps = 24;             ///< raymarch samples (max 64)
 };
 
 /// @brief Effect list + parameters of one scene node (or of a whole frame after merging).

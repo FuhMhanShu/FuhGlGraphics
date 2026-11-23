@@ -232,6 +232,12 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   per-frame level selection by camera distance; see `tests/test_terrain_lod.cpp`,
   `tests/gl_smoke_terrain.cpp`, `examples/terrain_screenshot`,
   `docs/images/g20_terrain_*.png` and the [G20 tutorial](en/tutorials/g20_terrain_lod.md).
+- **G21 — volumetric fog / clouds** (`include/fuhglgraphics/render/volumetric.hpp` pure helpers
+  — hash/noise/fBm, height-falloff density, Henyey–Greenstein, CPU raymarcher — plus
+  `kVolumetricFrag` + "volumetric" post pass in the G3 renderer after particles / before bloom
+  (hdrP -> hdrV -> hdrB), `Effect::VolumetricFog`, `EffectParams::volumetric*`): implemented —
+  see `tests/test_volumetric.cpp`, `tests/gl_smoke_volumetric.cpp`, `examples/volumetric_screenshot`,
+  `docs/images/g21_volumetric_*.png` and the [G21 tutorial](en/tutorials/g21_volumetric_fog.md).
 - G2, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON

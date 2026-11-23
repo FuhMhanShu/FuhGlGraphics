@@ -36,10 +36,11 @@ enum class Effect {
     Ssao,           ///< G15 screen-space ambient occlusion from the G-buffer (pass before lighting)
     Ssr,            ///< G16 screen-space reflections: raymarch vs the G-buffer depth (post pass after lighting)
     Bloom,          ///< G17 bloom: bright-pass (adjustable threshold) + blur + add in the HDR chain before TAA
+    VolumetricFog,  ///< G21 volumetric fog/clouds: raymarched 3D-noise volume with height falloff + HG phase (post pass after particles, before bloom)
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 19;
+constexpr int kEffectCount = 20;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -63,6 +64,7 @@ inline const char* effectName(Effect e) {
         case Effect::Ssao: return "SSAO";
         case Effect::Ssr: return "SSR";
         case Effect::Bloom: return "bloom";
+        case Effect::VolumetricFog: return "volumetric fog";
     }
     return "unknown";
 }

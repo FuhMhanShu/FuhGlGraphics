@@ -89,8 +89,13 @@ through a `MeshResolver` callback, `saveScene`/`loadScene` for .json files) — 
 (`scene::TerrainComponent`: FuhGLCore F38/F41 `terrainLods` LodMesh in the `fillFrame()` path,
 per-frame LOD level from the camera distance via `DrawItem::lod`, `heightAt()` for object
 placement) — see the [G20 tutorial](docs/en/tutorials/g20_terrain_lod.md) and screenshots in
-[docs/images/](docs/images/g20_terrain_far.png).
-Next up: **G21–G23** (volumetric fog, wetness, tonemap operators), then **G11**
+[docs/images/](docs/images/g20_terrain_far.png) — and **G21** — volumetric fog/clouds
+(`Effect::VolumetricFog`: "volumetric" post pass after particles, before bloom — raymarched
+3D-noise volume with height falloff + Henyey–Greenstein sun scattering against the G-buffer
+depth; pure CPU twins in `render/volumetric.hpp`) — see the
+[G21 tutorial](docs/en/tutorials/g21_volumetric_fog.md) and screenshots in
+[docs/images/](docs/images/g21_volumetric_on.png).
+Next up: **G22–G23** (wetness, tonemap operators), then **G11**
 (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2** (Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.

@@ -235,6 +235,17 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   `view.lodEnabled = false` forces level 0. Any `MeshEntry::lod` works the same way. Quick
   start: [G20 tutorial](en/tutorials/g20_terrain_lod.md), demo `examples/terrain_screenshot`,
   screenshots: [near, LOD 0](images/g20_terrain_near.png), [far, LOD 3](images/g20_terrain_far.png).
+- **Volumetric fog / clouds (G21).** `render::Effect::VolumetricFog` runs the "volumetric" post
+  pass after particles and before bloom (hdrP → hdrV → hdrB): each view ray is marched
+  through a 3D-noise volume (height falloff × fBm clouds) up to the G-buffer depth (sky:
+  `volumetricMaxDist`), accumulating transmittance and Henyey–Greenstein sun scattering +
+  ambient; output `hdr * T + inscatter`. Params on the renderer/`EffectParams`:
+  `volumetricDensity`, `volumetricCloudiness`, `volumetricHeightFalloff`, `volumetricNoiseScale`,
+  `volumetricAnisotropy`, `volumetricMaxDist`, `volumetricSteps`, `volumetricStrength`,
+  `volumetricTime` (cloud drift); pure CPU twins in `render/volumetric.hpp` (`volumetricMarch`
+  etc.). Quick start: [G21 tutorial](en/tutorials/g21_volumetric_fog.md), demo
+  `examples/volumetric_screenshot`, screenshots: [off](images/g21_volumetric_off.png),
+  [on](images/g21_volumetric_on.png), [dense](images/g21_volumetric_dense.png).
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

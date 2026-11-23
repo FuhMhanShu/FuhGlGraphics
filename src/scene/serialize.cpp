@@ -104,6 +104,14 @@ io::Json effectsToJson(const Effects& fx) {
     p.obj["bloomThreshold"] = numJson(q.bloomThreshold);
     p.obj["bloomStrength"] = numJson(q.bloomStrength);
     p.obj["bloomRadius"] = numJson(q.bloomRadius);
+    p.obj["volumetricDensity"] = numJson(q.volumetricDensity);
+    p.obj["volumetricCloudiness"] = numJson(q.volumetricCloudiness);
+    p.obj["volumetricHeightFalloff"] = numJson(q.volumetricHeightFalloff);
+    p.obj["volumetricNoiseScale"] = numJson(q.volumetricNoiseScale);
+    p.obj["volumetricAnisotropy"] = numJson(q.volumetricAnisotropy);
+    p.obj["volumetricMaxDist"] = numJson(q.volumetricMaxDist);
+    p.obj["volumetricStrength"] = numJson(q.volumetricStrength);
+    p.obj["volumetricSteps"] = numJson(q.volumetricSteps);
     j.obj["params"] = p;
     return j;
 }
@@ -158,6 +166,14 @@ bool effectsFromJson(const io::Json& j, Effects& fx, std::string* err) {
         q.bloomThreshold = static_cast<float>(p->at("bloomThreshold").asNumber(q.bloomThreshold));
         q.bloomStrength = static_cast<float>(p->at("bloomStrength").asNumber(q.bloomStrength));
         q.bloomRadius = static_cast<float>(p->at("bloomRadius").asNumber(q.bloomRadius));
+        q.volumetricDensity = static_cast<float>(p->at("volumetricDensity").asNumber(q.volumetricDensity));
+        q.volumetricCloudiness = static_cast<float>(p->at("volumetricCloudiness").asNumber(q.volumetricCloudiness));
+        q.volumetricHeightFalloff = static_cast<float>(p->at("volumetricHeightFalloff").asNumber(q.volumetricHeightFalloff));
+        q.volumetricNoiseScale = static_cast<float>(p->at("volumetricNoiseScale").asNumber(q.volumetricNoiseScale));
+        q.volumetricAnisotropy = static_cast<float>(p->at("volumetricAnisotropy").asNumber(q.volumetricAnisotropy));
+        q.volumetricMaxDist = static_cast<float>(p->at("volumetricMaxDist").asNumber(q.volumetricMaxDist));
+        q.volumetricStrength = static_cast<float>(p->at("volumetricStrength").asNumber(q.volumetricStrength));
+        q.volumetricSteps = p->at("volumetricSteps").asInt(q.volumetricSteps);
     }
     return true;
 }

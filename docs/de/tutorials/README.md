@@ -50,6 +50,11 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   `terrainLods`-LodMesh im `fillFrame()`-Pfad (`DrawItem::lod` -> pro Frame Level aus der
   Kamera-Distanz, `SceneView::lastLodLevel`), `heightAt()` zum Platzieren von Objekten; Bilder
   in [docs/images/](../../images/g20_terrain_far.png)
+- [G21 — Volumetrischer Nebel / Wolken](g21_volumetric_fog.md) — `Effect::VolumetricFog`:
+  "volumetric"-Post-Pass nach den Partikeln, vor Bloom; rayge-marchtes 3D-Noise-Volumen
+  (Höhen-Falloff + fBm, Henyey–Greenstein-Phase) gegen die G-Buffer-Tiefe, foggt Geometrie und
+  Himmel; reine CPU-Zwillinge in `render/volumetric.hpp`; Bilder in
+  [docs/images/](../../images/g21_volumetric_on.png)
 - [G17 — Bloom](g17_bloom.md) — Post-Pass nach den Partikeln, vor TAA: Bright-Pass oberhalb
   eines einstellbaren `bloomThreshold` + 9-Tap-Blur + Add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   Bilder in [docs/images/](../../images/g17_bloom_on.png)

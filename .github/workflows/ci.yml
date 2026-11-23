@@ -194,6 +194,11 @@ jobs:
           cmake --build build -j --target fuhglgraphics_terrain_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_terrain_screenshot --prefix docs/images/ci/g20_terrain --width 1280 --height 720 --frames 16
 
+      - name: Build + render G21 volumetric fog screenshots (off / on / dense)
+        run: |
+          cmake --build build -j --target fuhglgraphics_volumetric_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_volumetric_screenshot --prefix docs/images/ci/g21_volumetric --width 1280 --height 720 --frames 16
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)
