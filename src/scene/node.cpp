@@ -21,15 +21,19 @@ std::vector<fuhgl::math::Mat4> Instancing::makeLocalInstances() const {
                                      : 0.f;
             const float z = rows > 1 ? -extent.z * 0.5f + static_cast<float>(iz) * extent.z / static_cast<float>(rows - 1)
                                      : 0.f;
-            out.push_back(fuhgl::math::translate({x, 0.f, z}));
+            const float y = heightFn ? heightFn(x, z) : 0.f;
+            out.push_back(fuhgl::math::translate({x, y, z}));
         }
     } else {
         std::mt19937 rng(seed);
         std::uniform_real_distribution<float> dx(-extent.x * 0.5f, extent.x * 0.5f);
         std::uniform_real_distribution<float> dy(-extent.y * 0.5f, extent.y * 0.5f);
         std::uniform_real_distribution<float> dz(-extent.z * 0.5f, extent.z * 0.5f);
-        for (int i = 0; i < n; ++i)
-            out.push_back(fuhgl::math::translate({dx(rng), dy(rng), dz(rng)}));
+        for (int i = 0; i < n; ++i) {
+            const float x = dx(rng), z = dz(rng);
+            const float y = heightFn ? heightFn(x, z) : dy(rng);
+            out.push_back(fuhgl::math::translate({x, y, z}));
+        }
     }
     return out;
 }
@@ -114,6 +118,19 @@ void Node::computeAabb() {
             fuhgl::math::transformSphere(worldMatrix_, wc->surface.mesh().boundingSphere());
         unionPoint({s.x - s.w, s.y - s.w - margin, s.z - s.w});
         unionPoint({s.x + s.w, s.y + s.w + margin, s.z + s.w});
+    }
+    // instanced nodes: the instance area (extent) matters for culling, not the single
+    // mesh bounding sphere; with heightFn the ground height is sampled at the corners
+    if (instancing.enabled && instancing.count > 0) {
+        const fuhgl::math::Vec3& e = instancing.extent;
+        for (int i = 0; i < 8; ++i) {
+            const float cx = (i & 1) ? e.x * 0.5f : -e.x * 0.5f;
+            const float cz = (i & 2) ? e.z * 0.5f : -e.z * 0.5f;
+            const float cy = instancing.heightFn ? instancing.heightFn(cx, cz)
+                                                  : ((i & 4) ? e.y * 0.5f : -e.y * 0.5f);
+            const fuhgl::math::Vec4 w = worldMatrix_ * fuhgl::math::Vec4{cx, cy, cz, 1.f};
+            unionPoint({w.x, w.y, w.z});
+        }
     }
     // G20: a terrain contributes the world AABB of its LOD level-0 bounding sphere
     for (const auto& comp : components_) {

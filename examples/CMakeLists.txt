@@ -99,3 +99,10 @@ target_link_libraries(fuhglgraphics_wetness_screenshot PRIVATE fuhglgraphics)
 # linear) + one shot with bloom on and a high adjustable bloom threshold — headless to PNG.
 add_executable(fuhglgraphics_tonemap_screenshot tonemap_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_tonemap_screenshot PRIVATE fuhglgraphics)
+
+# Sunrise showcase: landscape with lake (G20 terrain+LOD, carved basin, G13 water), vegetation
+# (trees/rocks/reeds/lily pads), dock with waving flag (G6), wear decal (G8), pollen+mist
+# particles (G5), sunrise sky + IBL, low sun with CSM shadows + god rays, SSAO/SSR/bloom/
+# volumetric mist (G21)/dew wetness (G22), TAA+upscale+ACES — two shots, headless to PNG.
+add_executable(fuhglgraphics_sunrise_screenshot sunrise_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_sunrise_screenshot PRIVATE fuhglgraphics)

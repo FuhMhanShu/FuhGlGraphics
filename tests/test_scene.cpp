@@ -130,6 +130,30 @@ void runSceneTests() {
         Instancing off;
         off.count = 0;
         CHECK(off.makeLocalInstances().empty());
+
+        // G20/sunrise: heightFn snaps instances onto the ground (grass on a heightmap)
+        Instancing h;
+        h.layout = InstanceLayout::Random;
+        h.count = 32;
+        h.extent = {10.f, 1.f, 10.f};
+        h.seed = 7;
+        h.heightFn = [](float x, float z) { return 2.f * x + z; };
+        const std::vector<fuhgl::math::Mat4> hm = h.makeLocalInstances();
+        CHECK(hm.size() == 32);
+        for (const auto& mat : hm) {
+            const fuhgl::math::Vec4 p = mat * fuhgl::math::Vec4{0.f, 0.f, 0.f, 1.f};
+            CHECK_NEAR(p.y, 2.f * p.x + p.z, 1e-5f); // y follows the height callback
+        }
+        // without heightFn the behavior is unchanged (random y in the box)
+        h.heightFn = nullptr;
+        const std::vector<fuhgl::math::Mat4> hm2 = h.makeLocalInstances();
+        CHECK(hm2.size() == 32);
+        bool anyY = false;
+        for (const auto& mat : hm2) {
+            const fuhgl::math::Vec4 p = mat * fuhgl::math::Vec4{0.f, 0.f, 0.f, 1.f};
+            if (std::fabs(p.y) > 1e-4f) anyY = true;
+        }
+        CHECK(anyY);
     }
 
     // --- components: attach / find / findAll / detach ---
