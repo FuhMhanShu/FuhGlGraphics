@@ -22,6 +22,10 @@
 #include <cstdint>
 #include <vector>
 
+namespace fuhglgraphics::anim {
+class GpuSkinner;
+}
+
 namespace fuhglgraphics::particles {
 class ParticleSystem;
 }
@@ -51,6 +55,7 @@ struct FrameData {
     const probes::LightProbeGrid* lightProbes = nullptr;           ///< G7 probe grid
     std::vector<render::Decal> decals;                              ///< G8 decals
     const water::WaterSurface* water = nullptr;                    ///< G13 water surface (first wins)
+    std::vector<const anim::GpuSkinner*> skins;                    ///< G14 GPU skinning, parallel to view.items (MeshEntry::gpuSkin)
 };
 
 /// @brief The G9 scene graph (root node + frame filling with frustum culling).

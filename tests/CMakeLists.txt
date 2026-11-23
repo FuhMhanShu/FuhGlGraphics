@@ -91,3 +91,12 @@ add_executable(fuhglgraphics_gl_smoke_water gl_smoke_water.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_water PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_water COMMAND fuhglgraphics_gl_smoke_water)
 set_tests_properties(fuhglgraphics_gl_smoke_water PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G14 GPU skinning (label "gl_context"): a 2-joint skinned
+# ribbon is rendered with Effect::GpuSkinning on (GL >= 4.3 palette SSBO) at two palettes —
+# the frames must differ; with the effect off both frames are identical (CPU fallback).
+# Skips (exit code 77) without GL >= 3.3 (or GL >= 4.3 for the skinning path itself).
+add_executable(fuhglgraphics_gl_smoke_gpu_skin gl_smoke_gpu_skin.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_gpu_skin PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_gpu_skin COMMAND fuhglgraphics_gl_smoke_gpu_skin)
+set_tests_properties(fuhglgraphics_gl_smoke_gpu_skin PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

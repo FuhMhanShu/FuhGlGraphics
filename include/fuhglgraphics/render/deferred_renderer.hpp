@@ -37,6 +37,10 @@
 #include <memory>
 #include <vector>
 
+namespace fuhglgraphics::anim {
+class GpuSkinner;
+}
+
 namespace fuhglgraphics::particles {
 class ParticleSystem;
 }
@@ -93,13 +97,18 @@ public:
     /// @param decals optional G8 decal list (e.g. FrameData::decals from DecalComponents) —
     /// projected into the G-buffer (albedo + normal) after the geometry pass when
     /// Effect::Decals is enabled; limited to render::kMaxDecals, sorted back-to-front.
+    /// @param skins optional G14 GPU-skinning bindings (e.g. FrameData::skins), parallel to
+    /// scene.items: when set for an item and Effect::GpuSkinning is enabled (GL >= 4.3), the
+    /// item is drawn with the skinning vertex shader (matrix-palette SSBO) instead of the
+    /// plain mesh — otherwise the plain mesh is drawn (CPU-skinning fallback, G6).
     void render(const fuhgl::render::SceneView& scene,
                 const std::vector<std::uint32_t>* materialIds = nullptr,
                 const std::vector<bool>* castShadow = nullptr,
                 const std::vector<const particles::ParticleSystem*>* particleSystems = nullptr,
                 const probes::LightProbeGrid* lightProbes = nullptr,
                 const std::vector<Decal>* decals = nullptr,
-                const water::WaterSurface* water = nullptr); // G13 water surface (FrameData::water)
+                const water::WaterSurface* water = nullptr, // G13 water surface (FrameData::water)
+                const std::vector<const anim::GpuSkinner*>* skins = nullptr); // G14 (FrameData::skins)
 
     /// @brief LDR output target (RGBA8, tonemapped when Effect::Tonemap is on).
     fuhgl::Framebuffer& output();
@@ -250,7 +259,8 @@ private:
 
     bool createInternal(); ///< (re)builds all GL resources at the current sizes
     void renderGBuffer(const fuhgl::render::SceneView& scene,
-                       const std::vector<std::uint32_t>* materialIds);
+                       const std::vector<std::uint32_t>* materialIds,
+                       const std::vector<const anim::GpuSkinner*>* skins);
     void drawDecals(const fuhgl::render::SceneView& scene);
     void drawFs(fuhgl::render::Material& mat, const std::function<void(fuhgl::Program&)>& setUniforms);
     /// @brief G13: planar reflection of the scene (without the water mesh) from the
@@ -284,6 +294,8 @@ private:
     bool lightProbesEnabled_ = true; ///< Effect::LightProbes
     const probes::LightProbeGrid* curProbes_ = nullptr;
     bool waterEnabled_ = true;       ///< Effect::Water
+    bool gpuSkinningEnabled_ = true; ///< Effect::GpuSkinning (GL >= 4.3, CPU fallback below)
+    const std::vector<const anim::GpuSkinner*>* curSkins_ = nullptr; ///< G14 skins of this frame
     const water::WaterSurface* curWater_ = nullptr; ///< G13: active water surface this frame
     fuhgl::math::Mat4 waterModel_{};                 ///< its draw item's model matrix
     fuhgl::math::Vec4 waterClipPlane_{0.f, 1.f, 0.f, 0.f}; ///< world plane (n, d) for clipping

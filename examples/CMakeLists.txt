@@ -48,3 +48,8 @@ target_link_libraries(fuhglgraphics_dof_screenshot PRIVATE fuhglgraphics)
 # WaterComponent -> FrameData::water -> DeferredRenderer with Effect::Water — headless to PNG.
 add_executable(fuhglgraphics_water_screenshot water_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_water_screenshot PRIVATE fuhglgraphics)
+
+# G14 GPU-skinning demo: skeletal arm skinned on the GPU (anim::GpuSkinner palette SSBO in
+# the G3 G-buffer pass, Effect::GpuSkinning, GL >= 4.3) — headless to PNG.
+add_executable(fuhglgraphics_gpu_skinning_screenshot gpu_skinning_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_gpu_skinning_screenshot PRIVATE fuhglgraphics)

@@ -40,6 +40,16 @@ FuhGLCore.
 | G10 | Smaller quickly-visible upgrades (roadmap 7) | MSAA wiring+test in G3 (DeferredRenderer has msaaSamples already), CSM contact hardening (penumbra), temporal upscaling (FSR1-style EASU+RCAS) after TAA, DoF bokeh shape instead of circular, CI screenshot perceptual diff (reference PNGs in docs/images/, PSNR/perceptual threshold), mini debug HUD (ImGui-like panel on FuhGLCore TextRenderer: fps, frame-time, effect toggles) |
 | G11 | Engine infrastructure (roadmap 8) | on-disk asset cache keyed by content hash (imported meshes/textures + baked IBL/env persist); JSON config system for F40 effect toggles/window/renderer (same minimal JSON parser as G4); minimal Qt editor (G2): gizmo+camera+scene tree+viewport |
 | G12 | Asset creator Qt tool | `tools/asset_creator/` executable `fuhglgraphics_asset_creator` (built with `FUHGLGRAPHICS_WITH_QT=ON` + new option `FUHGLGRAPHICS_BUILD_TOOLS`): create/load/edit assets with a data-structures panel (scene tree + inspector + asset browser), a viewport with editing tools on the G3 `DeferredRenderer`, and an LLM chat over MCP (stdio JSON-RPC 2.0, configurable server command). Project file = own `.fasset` JSON (`io::Json` + new `io::writeJson`, scene serialization in `scene/serialize.hpp`, MCP message helpers in `mcp/jsonrpc.hpp` — all Qt-free + unit tests). MVC, PIMPL, UI multilingual (English default, German first translation). Design: [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) |
+| G14 | GPU skinning (GL >= 4.3) | `anim::GpuSkinner` (PIMPL): VAO with bind-pose vertices + JOINTS_0/WEIGHTS_0 float4 attributes (locations 5/6) + SSBO matrix palette (binding 0); G3 G-buffer pass skinning vertex shader (GLSL 430, `render::Effect::GpuSkinning`, capability-gated >= 4.3) draws the skinner instead of the plain mesh; CPU fallback (`skinMeshCpu`, G6) below 4.3 / when off; `FrameData::skins` parallel to `view.items` via `MeshEntry::gpuSkin`; glTF `instantiateGltf()` creates skinners for skinned primitives on GL >= 4.3 |
+| G15 | SSAO | post pass before lighting from the G-buffer (normal+depth), hemisphere kernel + depth compare into an R16F target sampled by the lighting pass (`Effect::Ssao`, unit 6) |
+| G16 | Screen-space reflections | post pass after lighting: raymarch the reflection vector against the G-buffer depth, sample the HDR scene, add with fresnel/roughness mask (`Effect::Ssr`) |
+| G17 | Bloom | bright-pass (adjustable threshold) + blur + add in the HDR chain before TAA (`Effect::Bloom`) |
+| G18 | Picking / ray-casting on the scene graph | pure math ray (camera -> pixel), AABB + Möller–Trumbore triangle tests against `MeshEntry::meshData`, nearest hit (node, entry, distance, point) |
+| G19 | Scene serialization | `scene/serialize.hpp`: Scene <-> `io::Json` round-trip (nodes TRS, effects, instancing, mesh/light/decal/animation components, mesh resolver callback for GL meshes) + `io::writeJson`; `saveScene`/`loadScene` (.json files) |
+| G20 | Terrain + LOD integration | `scene::TerrainComponent` (FuhGLCore F38 `HeightmapTerrain` + F41 `terrainLods`, `DrawItem::lod` in `fillFrame()`), LOD level selection by camera distance |
+| G21 | Volumetric fog / clouds | post pass: raymarched 3D-noise volume (height falloff, henyey-greenstein phase, scene depth as march end) applied to the HDR chain (`Effect::VolumetricFog`) |
+| G22 | Wetness / rain on PBR | lighting-pass modulation: roughness/albedo down, puddle mask from a noise texture, SSR boost (`Effect::Wetness`) |
+| G23 | Tonemapping operators + bloom threshold | `render::TonemapOperator` (ACES / Reinhard / Uncharted2 / linear) selected per frame in the tonemap pass + pure CPU twins; bloom threshold in G17 |
 | G13 | Realistic water (sea/lake) | new `water/` module: `water::WaterSurface` (Gerstner-wave grid mesh + shading params) as a G9 `WaterComponent` -> `FrameData::water` -> G3 `DeferredRenderer::render(..., water)` with `render::Effect::Water`: planar reflection pass (mirrored camera + clip plane at the water plane into an RGBA16F target at `waterReflectionScale`), water post pass in the HDR chain (Gerstner displacement + analytic wave normal in the vertex shader, fresnel mix of reflection/refraction, depth-based shore foam + crest foam, sun glint, fog); GL 3.3-capable, toggleable |
 
 ## 4. Non-functional requirements
@@ -184,6 +194,10 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   [G10 tutorial](en/tutorials/g10_upgrades.md).
 - G2, G11 — planned.
 - **G13 — water rendering** (`fuhglgraphics::water`, `include/fuhglgraphics/water/`, `src/water/`, G3 renderer extension in `src/render/`): implemented — see `tests/test_water.cpp`, `tests/gl_smoke_water.cpp`, `examples/water_screenshot`, `docs/images/g13_water_*.png` and the [G13 tutorial](en/tutorials/g13_water.md).
+- **G14 — GPU skinning** (`fuhglgraphics::anim::GpuSkinner`, `include/fuhglgraphics/anim/gpu_skinner.hpp`,
+  `src/anim/gpu_skinner.cpp`): implemented — see `tests/gl_smoke_gpu_skin.cpp`,
+  `examples/gpu_skinning_screenshot`, `docs/images/g14_gpu_skinning_*.png` and the
+  [G14 tutorial](en/tutorials/g14_gpu_skinning.md).
 - G2, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON

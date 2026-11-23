@@ -24,12 +24,14 @@
 #include "json.hpp"
 
 #include "../anim/animation.hpp"
+#include "../anim/gpu_skinner.hpp"
 
 #include <fuhgl/gl/texture.hpp>
 #include <fuhgl/math.hpp>
 #include <fuhgl/render/material.hpp>
 #include <fuhgl/render/mesh.hpp>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -162,8 +164,10 @@ struct GltfGpuResources {
         std::size_t primitive = 0;
         fuhgl::render::MeshData base;           ///< bind-pose MeshData
         anim::SkinWeights weights;              ///< JOINTS_0 / WEIGHTS_0
+        anim::GpuSkinner* gpuSkin = nullptr;    ///< G14: GPU skinning binding (created on GL >= 4.3)
     };
     std::vector<SkinnedMesh> skinnedMeshes;    ///< primitives with JOINTS_0/WEIGHTS_0 (CPU skinning)
+    std::vector<std::unique_ptr<anim::GpuSkinner>> gpuSkins; ///< G14: owned skinners (GL >= 4.3)
 };
 
 /// @brief Instantiates the asset's default scene into the G9 scene graph: one scene::Node

@@ -153,6 +153,12 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_dof_screenshot --out docs/images/ci/g10_dof_off.png --width 1280 --height 720 --frames 16 --focus 9 --no-dof
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_dof_screenshot --out docs/images/ci/g10_hud.png --width 1280 --height 720 --frames 16 --focus 9 --hud
 
+      - name: Build + render G14 GPU-skinning screenshots (palette SSBO path on GL >= 4.3)
+        run: |
+          cmake --build build -j --target fuhglgraphics_gpu_skinning_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_gpu_skinning_screenshot --out docs/images/ci/g14_gpu_skinning_on.png --width 1280 --height 720 --frames 16 --bend 1.05
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_gpu_skinning_screenshot --out docs/images/ci/g14_gpu_skinning_off.png --width 1280 --height 720 --frames 16 --bend 1.05 --cpu
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)

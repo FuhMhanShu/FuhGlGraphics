@@ -47,6 +47,7 @@ add_library(fuhglgraphics STATIC
     src/io/gltf.cpp
     src/particles/particle_system.cpp
     src/anim/animation.cpp
+    src/anim/gpu_skinner.cpp
     src/probes/light_probes.cpp
     src/water/water_surface.cpp
 )

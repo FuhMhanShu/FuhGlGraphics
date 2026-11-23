@@ -40,7 +40,14 @@ One small tutorial per feature. Each is self-contained: goal → code → result
   fresnel mix, crest + shore foam, sun glint); lake screenshots in
   [docs/images/](../../images/g13_water_1280x720.png)
 
-Next: **G11** (engine infrastructure) / **G2** (Qt editor) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
+- [G14 — GPU skinning (GL ≥ 4.3)](g14_gpu_skinning.md) — `anim::GpuSkinner` (VAO +
+  JOINTS/WEIGHTS attributes + matrix-palette SSBO) drawn by the G3 G-buffer pass's skinning
+  vertex shader when `Effect::GpuSkinning` is on (CPU fallback below); screenshots in
+  [docs/images/](../../images/g14_gpu_skinning_on.png)
+
+Next: **G15–G23** (technical extensions: SSAO, SSR, bloom, picking, scene serialization,
+terrain/LOD, volumetric fog, wetness, tonemap operators) / **G11** (engine infrastructure) /
+**G2** (Qt editor) — see [REQUIREMENTS.md](../../REQUIREMENTS.md).
 
 Prerequisite for all: build the library and link `FuhGlGraphics::fuhglgraphics`
 (see [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).

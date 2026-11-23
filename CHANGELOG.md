@@ -9,6 +9,26 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G14 — GPU skinning** (`fuhglgraphics::anim::GpuSkinner`, `include/fuhglgraphics/anim/gpu_skinner.hpp`,
+  `src/anim/gpu_skinner.cpp`): the G6 "future work" — a PIMPL class owning one skinned mesh's GPU side:
+  a VAO with the bind-pose vertices (standard layout, attribs 0..3) plus JOINTS_0/WEIGHTS_0 as float4
+  attributes (locations 5/6) and an SSBO with the joint matrix palette (binding 0).
+  `DeferredRenderer` compiles a GLSL-430 skinning variant of the G-buffer vertex shader
+  (`kGBufferVertSkin`, `skin = Σ wᵢ·uPalette[jᵢ]`) on GL >= 4.3 and draws the skinner instead of the
+  plain mesh when the new `render::Effect::GpuSkinning` is enabled (capability-gated, pure
+  `effectSupported()`; CPU fallback `skinMeshCpu` below 4.3 / when off). Scene wiring:
+  `MeshEntry::gpuSkin` -> `FrameData::skins` (parallel to `view.items`) ->
+  `DeferredRenderer::render(..., skins)`; `MeshEntry::meshData` stores the CPU `MeshData`
+  (set by the glTF loader for every primitive — also used by G18 picking). glTF:
+  `instantiateGltf()` creates one `GpuSkinner` per skinned primitive on GL >= 4.3
+  (`GltfGpuResources::gpuSkins`). `render::Effect` gained `GpuSkinning` (kEffectCount = 16) +
+  `effectFromName()`. Tests: `tests/test_render.cpp` (unit: registry/capability/effectFromName) +
+  `tests/gl_smoke_gpu_skin.cpp` (label `gl_context`, skips with 77 below GL 4.3; two palettes
+  differ with the effect on, identical with it off). Demo: `examples/gpu_skinning_screenshot`
+  (robot arm bent via the palette on the GPU) headless to PNG; reference images
+  `docs/images/g14_gpu_skinning_{on,off}.png`. Tutorial: `docs/en/tutorials/g14_gpu_skinning.md` +
+  German translation. Requirement entry G14 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G13 — realistic water** (`fuhglgraphics::water`, `include/fuhglgraphics/water/water_surface.hpp`,
   `src/water/water_surface.cpp`): `water::WaterSurface` — a Gerstner-wave grid mesh
   (`create(resolution, size)`) with shading parameters (deep/shallow/foam colors, fresnel F0,

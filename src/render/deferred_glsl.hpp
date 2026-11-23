@@ -91,6 +91,38 @@ void main() {
 }
 )GLSL";
 
+// --- G14 GPU skinning: G-buffer vertex shader variant (GLSL 430, matrix-palette SSBO).
+// Only compiled when the context is GL >= 4.3; otherwise the renderer uses kGBufferVert
+// with the CPU-skinned mesh (G6 fallback). Attributes 0..3 are the standard layout,
+// 5 = joints (float4), 6 = weights (float4); the palette SSBO is at binding 0.
+constexpr const char* kGBufferVertSkin = R"GLSL(#version 430 core
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec3 aColor;
+layout(location = 3) in vec2 aUV;
+layout(location = 5) in vec4 aJoints;
+layout(location = 6) in vec4 aWeights;
+layout(std430, binding = 0) buffer Palette { mat4 uPalette[]; };
+uniform mat4 uModel;
+uniform mat4 uViewProj;
+out vec3 vWorldPos;
+out vec3 vNormal;
+out vec3 vColor;
+out vec2 vUV;
+void main() {
+    mat4 skin = aWeights.x * uPalette[int(aJoints.x)]
+              + aWeights.y * uPalette[int(aJoints.y)]
+              + aWeights.z * uPalette[int(aJoints.z)]
+              + aWeights.w * uPalette[int(aJoints.w)];
+    vec4 wp = uModel * (skin * vec4(aPos, 1.0));
+    vWorldPos = wp.xyz;
+    vNormal = mat3(uModel) * mat3(skin) * aNormal;
+    vColor = aColor;
+    vUV = aUV;
+    gl_Position = uViewProj * wp;
+}
+)GLSL";
+
 // --- fullscreen triangle (all post passes) ------------------------------------------
 constexpr const char* kFsVert = R"GLSL(#version 330 core
 out vec2 vUV;

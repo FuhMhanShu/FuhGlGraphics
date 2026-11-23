@@ -36,6 +36,7 @@
 #include <fuhglgraphics/particles/particle_system.hpp>
 
 #include <fuhglgraphics/anim/animation.hpp>
+#include <fuhglgraphics/anim/gpu_skinner.hpp>
 
 #include <fuhglgraphics/probes/light_probes.hpp>
 

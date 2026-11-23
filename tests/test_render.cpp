@@ -13,7 +13,7 @@ using namespace fuhglgraphics::render;
 
 void runRenderTests() {
     // --- effectName / kEffectCount ---
-    CHECK(kEffectCount == 15);
+    CHECK(kEffectCount == 16);
     CHECK(std::string(effectName(Effect::Taa)) == "TAA");
     CHECK(std::string(effectName(Effect::Upscale)) == "upscaling");
     CHECK(std::string(effectName(Effect::Tonemap)) == "tonemap");
@@ -29,14 +29,35 @@ void runRenderTests() {
     CHECK(std::string(effectName(Effect::Dof)) == "DoF");
     CHECK(std::string(effectName(Effect::DebugHud)) == "debug HUD");
     CHECK(std::string(effectName(Effect::Water)) == "water");
+    CHECK(std::string(effectName(Effect::GpuSkinning)) == "GPU skinning");
+
+    // --- effectFromName: inverse of effectName for every effect ---
+    for (int e = 0; e < kEffectCount; ++e) {
+        const Effect eff = static_cast<Effect>(e);
+        Effect back = Effect::Taa;
+        CHECK(effectFromName(effectName(eff), back));
+        CHECK(back == eff);
+    }
+    {
+        Effect dummy = Effect::Taa;
+        CHECK(!effectFromName("no-such-effect", dummy));
+    }
 
     // --- effectSupported: pure GL-version mapping (F39) ---
     for (int e = 0; e < kEffectCount; ++e) {
         const Effect eff = static_cast<Effect>(e);
-        CHECK(effectSupported(eff, 3, 3));  // baseline: everything runs
         CHECK(effectSupported(eff, 4, 5));
         CHECK(!effectSupported(eff, 3, 0)); // below baseline
         CHECK(!effectSupported(eff, 2, 1));
+        if (eff == Effect::GpuSkinning) {
+            // G14: the SSBO palette path needs GL >= 4.3 (CPU fallback below)
+            CHECK(effectSupported(eff, 4, 3));
+            CHECK(effectSupported(eff, 4, 6));
+            CHECK(!effectSupported(eff, 4, 2));
+            CHECK(!effectSupported(eff, 3, 3));
+        } else {
+            CHECK(effectSupported(eff, 3, 3)); // baseline: everything else runs
+        }
     }
 
     // --- material ID pack/unpack roundtrip ---

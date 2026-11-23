@@ -8,6 +8,7 @@
 /// AnimationComponent (G6), LightProbeComponent (G7), DecalComponent (G8).
 
 #include "../anim/animation.hpp"
+#include "../anim/gpu_skinner.hpp"
 #include "../particles/particle_system.hpp"
 #include "../probes/light_probes.hpp"
 #include "../water/water_surface.hpp"
@@ -54,6 +55,8 @@ struct MeshEntry {
     const fuhgl::render::LodMesh* lod = nullptr;      ///< F41: optional LOD levels for this mesh
     bool castShadow = true;                           ///< drawn into the shadow depth pass
     std::uint32_t materialId = 0;                     ///< G-buffer MaterialId attachment (G8 decals)
+    anim::GpuSkinner* gpuSkin = nullptr;              ///< G14: GPU skinning binding (drawn instead of `mesh` when Effect::GpuSkinning is on and GL >= 4.3)
+    const fuhgl::render::MeshData* meshData = nullptr; ///< G18: CPU-side triangle data of `mesh` for ray-cast picking (glTF loader sets it; may be null)
 
     // --- material / textures (used when material == nullptr) ---
     const fuhgl::render::Material* material = nullptr; ///< explicit preset material wins

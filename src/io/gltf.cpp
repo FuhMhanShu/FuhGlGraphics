@@ -796,6 +796,7 @@ bool instantiateGltf(const GltfAsset& asset, fuhglgraphics::scene::Scene& scene,
             MeshComponent& mc = n.attach<MeshComponent>();
             for (std::size_t pi = 0; pi < gm.primitives.size(); ++pi) {
                 MeshEntry& e = mc.addMesh(&gpu.meshes[static_cast<std::size_t>(meshGpuIdx[static_cast<std::size_t>(gn.mesh)][pi])]);
+                e.meshData = &gm.primitives[pi]; // G18: CPU triangle data for ray-cast picking
                 const int mat = gm.primitiveMaterials[pi];
                 e.material = (mat >= 0 && mat < static_cast<int>(matPtr.size())) ? matPtr[static_cast<std::size_t>(mat)]
                                                                                  : nullptr;
@@ -868,6 +869,25 @@ bool instantiateGltf(const GltfAsset& asset, fuhglgraphics::scene::Scene& scene,
             sm.weights.weights = pi < gm.primitiveWeights.size() ? gm.primitiveWeights[pi]
                                                                   : std::vector<float>{};
             gpu.skinnedMeshes.push_back(std::move(sm));
+        }
+    }
+
+    // --- G14: GPU skinning bindings for the skinned primitives (GL >= 4.3 only) ---
+    gpu.gpuSkins.clear();
+    if (anim::GpuSkinner::supported()) {
+        for (auto& sm : gpu.skinnedMeshes) {
+            auto sk = std::make_unique<anim::GpuSkinner>();
+            if (!sk->create(sm.base, sm.weights)) continue;
+            sm.gpuSkin = sk.get();
+            gpu.gpuSkins.push_back(std::move(sk));
+            // wire the skinner + CPU mesh data into the node's MeshEntry
+            if (sm.node >= 0 && sm.node < static_cast<int>(gpu.nodePtrs.size()) && gpu.nodePtrs[static_cast<std::size_t>(sm.node)]) {
+                if (scene::MeshComponent* mc = gpu.nodePtrs[static_cast<std::size_t>(sm.node)]->find<scene::MeshComponent>())
+                    if (sm.primitive < mc->meshes.size()) {
+                        mc->meshes[sm.primitive].gpuSkin = sm.gpuSkin;
+                        mc->meshes[sm.primitive].meshData = &sm.base;
+                    }
+            }
         }
     }
     return true;

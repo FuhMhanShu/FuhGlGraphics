@@ -62,7 +62,14 @@ hexagonalem Bokeh-Kernel (`Effect::Dof`), Mini-Debug-HUD auf FuhGLCore's TextRen
 (`Effect::DebugHud`) und perzeptueller PSNR-Screenshot-Diff in der CI — siehe
 [G10-Tutorial](docs/de/tutorials/g10_upgrades.md) und Bilder in
 [docs/images/](docs/images/g10_dof_on.png).
-Als Nächstes: **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder **G2** (Qt-Editor).
+und **G14** — GPU-Skinning (`anim::GpuSkinner`: VAO + JOINTS_0/WEIGHTS_0-Attribute +
+Matrix-Palette-SSBO, gezeichnet vom GLSL-430-Skinning-Shader des G3-G-Buffer-Passes, wenn
+`Effect::GpuSkinning` an ist, GL >= 4.3; CPU-Fallback darunter) — siehe
+[G14-Tutorial](docs/de/tutorials/g14_gpu_skinning.md) und Bilder in
+[docs/images/](docs/images/g14_gpu_skinning_on.png).
+Als Nächstes: **G15–G23** (technische Erweiterungen: SSAO, SSR, Bloom, Picking,
+Szenen-Serialisierung, Terrain/LOD, volumetrischer Nebel, Wetness, Tonemap-Operatoren), dann
+**G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder **G2** (Qt-Editor).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.
 

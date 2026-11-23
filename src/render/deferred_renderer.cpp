@@ -1,5 +1,6 @@
 #include "fuhglgraphics/render/deferred_renderer.hpp"
 
+#include <fuhglgraphics/anim/gpu_skinner.hpp>
 #include <fuhglgraphics/particles/particle_system.hpp>
 #include <fuhglgraphics/probes/light_probes.hpp>
 #include <fuhglgraphics/water/water_surface.hpp>
@@ -48,7 +49,8 @@ struct DeferredRenderer::Impl {
         rMotion{fuhgl::Texture::Target::Tex2D}, rMatId{fuhgl::Texture::Target::Tex2D};
     fuhgl::Texture texOutput{fuhgl::Texture::Target::Tex2D};
 
-    fuhgl::render::Material gbufferMat, lightingMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
+    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
+    bool skinProgramReady = false; ///< G14: the GLSL 430 skinning G-buffer program (GL >= 4.3)
     fuhgl::render::Mesh decalBox; ///< G8: unit box for the decal projection pass
     // G13 water: planar-reflection target + cheap forward materials + the water surface pass
     fuhgl::Framebuffer reflFbo;
@@ -232,6 +234,23 @@ bool DeferredRenderer::createInternal() {
             return false;
         }
     }
+    // G14: skinning variant of the G-buffer pass (GLSL 430 SSBO palette) on GL >= 4.3;
+    // when it fails to compile the renderer silently falls back to CPU skinning (G6)
+    im.skinProgramReady = false;
+    if (glMajor_ > 4 || (glMajor_ == 4 && glMinor_ >= 3)) {
+        if (!im.gbufferSkinMat.create()) return false;
+        fuhgl::Shader vs(fuhgl::Shader::Type::Vertex), fs(fuhgl::Shader::Type::Fragment);
+        if (vs.compile(kGBufferVertSkin) && fs.compile(kGBufferFrag)) {
+            im.gbufferSkinMat.program().attach(vs);
+            im.gbufferSkinMat.program().attach(fs);
+            im.skinProgramReady = im.gbufferSkinMat.program().link();
+            if (!im.skinProgramReady)
+                std::fprintf(stderr, "DeferredRenderer: gbuffer skin link: %s\n",
+                             im.gbufferSkinMat.program().infoLog().c_str());
+        } else {
+            std::fprintf(stderr, "DeferredRenderer: gbuffer skin VS: %s\n", vs.infoLog().c_str());
+        }
+    }
     // G8 decal pass (projects into gAlbedo/gNormal between geometry and lighting)
     if (!im.decalMat.create()) return false;
     {
@@ -393,7 +412,8 @@ bool DeferredRenderer::createInternal() {
 }
 
 void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
-                                     const std::vector<std::uint32_t>* materialIds) {
+                                     const std::vector<std::uint32_t>* materialIds,
+                                     const std::vector<const anim::GpuSkinner*>* skins) {
     Impl& im = *impl_;
     auto& f = fuhgl::gl::functions();
     fuhgl::gl::enable(fuhgl::gl::Cap::DepthTest);
@@ -431,6 +451,44 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
     prog.setUniform("uPrevViewProj", prevViewProj);
     prog.setUniform("uResolution", fuhgl::math::Vec2(static_cast<float>(internalWidth_),
                                                       static_cast<float>(internalHeight_)));
+    // per-item uniforms, shared by the plain and the G14 skinning program
+    auto setItemUniforms = [&](fuhgl::Program& p, const fuhgl::render::DrawItem& item, std::size_t i,
+                               int instanced) {
+        p.setUniform("uModel", item.model);
+        p.setUniform("uInstanced", instanced);
+        p.setUniform("uMaterialId", materialIds && i < materialIds->size() ? (*materialIds)[i] : 0u);
+        const fuhgl::render::Material* preset =
+            (item.material && item.material->builtinShader) ? item.material : nullptr;
+        if (preset) {
+            p.setUniform("uAlbedo", preset->albedo);
+            p.setUniform("uEmissive", preset->emissive);
+            p.setUniform("uUseTex", preset->albedoTexture ? 1 : 0);
+            if (preset->albedoTexture) {
+                fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitAlbedo);
+                f.glBindTexture(static_cast<fuhgl::gl::GLenum>(preset->albedoTexture->target()),
+                                preset->albedoTexture->id());
+                p.setUniform("uMatTex", fuhgl::render::kTextureUnitAlbedo);
+            }
+            p.setUniform("uUseNormalMap", preset->normalMap ? 1 : 0);
+            if (preset->normalMap) {
+                fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitNormalMap);
+                f.glBindTexture(static_cast<fuhgl::gl::GLenum>(preset->normalMap->target()),
+                                preset->normalMap->id());
+                p.setUniform("uNormalTex", fuhgl::render::kTextureUnitNormalMap);
+            }
+            p.setUniform("uMetallic", preset->metallic);
+            p.setUniform("uRoughness", preset->roughness);
+            p.setUniform("uAo", preset->ao);
+        } else {
+            p.setUniform("uAlbedo", fuhgl::math::Vec3{1.f, 1.f, 1.f});
+            p.setUniform("uEmissive", fuhgl::math::Vec3{0.f, 0.f, 0.f});
+            p.setUniform("uUseTex", 0);
+            p.setUniform("uUseNormalMap", 0);
+            p.setUniform("uMetallic", 0.f);
+            p.setUniform("uRoughness", 0.5f);
+            p.setUniform("uAo", 1.f);
+        }
+    };
     for (std::size_t i = 0; i < scene.items.size(); ++i) {
         const fuhgl::render::DrawItem& item = scene.items[i];
         if (curWater_ && item.mesh == &curWater_->mesh()) continue; // G13: water leaves the G-buffer
@@ -439,40 +497,27 @@ void DeferredRenderer::renderGBuffer(const fuhgl::render::SceneView& scene,
             fuhgl::render::resolveLodMesh(item, scene.camera->eye(), scene.lodEnabled, &lodLevel);
         if (!mesh) continue;
         if (lodLevel >= 0) scene.lastLodLevel = lodLevel;
-        prog.setUniform("uModel", item.model);
-        prog.setUniform("uInstanced", mesh->instanceCount() > 0 ? 1 : 0);
-        prog.setUniform("uMaterialId", materialIds && i < materialIds->size() ? (*materialIds)[i] : 0u);
-        const fuhgl::render::Material* preset =
-            (item.material && item.material->builtinShader) ? item.material : nullptr;
-        if (preset) {
-            prog.setUniform("uAlbedo", preset->albedo);
-            prog.setUniform("uEmissive", preset->emissive);
-            prog.setUniform("uUseTex", preset->albedoTexture ? 1 : 0);
-            if (preset->albedoTexture) {
-                fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitAlbedo);
-                f.glBindTexture(static_cast<fuhgl::gl::GLenum>(preset->albedoTexture->target()),
-                                preset->albedoTexture->id());
-                prog.setUniform("uMatTex", fuhgl::render::kTextureUnitAlbedo);
-            }
-            prog.setUniform("uUseNormalMap", preset->normalMap ? 1 : 0);
-            if (preset->normalMap) {
-                fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitNormalMap);
-                f.glBindTexture(static_cast<fuhgl::gl::GLenum>(preset->normalMap->target()),
-                                preset->normalMap->id());
-                prog.setUniform("uNormalTex", fuhgl::render::kTextureUnitNormalMap);
-            }
-            prog.setUniform("uMetallic", preset->metallic);
-            prog.setUniform("uRoughness", preset->roughness);
-            prog.setUniform("uAo", preset->ao);
-        } else {
-            prog.setUniform("uAlbedo", fuhgl::math::Vec3{1.f, 1.f, 1.f});
-            prog.setUniform("uEmissive", fuhgl::math::Vec3{0.f, 0.f, 0.f});
-            prog.setUniform("uUseTex", 0);
-            prog.setUniform("uUseNormalMap", 0);
-            prog.setUniform("uMetallic", 0.f);
-            prog.setUniform("uRoughness", 0.5f);
-            prog.setUniform("uAo", 1.f);
+        // G14: skinned item -> skinning program (GLSL 430 palette SSBO) when enabled+supported
+        const anim::GpuSkinner* skin =
+            (skins && i < skins->size()) ? (*skins)[i] : nullptr;
+        if (skin && skin->isReady() && im.skinProgramReady && effectEnabled(Effect::GpuSkinning)) {
+            fuhgl::Program& sp = im.gbufferSkinMat.program();
+            sp.use();
+            sp.setUniform("uViewProj", viewProj);
+            sp.setUniform("uPrevViewProj", prevViewProj);
+            sp.setUniform("uResolution", fuhgl::math::Vec2(static_cast<float>(internalWidth_),
+                                                           static_cast<float>(internalHeight_)));
+            setItemUniforms(sp, item, i, 0);
+            skin->bindPalette();
+            skin->draw();
+            prog.use(); // restore the plain program for the following items
+            prog.setUniform("uViewProj", viewProj);
+            prog.setUniform("uPrevViewProj", prevViewProj);
+            prog.setUniform("uResolution", fuhgl::math::Vec2(static_cast<float>(internalWidth_),
+                                                              static_cast<float>(internalHeight_)));
+            continue;
         }
+        setItemUniforms(prog, item, i, mesh->instanceCount() > 0 ? 1 : 0);
         mesh->draw();
     }
 
@@ -683,7 +728,8 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
                               const std::vector<const particles::ParticleSystem*>* particleSystems,
                               const probes::LightProbeGrid* lightProbes,
                               const std::vector<Decal>* decals,
-                              const water::WaterSurface* water) {
+                              const water::WaterSurface* water,
+                              const std::vector<const anim::GpuSkinner*>* skins) {
     if (!scene.camera || width_ <= 0) return;
     const auto t0 = std::chrono::steady_clock::now();
     fuhgl::render::SceneView s = scene;
@@ -691,6 +737,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     curParticles_ = particleSystems;
     curProbes_ = lightProbes;
     curDecals_ = decals;
+    curSkins_ = skins; // G14
 
     // --- G13 water: resolve the active surface + its world plane, render the planar
     // reflection from the mirrored camera (clipped at the plane) before the G-buffer ---
@@ -796,7 +843,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     }
 
     curScene_ = &s;
-    renderGBuffer(s, materialIds);
+    renderGBuffer(s, materialIds, skins); // G14 skins forwarded to the G-buffer pass
     // remember this frame's (jittered) viewProj for next frame's motion vectors
     prevViewProj_ = fuhgl::math::jitterViewProj(s.camera->viewProj(s.aspect), s.jitter);
     impl_->post.execute();
@@ -810,6 +857,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     curParticles_ = nullptr;
     curProbes_ = nullptr;
     curDecals_ = nullptr;
+    curSkins_ = nullptr;
     curWater_ = nullptr;
 }
 
@@ -1226,6 +1274,7 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::Dof, dofEnabled_);
     gate(Effect::DebugHud, hudEnabled_);
     gate(Effect::Water, waterEnabled_);
+    gate(Effect::GpuSkinning, gpuSkinningEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -1247,6 +1296,7 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::Dof: dofEnabled_ = on; break;
         case Effect::DebugHud: hudEnabled_ = on; break;
         case Effect::Water: waterEnabled_ = on; break;
+        case Effect::GpuSkinning: gpuSkinningEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -1278,6 +1328,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::Dof: return dofEnabled_;
         case Effect::DebugHud: return hudEnabled_;
         case Effect::Water: return waterEnabled_;
+        case Effect::GpuSkinning: return gpuSkinningEnabled_;
     }
     return false;
 }
@@ -1285,7 +1336,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
 void DeferredRenderer::setAllEffects(bool on) {
     taaEnabled_ = upscaleEnabled_ = tonemapEnabled_ = iblEnabled_ = shadows_ = csmEnabled_ = on;
     pointShadows_ = contactShadowsEnabled = particlesEnabled_ = lightProbesEnabled_ = decalsEnabled_ = waterEnabled_ = on;
-    dofEnabled_ = hudEnabled_ = on;
+    dofEnabled_ = hudEnabled_ = gpuSkinningEnabled_ = on;
     applyCapabilities();
 }
 

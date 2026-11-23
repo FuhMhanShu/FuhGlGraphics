@@ -210,6 +210,18 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
                   frame.lightProbes, &frame.decals, frame.water);
   ```
+- **GPU skinning (G14).** `anim::GpuSkinner` owns one skinned mesh's GPU side: VAO with the
+  bind-pose vertices plus `JOINTS_0`/`WEIGHTS_0` as float4 attributes (locations 5/6) and an
+  SSBO with the joint matrix palette (binding 0). On GL >= 4.3 the G3 G-buffer pass draws it
+  with a GLSL-430 skinning vertex shader when `render::Effect::GpuSkinning` is enabled;
+  below 4.3 / with the effect off the plain mesh is drawn (CPU skinning via
+  `anim::skinMeshCpu`, G6). Wire it via `MeshEntry::gpuSkin` (-> `FrameData::skins`,
+  parallel to `view.items`) and call `skinner.uploadPalette(skeleton.palette)` per frame
+  after `Skeleton::updatePalette()`; pass `&frame.skins` as the last `render(...)` argument.
+  glTF assets get skinners automatically in `io::instantiateGltf()` on GL >= 4.3. Quick
+  start: [G14 tutorial](en/tutorials/g14_gpu_skinning.md), demo
+  `examples/gpu_skinning_screenshot`, screenshots: [GPU on](images/g14_gpu_skinning_on.png),
+  [CPU fallback](images/g14_gpu_skinning_off.png).
   hardening, temporal upscaling, bokeh DoF, screenshot diffs in CI, debug HUD.
 - **Infrastructure (G11).** On-disk asset cache keyed by content hash, JSON config system
   (same minimal in-repo JSON parser as the glTF loader), minimal Qt editor.

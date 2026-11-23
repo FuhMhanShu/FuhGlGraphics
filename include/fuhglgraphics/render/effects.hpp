@@ -11,6 +11,7 @@
 #include <fuhgl/math/vec.hpp>
 
 #include <cstdio>
+#include <string>
 
 namespace fuhglgraphics::render {
 
@@ -31,10 +32,11 @@ enum class Effect {
     Dof,            ///< G10 depth of field with a hexagonal bokeh kernel (post pass after upscale)
     DebugHud,       ///< G10 mini debug HUD (fps, frame time, effect toggles) on FuhGLCore TextRenderer
     Water,          ///< G13 water surface: Gerstner waves + planar reflection + foam pass
+    GpuSkinning,    ///< G14 GPU skinning: matrix-palette SSBO in the G-buffer pass (GL >= 4.3, CPU fallback below)
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 15;
+constexpr int kEffectCount = 16;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -54,15 +56,31 @@ inline const char* effectName(Effect e) {
         case Effect::Dof: return "DoF";
         case Effect::DebugHud: return "debug HUD";
         case Effect::Water: return "water";
+        case Effect::GpuSkinning: return "GPU skinning";
     }
     return "unknown";
+}
+
+/// @brief Inverse of effectName() (for config files / scene serialization). False when unknown.
+inline bool effectFromName(const std::string& name, Effect& out) {
+    for (int i = 0; i < kEffectCount; ++i) {
+        const Effect e = static_cast<Effect>(i);
+        if (name == effectName(e)) {
+            out = e;
+            return true;
+        }
+    }
+    return false;
 }
 
 /// @brief Pure capability mapping (F39): can a GPU with the given GL version run the effect?
 /// All G3 shaders are GLSL 330 and multisample textures are core since GL 3.2, so every
 /// effect needs GL >= 3.3. Kept as a pure function so unit tests need no GL context.
 inline bool effectSupported(Effect e, int glMajor, int glMinor) {
-    (void)e;
+    // G14: the matrix-palette SSBO path of the G-buffer pass needs GL >= 4.3
+    // (below that the renderer falls back to CPU skinning, G6)
+    if (e == Effect::GpuSkinning)
+        return glMajor > 4 || (glMajor == 4 && glMinor >= 3);
     return glMajor > 3 || (glMajor == 3 && glMinor >= 3);
 }
 
