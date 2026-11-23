@@ -131,3 +131,10 @@ target_link_libraries(fuhglgraphics_noise_screenshot PRIVATE fuhglgraphics)
 # TAA + upscale + ACES — cave overview + crystal closeup, headless to PNG.
 add_executable(fuhglgraphics_marching_cubes_screenshot marching_cubes_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_marching_cubes_screenshot PRIVATE fuhglgraphics)
+
+# G26 L-system showcase: forest of L-system trees (3 variants) + ferns on a G24-noise terrain,
+# 4000 instanced grass blades snapped via Instancing::heightFn, noon sun + CSM shadows + god
+# rays, day-sky cubemap + IBL, SSAO + volumetric fog, TAA + upscale + ACES — forest overview +
+# tree closeup, headless to PNG.
+add_executable(fuhglgraphics_lsystem_screenshot lsystem_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_lsystem_screenshot PRIVATE fuhglgraphics)

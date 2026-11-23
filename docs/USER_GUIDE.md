@@ -277,7 +277,15 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   [G25 tutorial](en/tutorials/g25_marching_cubes.md), demo `examples/marching_cubes_screenshot`,
   screenshots: [cave terrain](images/g25_marching_cubes_cave.png),
   [crystal blob](images/g25_marching_cubes_blob.png).
-  Planned on top: G26 L-systems, G27 WFC, G28 voronoi, G29 SDF fractals.
+- **L-systems (G26).** `procedural::LSystem` (`procedural/lsystem.hpp`): set axiom + rules +
+  iterations, call `derive()` (string rewriting) and `generate(trunkColor, leafColor)` —
+  a 3D turtle (F/f, +−&^\|, [ ] with radius taper, L leaf quads) emits `MeshData`
+  (tapered cylinders + leaf quads). Presets: `LSystem::makeTree(variant)`, `makeFern()`,
+  `makeBush()`. Upload via `mesh.setMeshData(...)` + `MeshComponent`, place with
+  `heightAt()` / instancing. Quick start: [G26 tutorial](en/tutorials/g26_lsystem.md),
+  demo `examples/lsystem_screenshot`, screenshots: [forest](images/g26_lsystem_forest.png),
+  [tree closeup](images/g26_lsystem_tree.png).
+  Planned on top: G27 WFC, G28 voronoi, G29 SDF fractals.
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

@@ -110,8 +110,11 @@ and screenshots in [docs/images/](docs/images/g24_noise_wide.png) — and **G25*
 cubes (`procedural::marchingCubes` / `marchingCubesChunked`: voxel volume → watertight indexed
 `MeshData`, used for cave terrain and SDF meshing) — see the
 [G25 tutorial](docs/en/tutorials/g25_marching_cubes.md) and screenshots in
-[docs/images/](docs/images/g25_marching_cubes_cave.png).
-Next: **G26–G29** (L-systems, WFC, voronoi, SDF/fractals) or **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
+[docs/images/](docs/images/g25_marching_cubes_cave.png) — and **G26** — L-systems
+(`procedural::LSystem`: rule rewriting + 3D turtle → `MeshData` trees/ferns/bushes, presets
+`makeTree`/`makeFern`/`makeBush`) — see the [G26 tutorial](docs/en/tutorials/g26_lsystem.md)
+and screenshots in [docs/images/](docs/images/g26_lsystem_forest.png).
+Next: **G27–G29** (WFC, voronoi, SDF/fractals) or **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
 (Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.

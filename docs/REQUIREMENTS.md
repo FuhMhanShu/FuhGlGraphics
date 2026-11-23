@@ -277,8 +277,15 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   `tests/gl_smoke_procedural.cpp`, `examples/marching_cubes_screenshot`,
   `docs/images/g25_marching_cubes_*.png` and the
   [G25 tutorial](en/tutorials/g25_marching_cubes.md).
-- **G26–G29 — procedural generation algorithms** — planned (same `procedural/` module,
+- **G26 — L-systems (Lindenmayer) → mesh** — implemented: `procedural::LSystem` in
+  `include/fuhglgraphics/procedural/lsystem.hpp` + `src/procedural/lsystem.cpp`:
+  `derive()` (deterministic rule rewriting) + `generate()` 3D turtle interpretation
+  (F/f draw/move, +− roll, &^ pitch, \| yaw, [ ] push/pop with radius taper, L leaf quads)
+  → `MeshData` (tapered cylinders + leaf quads); presets `makeTree(variant)`, `makeFern()`,
+  `makeBush()`. See `tests/test_procedural_lsystem.cpp`, `examples/lsystem_screenshot`,
+  `docs/images/g26_lsystem_*.png` and the [G26 tutorial](en/tutorials/g26_lsystem.md).
+- **G27–G29 — procedural generation algorithms** — planned (same `procedural/` module,
   one feature per PR with unit test + gl_smoke + example screenshot + tutorial en/de):
-  G26 L-systems (3D turtle → `MeshData`), G27 wave function collapse (tiled, edge tags +
-  rotations, backtracking → scene placements), G28 2D Voronoi cells + extrusion meshes,
-  G29 SDF/3D fractals (Mandelbulb) meshed via G25.
+  G27 wave function collapse (tiled, edge tags + rotations, backtracking → scene
+  placements), G28 2D Voronoi cells + extrusion meshes, G29 SDF/3D fractals
+  (Mandelbulb) meshed via G25.
