@@ -33,6 +33,7 @@
 #include <fuhglgraphics/scene/node.hpp>
 #include <fuhglgraphics/scene/scene.hpp>
 #include <fuhglgraphics/scene/picking.hpp>
+#include <fuhglgraphics/scene/serialize.hpp>
 
 #include <fuhglgraphics/io/json.hpp>
 #include <fuhglgraphics/io/gltf.hpp>

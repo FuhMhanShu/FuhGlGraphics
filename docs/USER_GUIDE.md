@@ -218,6 +218,15 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   loader for every primitive). Basis for editor selection/gizmos. Quick start:
   [G18 tutorial](en/tutorials/g18_picking.md), demo `examples/picking_screenshot`,
   screenshots: [marker at hit](images/g18_picking_marker.png).
+- **Scene serialization (G19).** `scene/serialize.hpp`: `sceneToJson()`/`sceneFromJson()` for an
+  in-memory Scene <-> `io::Json` round-trip and `saveScene()`/`loadScene()` for .json files
+  (format `{"format":"fuhglgraphics-scene","version":1,"root":{node}}`: node TRS, effects +
+  params, instancing, mesh/light/decal/animation components). GL meshes are stored as JSON mesh
+  specs and re-created through a `MeshResolver` into a mesh arena — `defaultShapeResolver`
+  handles `{"shape":"box"|"quad",...}`; `io::writeJson()`/`writeJsonFile()` are the JSON
+  pretty-printer. Quick start: [G19 tutorial](en/tutorials/g19_serialization.md), demo
+  `examples/serialization_screenshot`, screenshots: [original](images/g19_serialization_original.png),
+  [loaded from JSON](images/g19_serialization_loaded.png).
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

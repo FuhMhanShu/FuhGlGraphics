@@ -64,6 +64,8 @@ public:
     Node& addChild(std::unique_ptr<Node> child);
     /// @brief Creates and adds a named child.
     Node& createChild(std::string name = {});
+    /// @brief Destroys all children (G19: sceneFromJson rebuilds the root in place).
+    void clearChildren() { children_.clear(); }
     const std::vector<std::unique_ptr<Node>>& children() const { return children_; }
     std::size_t childCount() const { return children_.size(); }
 

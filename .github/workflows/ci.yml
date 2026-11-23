@@ -184,6 +184,11 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_picking_screenshot --out docs/images/ci/g18_picking_marker.png --width 1280 --height 720 --frames 16 --px 560 --py 400
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_picking_screenshot --out docs/images/ci/g18_picking_nomarker.png --width 1280 --height 720 --frames 16 --px 560 --py 400 --no-marker
 
+      - name: Build + render G19 serialization screenshots (original vs. loaded from .json)
+        run: |
+          cmake --build build -j --target fuhglgraphics_serialization_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_serialization_screenshot --prefix docs/images/ci/g19_serialization --width 1280 --height 720 --frames 16
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)

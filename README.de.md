@@ -79,9 +79,12 @@ und Bilder in [docs/images/](docs/images/g17_bloom_on.png) — und **G18** — P
 Ray-Casting auf dem Szenengraphen (`scene::pick()`: Strahl von der Kamera durch ein Pixel,
 World-AABB-Culling, Möller–Trumbore-Dreieckstests auf `MeshEntry::meshData`) — siehe
 [G18-Tutorial](docs/de/tutorials/g18_picking.md) und Bilder in
-[docs/images/](docs/images/g18_picking_marker.png).
-Als Nächstes: **G19–G23** (technische Erweiterungen: SSAO, SSR, Bloom, Picking,
-Szenen-Serialisierung, Terrain/LOD, volumetrischer Nebel, Wetness, Tonemap-Operatoren), dann
+[docs/images/](docs/images/g18_picking_marker.png) — und **G19** — Szenen-Serialisierung
+(`scene/serialize.hpp`: Scene <-> JSON-Round-Trip über `io::writeJson`, Mesh-Specs über einen
+`MeshResolver`-Callback aufgelöst, `saveScene`/`loadScene` für .json-Dateien) — siehe
+[G19-Tutorial](docs/de/tutorials/g19_serialization.md) und Bilder in
+[docs/images/](docs/images/g19_serialization_loaded.png).
+Als Nächstes: **G20–G23** (Terrain/LOD, volumetrischer Nebel, Wetness, Tonemap-Operatoren), dann
 **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder **G2** (Qt-Editor).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.

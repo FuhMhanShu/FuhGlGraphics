@@ -1,7 +1,10 @@
 #include "fuhglgraphics/io/json.hpp"
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <sstream>
 
 namespace fuhglgraphics::io {
 
@@ -233,6 +236,115 @@ bool base64Decode(const std::string& in, std::vector<unsigned char>& out) {
         }
     }
     if (pad > 2) return false;
+    return true;
+}
+
+namespace {
+
+void writeEscaped(std::string& out, const std::string& s) {
+    out.push_back('"');
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    out += buf;
+                } else {
+                    out.push_back(static_cast<char>(c));
+                }
+        }
+    }
+    out.push_back('"');
+}
+
+void writeNumber(std::string& out, double v) {
+    if (std::isnan(v) || std::isinf(v)) {
+        out += "null"; // JSON has no NaN/Inf
+        return;
+    }
+    char buf[40];
+    std::snprintf(buf, sizeof(buf), "%.17g", v);
+    // trim to the shortest representation that round-trips
+    double back = std::strtod(buf, nullptr);
+    if (back == v) {
+        out += buf;
+        return;
+    }
+    for (int prec = 1; prec < 17; ++prec) {
+        std::snprintf(buf, sizeof(buf), "%.*g", prec, v);
+        if (std::strtod(buf, nullptr) == v) break;
+    }
+    out += buf;
+}
+
+void writeValue(std::string& out, const Json& v, int indent, int level) {
+    const std::string pad(static_cast<std::size_t>(indent > 0 ? indent * (level + 1) : 0), ' ');
+    const std::string padEnd(static_cast<std::size_t>(indent > 0 ? indent * level : 0), ' ');
+    const char* nl = indent > 0 ? "\n" : "";
+    switch (v.type) {
+        case Json::Type::Null: out += "null"; break;
+        case Json::Type::Bool: out += v.boolean ? "true" : "false"; break;
+        case Json::Type::Number: writeNumber(out, v.number); break;
+        case Json::Type::String: writeEscaped(out, v.str); break;
+        case Json::Type::Array: {
+            out.push_back('[');
+            if (!v.arr.empty()) {
+                for (std::size_t i = 0; i < v.arr.size(); ++i) {
+                    if (i) out.push_back(',');
+                    if (indent > 0) { out += nl; out += pad; }
+                    writeValue(out, v.arr[i], indent, level + 1);
+                }
+                if (indent > 0) { out += nl; out += padEnd; }
+            }
+            out.push_back(']');
+            break;
+        }
+        case Json::Type::Object: {
+            out.push_back('{');
+            if (!v.obj.empty()) {
+                std::size_t i = 0;
+                for (const auto& kv : v.obj) {
+                    if (i++) out.push_back(',');
+                    if (indent > 0) { out += nl; out += pad; }
+                    writeEscaped(out, kv.first);
+                    out.push_back(':');
+                    if (indent > 0) out.push_back(' ');
+                    writeValue(out, kv.second, indent, level + 1);
+                }
+                if (indent > 0) { out += nl; out += padEnd; }
+            }
+            out.push_back('}');
+            break;
+        }
+    }
+}
+
+} // namespace
+
+std::string writeJson(const Json& v, int indent) {
+    std::string out;
+    writeValue(out, v, indent, 0);
+    return out;
+}
+
+bool writeJsonFile(const std::string& path, const Json& v, std::string* err) {
+    std::ofstream f(path, std::ios::binary | std::ios::trunc);
+    if (!f) {
+        if (err) *err = "cannot open " + path + " for writing";
+        return false;
+    }
+    const std::string s = writeJson(v, 2) + "\n";
+    f.write(s.data(), static_cast<std::streamsize>(s.size()));
+    if (!f) {
+        if (err) *err = "write failed: " + path;
+        return false;
+    }
     return true;
 }
 

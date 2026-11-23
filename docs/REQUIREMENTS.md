@@ -217,6 +217,13 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   culling, Möller–Trumbore on `MeshEntry::meshData`), pure + unit-tested; see
   `tests/test_picking.cpp`, `tests/gl_smoke_picking.cpp`, `examples/picking_screenshot`,
   `docs/images/g18_picking_*.png` and the [G18 tutorial](en/tutorials/g18_picking.md).
+- **G19 — scene serialization** (`include/fuhglgraphics/scene/serialize.hpp`,
+  `src/scene/serialize.cpp`, `io::writeJson`/`writeJsonFile` in `io/json.*`): implemented —
+  Scene <-> `io::Json` round-trip (nodes TRS, effects list+params, instancing, mesh entries
+  with a `MeshResolver` callback for GL meshes + `defaultShapeResolver` for box/quad specs,
+  light/decal/animation components) plus `saveScene`/`loadScene` (.json files); see
+  `tests/test_serialize.cpp`, `tests/gl_smoke_serialize.cpp`, `examples/serialization_screenshot`,
+  `docs/images/g19_serialization_*.png` and the [G19 tutorial](en/tutorials/g19_serialization.md).
 - G2, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON

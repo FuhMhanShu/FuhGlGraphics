@@ -73,3 +73,9 @@ target_link_libraries(fuhglgraphics_bloom_screenshot PRIVATE fuhglgraphics)
 # tests on MeshEntry::meshData) and a marker cube is rendered at the hit point — headless to PNG.
 add_executable(fuhglgraphics_picking_screenshot picking_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_picking_screenshot PRIVATE fuhglgraphics)
+
+# G19 serialization demo: builds a scene, renders it, saves it to .json, injects procedural
+# mesh specs, loads it back with the default shape resolver and renders the loaded scene —
+# both PNGs must match (round-trip) — headless to PNG.
+add_executable(fuhglgraphics_serialization_screenshot serialization_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_serialization_screenshot PRIVATE fuhglgraphics)

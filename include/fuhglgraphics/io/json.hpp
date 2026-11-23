@@ -61,6 +61,13 @@ struct Json {
 /// @brief Parses `text` into `out`. Returns false and fills `err` on syntax errors.
 bool parseJson(const std::string& text, Json& out, std::string* err = nullptr);
 
+/// @brief Serializes `v` to a pretty-printed JSON string (`indent` spaces per level, 0 = compact).
+/// Numbers use the shortest round-trip-ish representation (%.17g trimmed). Pure — unit-testable.
+std::string writeJson(const Json& v, int indent = 2);
+
+/// @brief Convenience: writes `v` as JSON to `path`. Returns false + err on I/O failure.
+bool writeJsonFile(const std::string& path, const Json& v, std::string* err = nullptr);
+
 /// @brief Base64 decode (glTF `data:` URIs). Whitespace is ignored; returns false on
 /// invalid characters or bad padding.
 bool base64Decode(const std::string& in, std::vector<unsigned char>& out);

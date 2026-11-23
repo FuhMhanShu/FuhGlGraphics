@@ -42,6 +42,10 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
 - [G18 — Picking / Ray-Casting](g18_picking.md) — `scene::pick()`: Kamera-Strahl durch ein
   Pixel + AABB-Culling + Möller–Trumbore-Dreieckstests auf `MeshEntry::meshData`; Marker am
   Trefferpunkt; Bilder in [docs/images/](../../images/g18_picking_marker.png)
+- [G19 — Szenen-Serialisierung](g19_serialization.md) — `scene/serialize.hpp`: Scene <->
+  `io::Json`-Round-Trip (`io::writeJson`-Pretty-Printer, Mesh-Specs über `MeshResolver`,
+  `saveScene`/`loadScene` für .json-Dateien); Original- vs. aus-Datei-geladen-Render stimmen
+  überein; Bilder in [docs/images/](../../images/g19_serialization_loaded.png)
 - [G17 — Bloom](g17_bloom.md) — Post-Pass nach den Partikeln, vor TAA: Bright-Pass oberhalb
   eines einstellbaren `bloomThreshold` + 9-Tap-Blur + Add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   Bilder in [docs/images/](../../images/g17_bloom_on.png)

@@ -43,6 +43,10 @@ One small tutorial per feature. Each is self-contained: goal → code → result
 - [G18 — Picking / ray-casting](g18_picking.md) — `scene::pick()`: camera ray through a
   pixel + AABB culling + Möller–Trumbore triangle tests on `MeshEntry::meshData`; marker at
   the hit point; screenshots in [docs/images/](../../images/g18_picking_marker.png)
+- [G19 — Scene serialization](g19_serialization.md) — `scene/serialize.hpp`: Scene <->
+  `io::Json` round-trip (`io::writeJson` pretty-printer, mesh specs via `MeshResolver`,
+  `saveScene`/`loadScene` for .json files); original vs. loaded-from-file renders match;
+  screenshots in [docs/images/](../../images/g19_serialization_loaded.png)
 - [G17 — Bloom](g17_bloom.md) — post pass after particles, before TAA: bright-pass above
   an adjustable `bloomThreshold` + 9-tap blur + add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   screenshots in [docs/images/](../../images/g17_bloom_on.png)

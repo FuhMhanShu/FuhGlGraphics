@@ -12,6 +12,7 @@ add_executable(fuhglgraphics_tests
     test_ssr.cpp
     test_bloom.cpp
     test_picking.cpp
+    test_serialize.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -136,3 +137,11 @@ add_executable(fuhglgraphics_gl_smoke_picking gl_smoke_picking.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_picking PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_picking COMMAND fuhglgraphics_gl_smoke_picking)
 set_tests_properties(fuhglgraphics_gl_smoke_picking PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G19 scene serialization (label "gl_context"): saves a scene
+# to .json, loads it back with the default shape resolver (real GL meshes), renders it and
+# verifies items/lights + non-dark pixels. Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_serialize gl_smoke_serialize.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_serialize PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_serialize COMMAND fuhglgraphics_gl_smoke_serialize)
+set_tests_properties(fuhglgraphics_gl_smoke_serialize PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

@@ -9,6 +9,25 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G19 — scene serialization** (`fuhglgraphics::scene::serialize`,
+  `include/fuhglgraphics/scene/serialize.hpp`, `src/scene/serialize.cpp`): Scene <-> `io::Json`
+  round-trip — node hierarchy (name + TRS), per-node effects (list + params), instancing and the
+  pure-data components (MeshComponent entries with material params/materialId/castShadow/
+  localOffset, LightComponent, DecalComponent, AnimationComponent clips) — plus
+  `saveScene`/`loadScene` for .json files. GL meshes are stored as JSON mesh specs
+  (e.g. `{"shape":"box","halfExtents":[..]}`) and re-created on load through a caller-provided
+  `MeshResolver` into a mesh arena; `defaultShapeResolver` covers the procedural box/quad
+  shapes. `io::writeJson()`/`io::writeJsonFile()` added to `io/json.*` (pretty printer, escapes,
+  shortest round-trip numbers). Basis for G12 `.fasset` project files. Tests:
+  `tests/test_serialize.cpp` (unit: writeJson/parseJson round-trip incl. escapes/unicode/numbers,
+  full scene JSON round-trip equality, save/load file round-trip, malformed input rejected) +
+  `tests/gl_smoke_serialize.cpp` (label `gl_context`; save -> patch box spec -> load with
+  defaultShapeResolver -> render, checks items/lights + non-dark frame). Demo:
+  `examples/serialization_screenshot` (original vs. loaded-from-file PNGs match, round-trip
+  JSON equal) headless to PNG; references `docs/images/g19_serialization_{original,loaded}.png`.
+  Tutorial: `docs/en/tutorials/g19_serialization.md` + German translation.
+  Requirement entry G19 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G18 — picking / ray-casting on the scene graph** (`fuhglgraphics::scene::picking`,
   `include/fuhglgraphics/scene/picking.hpp`, `src/scene/picking.cpp`): pure CPU module (no GL) —
   `rayFromScreen()` (world ray through a pixel), `rayIntersectAabb()` (slab test, culls node
