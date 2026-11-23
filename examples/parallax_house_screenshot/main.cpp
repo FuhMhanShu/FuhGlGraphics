@@ -168,7 +168,7 @@ fuhgl::Texture makeBrickNormal() {
 
 // Dark red shingle rows for the pyramid roof.
 fuhgl::Texture makeShingleTex() {
-    constexpr int S = 256;
+    static constexpr int S = 256; // static: usable inside the no-capture lambda on MSVC too
     return makeTex(S, [](int x, int y, unsigned char* o) {
         const float u = static_cast<float>(x) / S, v = static_cast<float>(y) / S;
         const int row = static_cast<int>(v * 10.f);
@@ -188,7 +188,7 @@ fuhgl::Texture makeShingleTex() {
 
 // Gray paving stones (foundation + path): voronoi-ish cells via brick-ish grid + fbm jitter.
 fuhgl::Texture makeStoneTex() {
-    constexpr int S = 256;
+    static constexpr int S = 256; // static: usable inside the no-capture lambda on MSVC too
     return makeTex(S, [](int x, int y, unsigned char* o) {
         const float u = static_cast<float>(x) / S * 6.f, v = static_cast<float>(y) / S * 6.f;
         const int cx = static_cast<int>(u), cy = static_cast<int>(v);
@@ -208,7 +208,7 @@ fuhgl::Texture makeStoneTex() {
 
 // Lawn: green fbm noise with a few lighter blades specks.
 fuhgl::Texture makeGrassTex() {
-    constexpr int S = 256;
+    static constexpr int S = 256; // static: usable inside the no-capture lambda on MSVC too
     return makeTex(S, [](int x, int y, unsigned char* o) {
         const float u = static_cast<float>(x) / S, v = static_cast<float>(y) / S;
         const float n = fuhgl::math::fbm3(u * 22.f, v * 22.f, 4.2f, 4, 5u);
@@ -223,7 +223,7 @@ fuhgl::Texture makeGrassTex() {
 
 // Wood grain for the door: vertical streaks.
 fuhgl::Texture makeWoodTex() {
-    constexpr int S = 256;
+    static constexpr int S = 256; // static: usable inside the no-capture lambda on MSVC too
     return makeTex(S, [](int x, int y, unsigned char* o) {
         const float u = static_cast<float>(x) / S, v = static_cast<float>(y) / S;
         const float grain = fuhgl::math::fbm3(u * 34.f + std::sin(v * 40.f) * 0.35f, v * 6.f, 2.2f, 4, 11u);
