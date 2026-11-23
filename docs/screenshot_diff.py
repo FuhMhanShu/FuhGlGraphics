@@ -119,7 +119,12 @@ def main(argv):
         min_psnr = float(argv[argv.index("--min-psnr") + 1])
     refs = {f for f in os.listdir(ref_dir) if f.endswith(".png")}
     cis = {f for f in os.listdir(ci_dir) if f.endswith(".png")}
-    pairs = sorted(refs & cis)
+    # Images with wall-clock text overlays (the G10 debug HUD prints fps/frame-ms) are
+    # inherently non-deterministic across runners — exclude them from the PSNR gate.
+    excluded = {"g10_hud.png"}
+    pairs = sorted((refs & cis) - excluded)
+    for name in sorted((refs & cis) & excluded):
+        print(f"skip {name}: timing-dependent text overlay (excluded)")
     if not pairs:
         print(f"screenshot_diff: no PNG pairs between {ref_dir} and {ci_dir}")
         return 0
