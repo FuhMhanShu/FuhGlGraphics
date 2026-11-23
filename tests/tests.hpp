@@ -17,3 +17,4 @@ void runPickingTests();
 void runSerializeTests();
 void runTerrainLodTests();
 void runVolumetricTests();
+void runWetnessTests();

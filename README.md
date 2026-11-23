@@ -94,8 +94,12 @@ placement) — see the [G20 tutorial](docs/en/tutorials/g20_terrain_lod.md) and 
 3D-noise volume with height falloff + Henyey–Greenstein sun scattering against the G-buffer
 depth; pure CPU twins in `render/volumetric.hpp`) — see the
 [G21 tutorial](docs/en/tutorials/g21_volumetric_fog.md) and screenshots in
-[docs/images/](docs/images/g21_volumetric_on.png).
-Next up: **G22–G23** (wetness, tonemap operators), then **G11**
+[docs/images/](docs/images/g21_volumetric_on.png) — and **G22** — wetness/rain on PBR
+(`Effect::Wetness`: lighting-pass roughness/albedo modulation with a noise puddle mask on
+up-facing surfaces + SSR strength boost; pure CPU twins in `render/wetness.hpp`) — see the
+[G22 tutorial](docs/en/tutorials/g22_wetness.md) and screenshots in
+[docs/images/](docs/images/g22_wetness_wet.png).
+Next up: **G23** (tonemap operators), then **G11**
 (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2** (Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.

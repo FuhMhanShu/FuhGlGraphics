@@ -238,6 +238,13 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   (hdrP -> hdrV -> hdrB), `Effect::VolumetricFog`, `EffectParams::volumetric*`): implemented —
   see `tests/test_volumetric.cpp`, `tests/gl_smoke_volumetric.cpp`, `examples/volumetric_screenshot`,
   `docs/images/g21_volumetric_*.png` and the [G21 tutorial](en/tutorials/g21_volumetric_fog.md).
+- **G22 — wetness / rain on PBR** (`include/fuhglgraphics/render/wetness.hpp` pure helpers +
+  `kLightFragWetness` block in the G3 lighting pass, `Effect::Wetness`,
+  `EffectParams::wetness*`, SSR strength boost via `wetnessAmount`): implemented — up-facing
+  surfaces get a glossy film (roughness -> 0.06) + darker albedo, noise puddle mask in
+  depressions, SSR reflects more when wet; see `tests/test_wetness.cpp`,
+  `tests/gl_smoke_wetness.cpp`, `examples/wetness_screenshot`, `docs/images/g22_wetness_*.png`
+  and the [G22 tutorial](en/tutorials/g22_wetness.md).
 - G2, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON

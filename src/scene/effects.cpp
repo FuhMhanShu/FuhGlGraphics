@@ -58,6 +58,10 @@ void Effects::applyTo(render::DeferredRenderer& renderer) const {
     renderer.volumetricMaxDist = params.volumetricMaxDist;
     renderer.volumetricStrength = params.volumetricStrength;
     renderer.volumetricSteps = params.volumetricSteps;
+    // G22 wetness
+    renderer.wetnessAmount = params.wetnessAmount;
+    renderer.wetnessPuddle = params.wetnessPuddle;
+    renderer.wetnessNoiseScale = params.wetnessNoiseScale;
     // (width() > 0: the renderer was create()d, so a GL context is current and the
     //  cube map can be allocated)
     if (enabled(render::Effect::PointShadows) && !renderer.pointShadowEnabled() && renderer.width() > 0)

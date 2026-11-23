@@ -55,6 +55,10 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   (Höhen-Falloff + fBm, Henyey–Greenstein-Phase) gegen die G-Buffer-Tiefe, foggt Geometrie und
   Himmel; reine CPU-Zwillinge in `render/volumetric.hpp`; Bilder in
   [docs/images/](../../images/g21_volumetric_on.png)
+- [G22 — Wetness / Regen auf PBR](g22_wetness.md) — `Effect::Wetness`: Roughness/Albedo-
+  Modulation im Lighting-Pass mit Noise-Pfützen-Maske auf nach oben zeigenden Flächen + SSR-Boost;
+  reine CPU-Zwillinge in `render/wetness.hpp`; Bilder in
+  [docs/images/](../../images/g22_wetness_wet.png)
 - [G17 — Bloom](g17_bloom.md) — Post-Pass nach den Partikeln, vor TAA: Bright-Pass oberhalb
   eines einstellbaren `bloomThreshold` + 9-Tap-Blur + Add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   Bilder in [docs/images/](../../images/g17_bloom_on.png)

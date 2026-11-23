@@ -246,6 +246,13 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   etc.). Quick start: [G21 tutorial](en/tutorials/g21_volumetric_fog.md), demo
   `examples/volumetric_screenshot`, screenshots: [off](images/g21_volumetric_off.png),
   [on](images/g21_volumetric_on.png), [dense](images/g21_volumetric_dense.png).
+- **Wetness / rain (G22).** `render::Effect::Wetness` modulates the PBR inputs in the lighting
+  pass: up-facing surfaces get roughness mixed toward 0.06 and a ~35 % darker albedo at full
+  wetness; a noise puddle mask over world xz (params `wetnessAmount`, `wetnessPuddle`,
+  `wetnessNoiseScale`) deepens depressions. `wetnessAmount` also boosts the G16 SSR strength.
+  Pure CPU twins in `render/wetness.hpp`. Quick start: [G22 tutorial](en/tutorials/g22_wetness.md),
+  demo `examples/wetness_screenshot`, screenshots: [dry](images/g22_wetness_dry.png),
+  [wet](images/g22_wetness_wet.png), [puddles](images/g22_wetness_puddles.png).
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

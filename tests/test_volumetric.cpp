@@ -16,7 +16,7 @@ using namespace fuhglgraphics::render;
 void runVolumetricTests() {
     // --- effect registry: G21 present ---
     {
-        CHECK(kEffectCount == 20);
+        CHECK(kEffectCount == 21);
         Effect e;
         CHECK(effectFromName("volumetric fog", e) && e == Effect::VolumetricFog);
         CHECK(effectSupported(Effect::VolumetricFog, 3, 3));

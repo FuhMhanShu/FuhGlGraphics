@@ -89,3 +89,8 @@ target_link_libraries(fuhglgraphics_terrain_screenshot PRIVATE fuhglgraphics)
 # (raymarched 3D-noise volume, height falloff + Henyey-Greenstein sun scattering) — headless to PNG.
 add_executable(fuhglgraphics_volumetric_screenshot volumetric_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_volumetric_screenshot PRIVATE fuhglgraphics)
+
+# G22 wetness demo: plaza with SSR, rendered dry / wet / puddly (Effect::Wetness modulates
+# albedo+roughness in the lighting pass + puddle mask + SSR boost) — headless to PNG.
+add_executable(fuhglgraphics_wetness_screenshot wetness_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_wetness_screenshot PRIVATE fuhglgraphics)

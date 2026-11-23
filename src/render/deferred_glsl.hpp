@@ -398,6 +398,42 @@ uniform sampler2D uSsao;      // unit 6: G15 AO factor (1 = unoccluded)
 uniform int uSsaoEnabled;
 )GLSL";
 
+// --- G22 wetness/rain modulation for the lighting pass. Pure CPU twins: render/wetness.hpp.
+// Up-facing surfaces get a glossy water film (roughness -> 0.06) and a darker albedo; a
+// noise puddle mask deepens depressions. Applied in kLightFragTail before shade().
+constexpr const char* kLightFragWetness = R"GLSL(
+uniform int uWetnessEnabled;
+uniform float uWetness;        // global rain amount 0..1
+uniform float uWetnessPuddle;  // puddle mask strength 0..1
+uniform float uWetnessNoiseScale;
+float wetHash(vec2 p) {
+    p = fract(p * vec2(0.1031, 0.1030));
+    p += dot(p, p.yx + 33.33);
+    return fract((p.x + p.y) * p.x);
+}
+float wetNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = wetHash(i);
+    float b = wetHash(i + vec2(1.0, 0.0));
+    float c = wetHash(i + vec2(0.0, 1.0));
+    float d = wetHash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+// combined wetness factor: rain amount * up-facing * puddle blend (mirror of wetness.hpp)
+void applyWetness(inout vec3 albedo, inout float roughness, vec3 worldPos, vec3 N) {
+    if (uWetnessEnabled != 1 || uWetness <= 0.0) return;
+    float up = clamp(N.y, 0.0, 1.0);
+    float n = wetNoise(worldPos.xz / max(uWetnessNoiseScale, 1e-6));
+    float m = n * n * (3.0 - 2.0 * n);
+    float puddle = mix(1.0, m, clamp(uWetnessPuddle, 0.0, 1.0));
+    float w = clamp(uWetness, 0.0, 1.0) * up * puddle;
+    albedo *= 1.0 - 0.35 * w;
+    roughness = mix(roughness, 0.06, w);
+}
+)GLSL";
+
 // --- fullscreen triangle (all post passes) ------------------------------------------
 constexpr const char* kFsVert = R"GLSL(#version 330 core
 out vec2 vUV;
@@ -746,6 +782,8 @@ void main() {
     vec3 emissive = texture(uGEmissive, vUV).rgb;
     vec4 pbr = texture(uGPbr, vUV);
     vec3 V = normalize(uCamPos - worldPos);
+    // G22: wetness/rain film modulates albedo + roughness before shading
+    applyWetness(albedo, pbr.g, worldPos, N);
     // G15: multiply the material AO with the screen-space AO factor
     float ssao = (uSsaoEnabled == 1) ? texture(uSsao, vUV).r : 1.0;
     vec3 lit = shade(albedo, pbr.r, pbr.g, pbr.b * ssao, N, worldPos, V) + emissive;

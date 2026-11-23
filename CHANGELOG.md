@@ -9,6 +9,22 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G22 — wetness / rain on PBR materials** (`include/fuhglgraphics/render/wetness.hpp` pure
+  helpers, `kLightFragWetness` block in the G3 lighting fragment shader, `Effect::Wetness`
+  (kEffectCount = 21, off by default), `EffectParams::wetness*`): with the effect on, the
+  lighting pass modulates the PBR inputs per pixel — up-facing surfaces (`N.y`) get a glossy
+  water film (roughness mixed toward 0.06) and a ~35 % darker albedo at full wetness, and a
+  deterministic 2D-noise puddle mask over world xz deepens depressions (`wetnessPuddle`: 0 =
+  flat film, 1 = puddle spots only). Additionally `wetnessAmount` is added to the SSR strength
+  in the G16 pass (wet surfaces reflect more; stacks with `ssrWetnessBoost`). Pure CPU twins
+  (`wetnessPuddleMask`, `wetnessFactor`, `wetnessRoughness`, `wetnessAlbedoScale`) are
+  unit-tested. Tests: `tests/test_wetness.cpp` (unit) + `tests/gl_smoke_wetness.cpp` (label
+  `gl_context`; plaza with SSR, dry vs wet measurably different, no GL error). Demo:
+  `examples/wetness_screenshot` (dry/wet/puddles) headless to PNG; references
+  `docs/images/g22_wetness_{dry,wet,puddles}.png`. Tutorial:
+  `docs/en/tutorials/g22_wetness.md` + German translation.
+  Requirement entry G22 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G21 — volumetric fog / clouds** (`include/fuhglgraphics/render/volumetric.hpp` pure
   helpers, `kVolumetricFrag` + "volumetric" post pass in the G3 renderer, `Effect::VolumetricFog`
   (kEffectCount = 20, off by default), `EffectParams::volumetric*`): after the particles pass

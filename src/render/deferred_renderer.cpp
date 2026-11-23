@@ -273,7 +273,7 @@ bool DeferredRenderer::createInternal() {
     if (!im.decalBox.create()) return false;
     im.decalBox.setMeshData(fuhgl::render::shapes::boxData({1.f, 1.f, 1.f}, {1.f, 1.f, 1.f}));
     const std::string lightFrag = std::string(kLightFragHead) + kLightFragKit +
-                                  fuhgl::render::kSkFuncs + kLightFragProbes + kLightFragSsao + kLightFragPbr + kLightFragTail;
+                                  fuhgl::render::kSkFuncs + kLightFragProbes + kLightFragSsao + kLightFragWetness + kLightFragPbr + kLightFragTail;
     im.ssaoKernel = ssaoKernel(std::min(ssaoSamples > 0 ? ssaoSamples : 24, 64), 1337u);
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
         !compilePostFs(im.ssaoMat, kSsaoFrag, "ssao") ||
@@ -1086,6 +1086,11 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
         // G15 SSAO (unit 6)
         p.setUniform(p.uniformLocation("uSsao"), 6);
         p.setUniform(p.uniformLocation("uSsaoEnabled"), effectEnabled(Effect::Ssao) ? 1 : 0);
+        // G22 wetness
+        p.setUniform(p.uniformLocation("uWetnessEnabled"), effectEnabled(Effect::Wetness) ? 1 : 0);
+        p.setUniform("uWetness", wetnessAmount);
+        p.setUniform("uWetnessPuddle", wetnessPuddle);
+        p.setUniform("uWetnessNoiseScale", wetnessNoiseScale);
         p.setUniform(p.uniformLocation("uShadowMap"), fuhgl::render::kTextureUnitShadowMap);
         p.setUniform(p.uniformLocation("uShadowMapArray"), fuhgl::render::kTextureUnitShadowMapArray);
         p.setUniform(p.uniformLocation("uShadowMoments"), fuhgl::render::kTextureUnitShadowMoments);
@@ -1204,7 +1209,9 @@ void DeferredRenderer::drawSsr(fuhgl::render::RenderGraph::PassContext& ctx) {
         p.setUniform(p.uniformLocation("uMaxSteps"), std::min(std::max(ssrMaxSteps, 1), 128));
         p.setUniform("uThickness", ssrThickness);
         p.setUniform("uMaxDist", ssrMaxDist);
-        p.setUniform("uStrength", ssrStrength * (1.f + ssrWetnessBoost));
+        // G22: wetness adds reflection strength on top of the manual ssrWetnessBoost
+        const float wetBoost = ssrWetnessBoost + (effectEnabled(Effect::Wetness) ? wetnessAmount : 0.f);
+        p.setUniform("uStrength", ssrStrength * (1.f + wetBoost));
         p.setUniform("uZNear", s.camera->zNear());
         p.setUniform("uZFar", s.camera->zFar());
     });
@@ -1417,6 +1424,7 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::Ssr, ssrEnabled_);
     gate(Effect::Bloom, bloomEnabled_);
     gate(Effect::VolumetricFog, volumetricEnabled_);
+    gate(Effect::Wetness, wetnessEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -1443,6 +1451,7 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::Ssr: ssrEnabled_ = on; break;
         case Effect::Bloom: bloomEnabled_ = on; break;
         case Effect::VolumetricFog: volumetricEnabled_ = on; break;
+        case Effect::Wetness: wetnessEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -1479,6 +1488,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::Ssr: return ssrEnabled_;
         case Effect::Bloom: return bloomEnabled_;
         case Effect::VolumetricFog: return volumetricEnabled_;
+        case Effect::Wetness: return wetnessEnabled_;
     }
     return false;
 }
@@ -1488,6 +1498,7 @@ void DeferredRenderer::setAllEffects(bool on) {
     pointShadows_ = contactShadowsEnabled = particlesEnabled_ = lightProbesEnabled_ = decalsEnabled_ = waterEnabled_ = on;
     dofEnabled_ = hudEnabled_ = gpuSkinningEnabled_ = ssaoEnabled_ = ssrEnabled_ = bloomEnabled_ = on;
     volumetricEnabled_ = on;
+    wetnessEnabled_ = on;
     applyCapabilities();
 }
 

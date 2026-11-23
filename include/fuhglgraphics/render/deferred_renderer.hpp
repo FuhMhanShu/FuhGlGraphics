@@ -285,6 +285,14 @@ public:
     int volumetricSteps = 24;              ///< march samples (max 64)
     float volumetricTime = 0.f;            ///< noise field drift (world units/frame step)
 
+    /// @brief G22 wetness / rain (Effect::Wetness): modulates the PBR inputs in the lighting
+    /// pass — up-facing surfaces get a glossy film (roughness toward 0.06), the albedo
+    /// darkens ~35 % at full wetness, and a noise puddle mask deepens depressions. Also adds
+    /// `wetnessAmount` to the SSR strength (wet surfaces reflect more). Off by default.
+    float wetnessAmount = 0.8f;    ///< global rain amount 0..1
+    float wetnessPuddle = 0.7f;    ///< puddle mask strength (0 = flat film, 1 = depressions only)
+    float wetnessNoiseScale = 3.5f; ///< world units per puddle-noise cell
+
     /// @brief G10 debug HUD (Effect::DebugHud): fps / frame time / effect toggles panel.
     DebugHud& hud() { return hud_; }
     const DebugHud& hud() const { return hud_; }
@@ -348,6 +356,7 @@ private:
     bool ssrEnabled_ = false;    ///< Effect::Ssr (off by default)
     bool bloomEnabled_ = false;  ///< Effect::Bloom (off by default)
     bool volumetricEnabled_ = false; ///< Effect::VolumetricFog (off by default)
+    bool wetnessEnabled_ = false;    ///< Effect::Wetness (off by default)
     const water::WaterSurface* curWater_ = nullptr; ///< G13: active water surface this frame
     fuhgl::math::Mat4 waterModel_{};                 ///< its draw item's model matrix
     fuhgl::math::Vec4 waterClipPlane_{0.f, 1.f, 0.f, 0.f}; ///< world plane (n, d) for clipping

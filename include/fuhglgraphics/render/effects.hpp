@@ -37,10 +37,11 @@ enum class Effect {
     Ssr,            ///< G16 screen-space reflections: raymarch vs the G-buffer depth (post pass after lighting)
     Bloom,          ///< G17 bloom: bright-pass (adjustable threshold) + blur + add in the HDR chain before TAA
     VolumetricFog,  ///< G21 volumetric fog/clouds: raymarched 3D-noise volume with height falloff + HG phase (post pass after particles, before bloom)
+    Wetness,        ///< G22 wetness/rain on PBR: lighting-pass roughness/albedo modulation + puddle mask + SSR boost
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 20;
+constexpr int kEffectCount = 21;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -65,6 +66,7 @@ inline const char* effectName(Effect e) {
         case Effect::Ssr: return "SSR";
         case Effect::Bloom: return "bloom";
         case Effect::VolumetricFog: return "volumetric fog";
+        case Effect::Wetness: return "wetness";
     }
     return "unknown";
 }

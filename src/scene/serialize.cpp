@@ -112,6 +112,9 @@ io::Json effectsToJson(const Effects& fx) {
     p.obj["volumetricMaxDist"] = numJson(q.volumetricMaxDist);
     p.obj["volumetricStrength"] = numJson(q.volumetricStrength);
     p.obj["volumetricSteps"] = numJson(q.volumetricSteps);
+    p.obj["wetnessAmount"] = numJson(q.wetnessAmount);
+    p.obj["wetnessPuddle"] = numJson(q.wetnessPuddle);
+    p.obj["wetnessNoiseScale"] = numJson(q.wetnessNoiseScale);
     j.obj["params"] = p;
     return j;
 }
@@ -174,6 +177,9 @@ bool effectsFromJson(const io::Json& j, Effects& fx, std::string* err) {
         q.volumetricMaxDist = static_cast<float>(p->at("volumetricMaxDist").asNumber(q.volumetricMaxDist));
         q.volumetricStrength = static_cast<float>(p->at("volumetricStrength").asNumber(q.volumetricStrength));
         q.volumetricSteps = p->at("volumetricSteps").asInt(q.volumetricSteps);
+        q.wetnessAmount = static_cast<float>(p->at("wetnessAmount").asNumber(q.wetnessAmount));
+        q.wetnessPuddle = static_cast<float>(p->at("wetnessPuddle").asNumber(q.wetnessPuddle));
+        q.wetnessNoiseScale = static_cast<float>(p->at("wetnessNoiseScale").asNumber(q.wetnessNoiseScale));
     }
     return true;
 }
