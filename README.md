@@ -117,11 +117,13 @@ and screenshots in [docs/images/](docs/images/g26_lsystem_forest.png) — and **
 function collapse (`procedural::Wfc`: edge-tag tiles + rotations, min-entropy + propagation +
 backtracking → dungeon/city layouts as scene nodes) — see the
 [G27 tutorial](docs/en/tutorials/g27_wfc.md) and screenshots in
-[docs/images/](docs/images/g27_wfc_overview.png).
-— and **G28** — Voronoi diagrams (`procedural::voronoi2d` cells + F1/F2 + `extrudeCells`
-prisms → cracked plates, crystal shards; G29 SDF/fractals follow) — see the
-[G28 tutorial](docs/en/tutorials/g28_voronoi.md) and screenshots in
-[docs/images/](docs/images/g28_voronoi_shattered.png).
+[docs/images/](docs/images/g27_wfc_overview.png) — and **G28** — Voronoi diagrams
+(`procedural::voronoi2d` cells + F1/F2 + `extrudeCells` prisms → cracked plates, crystal shards)
+— see the [G28 tutorial](docs/en/tutorials/g28_voronoi.md) and screenshots in
+[docs/images/](docs/images/g28_voronoi_shattered.png) — and **G29** — SDF / 3D fractals
+(`procedural::sdf` primitives + `smoothMin` + `mandelbulb` DE; `procedural::meshFromSdf` meshes
+any SDF via G25 marching cubes) — see the [G29 tutorial](docs/en/tutorials/g29_mandelbulb.md)
+and screenshots in [docs/images/](docs/images/g29_mandelbulb_wide.png).
 Next: **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
 (Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited

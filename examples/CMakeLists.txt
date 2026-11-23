@@ -152,3 +152,8 @@ target_link_libraries(fuhglgraphics_wfc_screenshot PRIVATE fuhglgraphics)
 # SSAO + volumetric fog, TAA + upscale + ACES — wide shot + closeup, headless to PNG.
 add_executable(fuhglgraphics_voronoi_screenshot voronoi_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_voronoi_screenshot PRIVATE fuhglgraphics)
+# G29 SDF/fractal showcase: Mandelbulb (power 8 DE) meshed via meshFromSdf + G25 marching cubes
+# (56^3), floating emissive sculpture + satellite bulbs, violet core light (bloom), warm sun +
+# CSM + god rays, dusk sky + IBL, SSAO + volumetric fog, TAA + upscale + ACES — wide + closeup.
+add_executable(fuhglgraphics_mandelbulb_screenshot mandelbulb_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_mandelbulb_screenshot PRIVATE fuhglgraphics)

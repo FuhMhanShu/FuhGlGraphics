@@ -67,6 +67,7 @@ One small tutorial per feature. Each is self-contained: goal → code → result
 - [G26 — L-systems (turtle → mesh)](g26_lsystem.md) — `procedural::LSystem`: rule rewriting (`derive`) + 3D turtle (`generate`) → trees/ferns/bushes as `MeshData`; screenshots in [docs/images/](../../images/g26_lsystem_forest.png)
 - [G27 — Wave function collapse](g27_wfc.md) — `procedural::Wfc`: edge-tag tiles + rotations, min-entropy + propagation + backtracking → dungeon layouts as scene nodes; screenshots in [docs/images/](../../images/g27_wfc_overview.png)
 - [G28 — Voronoi diagrams](g28_voronoi.md) — `procedural::voronoi2d` + `extrudeCells` (cells → prism meshes), F1/F2 distance fields, shattered plate with glowing cracks + crystals; screenshots in [docs/images/](../../images/g28_voronoi_shattered.png)
+- [G29 — SDF / 3D fractals (Mandelbulb)](g29_mandelbulb.md) — `procedural::sdf` + `meshFromSdf` (mesh any SDF via marching cubes), emissive fractal sculpture with bloom; screenshots in [docs/images/](../../images/g29_mandelbulb_wide.png)
 - [G17 — Bloom](g17_bloom.md) — post pass after particles, before TAA: bright-pass above
   an adjustable `bloomThreshold` + 9-tap blur + add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   screenshots in [docs/images/](../../images/g17_bloom_on.png)

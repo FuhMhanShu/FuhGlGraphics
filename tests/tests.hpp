@@ -26,3 +26,4 @@ void runProceduralMcTests();
 void runProceduralLsystemTests();
 void runProceduralWfcTests();
 void runProceduralVoronoiTests();
+void runProceduralSdfTests();
