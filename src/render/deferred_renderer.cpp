@@ -905,6 +905,10 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     scene.lastLodLevel = s.lastLodLevel;  // G20: propagate the resolved LOD level (F41) to the caller
     // remember this frame's (jittered) viewProj for next frame's motion vectors
     prevViewProj_ = fuhgl::math::jitterViewProj(s.camera->viewProj(s.aspect), s.jitter);
+    // G32/G34: skip the ca/gi passes entirely when off (the consumers then read the
+    // upstream resource directly) — a fullscreen copy pass still costs frame time
+    impl_->post.setPassEnabled("ca", effectEnabled(Effect::ChromaticAberration));
+    impl_->post.setPassEnabled("gi", effectEnabled(Effect::Gi));
     impl_->post.execute();
     // G10 HUD: drawn after the post graph (into the output, over the tonemapped frame)
     if (effectEnabled(Effect::DebugHud) && hud_.isCreated()) drawHud();
@@ -1287,7 +1291,7 @@ void DeferredRenderer::drawGi(fuhgl::render::RenderGraph::PassContext& ctx) {
 }
 
 void DeferredRenderer::drawSsr(fuhgl::render::RenderGraph::PassContext& ctx) {
-    ctx.bindInput(0, "hdrG"); // G34: hdr + GI
+    ctx.bindInput(0, effectEnabled(Effect::Gi) ? "hdrG" : "hdr"); // G34: hdr + GI when the gi pass ran
     ctx.bindInput(1, "gNormal");
     ctx.bindInput(2, "gDepth");
     ctx.bindInput(3, "gPbr");
@@ -1436,7 +1440,7 @@ void DeferredRenderer::drawCa(fuhgl::render::RenderGraph::PassContext& ctx) {
 }
 
 void DeferredRenderer::drawDof(fuhgl::render::RenderGraph::PassContext& ctx) {
-    ctx.bindInput(0, "ca"); // G32 output (copy of "up" when CA is off)
+    ctx.bindInput(0, effectEnabled(Effect::ChromaticAberration) ? "ca" : "up"); // G32 output when the ca pass ran
     ctx.bindInput(1, "gDepth");
     const bool on = effectEnabled(Effect::Dof);
     drawFs(impl_->dofMat, [&](fuhgl::Program& p) {
