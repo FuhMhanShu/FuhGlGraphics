@@ -39,6 +39,12 @@ entry.albedo = {0.46f, 0.43f, 0.38f};
 entry.roughness = 0.95f;
 ```
 
+
+> ⚠️ **Closed volumes:** the pipeline culls back faces, so the iso-surface must be closed
+> *inside* the sampled box — keep the field positive near the volume boundary (e.g. add a
+> falloff beyond the terrain extent). If the solid touches the box border, the open boundary
+> renders as see-through holes.
+
 Details: a lattice point is "inside" when `value < isolevel`; crossing edges are linearly
 interpolated, normals come from central differences of the grid (interpolated per edge), and
 vertices are welded per lattice edge — so the mesh is closed (manifold) where the surface does
