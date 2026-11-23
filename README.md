@@ -118,7 +118,11 @@ function collapse (`procedural::Wfc`: edge-tag tiles + rotations, min-entropy + 
 backtracking → dungeon/city layouts as scene nodes) — see the
 [G27 tutorial](docs/en/tutorials/g27_wfc.md) and screenshots in
 [docs/images/](docs/images/g27_wfc_overview.png).
-Next: **G28–G29** (voronoi, SDF/fractals) or **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
+— and **G28** — Voronoi diagrams (`procedural::voronoi2d` cells + F1/F2 + `extrudeCells`
+prisms → cracked plates, crystal shards; G29 SDF/fractals follow) — see the
+[G28 tutorial](docs/en/tutorials/g28_voronoi.md) and screenshots in
+[docs/images/](docs/images/g28_voronoi_shattered.png).
+Next: **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
 (Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.

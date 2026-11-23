@@ -67,6 +67,7 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
 - [G25 — Marching Cubes (Voxel → Mesh)](g25_marching_cubes.md) — `procedural::marchingCubes`/`marchingCubesChunked`: Isofläche aus Volumen extrahieren (watertight, indexiert), Höhlen-Terrain aus Noise-Volumen; Screenshots in [docs/images/](../../images/g25_marching_cubes_cave.png)
 - [G26 — L-Systeme (Turtle → Mesh)](g26_lsystem.md) — `procedural::LSystem`: Regel-Ersetzung (`derive`) + 3D-Turtle (`generate`) → Bäume/Farne/Büsche als `MeshData`; Screenshots in [docs/images/](../../images/g26_lsystem_forest.png)
 - [G27 — Wave Function Collapse](g27_wfc.md) — `procedural::Wfc`: Edge-Tag-Tiles + Rotationen, Min-Entropie + Propagation + Backtracking → Dungeon-Layout als Szenen-Knoten; Screenshots in [docs/images/](../../images/g27_wfc_overview.png)
+- [G28 — Voronoi-Diagramme](g28_voronoi.md) — `procedural::voronoi2d` + `extrudeCells` (Zellen → Prismen-Meshes), F1/F2-Distanzfelder, gerissene Platte mit glühenden Rissen + Kristalle; Screenshots in [docs/images/](../../images/g28_voronoi_shattered.png)
 - [G17 — Bloom](g17_bloom.md) — Post-Pass nach den Partikeln, vor TAA: Bright-Pass oberhalb
   eines einstellbaren `bloomThreshold` + 9-Tap-Blur + Add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   Bilder in [docs/images/](../../images/g17_bloom_on.png)

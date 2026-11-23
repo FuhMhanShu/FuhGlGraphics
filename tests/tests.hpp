@@ -25,3 +25,4 @@ void runProceduralNoiseTests();
 void runProceduralMcTests();
 void runProceduralLsystemTests();
 void runProceduralWfcTests();
+void runProceduralVoronoiTests();

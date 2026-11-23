@@ -292,6 +292,12 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   caps, corners, doors, pillar). Placements instantiate as G9 nodes. See
   `tests/test_procedural_wfc.cpp`, `examples/wfc_screenshot`, `docs/images/g27_wfc_*.png`
   and the [G27 tutorial](en/tutorials/g27_wfc.md).
-- **G28–G29 — procedural generation algorithms** — planned (same `procedural/` module,
-  one feature per PR with unit test + gl_smoke + example screenshot + tutorial en/de):
-  G28 2D Voronoi cells + extrusion meshes, G29 SDF/3D fractals (Mandelbulb) meshed via G25.
+- **G28 — Voronoi diagrams** — implemented: `procedural::voronoi2d(n, min, max, seed)`
+  (seeded points, convex cell polygons via half-plane clipping, adjacency edges),
+  `voronoiDistances` (F1/F2), `extrudeCells` (cell prisms → `MeshData` with gap shrink,
+  per-cell height/color jitter) in `include/fuhglgraphics/procedural/voronoi.hpp` +
+  `src/procedural/voronoi.cpp`. See `tests/test_procedural_voronoi.cpp`,
+  `examples/voronoi_screenshot`, `docs/images/g28_voronoi_*.png` and the
+  [G28 tutorial](en/tutorials/g28_voronoi.md).
+- **G29 — SDF / 3D fractals** — implemented (merged separately): `procedural::sdf` +
+  `procedural::meshFromSdf` via G25.

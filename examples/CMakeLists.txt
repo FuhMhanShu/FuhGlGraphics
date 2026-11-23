@@ -145,3 +145,10 @@ target_link_libraries(fuhglgraphics_lsystem_screenshot PRIVATE fuhglgraphics)
 # fog, TAA + upscale + ACES — interior + top-down overview, headless to PNG.
 add_executable(fuhglgraphics_wfc_screenshot wfc_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_wfc_screenshot PRIVATE fuhglgraphics)
+
+# G28 Voronoi showcase: shattered plaza (procedural::Voronoi2D cells extruded with gaps over an
+# emissive underlay -> glowing cracks + bloom) + crystal-shard cluster (height jitter, metallic,
+# point light), sunset sky cubemap (G24 noise clouds) + IBL, sun + CSM shadows + god rays,
+# SSAO + volumetric fog, TAA + upscale + ACES — wide shot + closeup, headless to PNG.
+add_executable(fuhglgraphics_voronoi_screenshot voronoi_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_voronoi_screenshot PRIVATE fuhglgraphics)

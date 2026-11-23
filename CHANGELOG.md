@@ -9,6 +9,22 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G28 — Voronoi diagrams** (`include/fuhglgraphics/procedural/voronoi.hpp`,
+  `src/procedural/voronoi.cpp`): `procedural::voronoi2d(n, min, max, seed)` builds a seeded 2D
+  Voronoi diagram — one convex polygon per seed (half-plane clipping against every bisector,
+  robust for moderate n) plus adjacency edges; `voronoiDistances()` gives F1/F2 (border =
+  F2-F1); `extrudeCells(v, y0, y1, gap, heightJitter, jitterSeed, color, colorJitter)` extrudes
+  cells into prism `MeshData` (gap shrinks polygons towards their centroid → cracks, height
+  jitter → crystal shards). Unit tests `tests/test_procedural_voronoi.cpp`: cells contain their
+  seeds, convex, in bounds, tile the rect (area sum), adjacency, F1/F2 correctness,
+  extrusion validity + determinism + full-rect bbox at gap=0. Demo
+  `examples/voronoi_screenshot`: shattered plaza (70 cells with gaps over an emissive underlay
+  → glowing cracks + bloom) + crystal-shard cluster (height jitter), sunset sky cubemap + IBL,
+  sun with CSM shadows + god rays, SSAO + volumetric fog, TAA + upscale + ACES; references
+  `docs/images/g28_voronoi_{shattered,crystals}.png`. Tutorial
+  `docs/en/tutorials/g28_voronoi.md` + German translation. Requirement entry G28 in
+  [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G27 — wave function collapse (tiled)** (`include/fuhglgraphics/procedural/wfc.hpp`,
   `src/procedural/wfc.cpp`): `procedural::Wfc` over a width x height grid. Tiles
   (`WfcTile`) carry 4 edge tags in cyclic dir order (E, S, W, N); rotations map

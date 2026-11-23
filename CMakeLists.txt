@@ -56,6 +56,7 @@ add_library(fuhglgraphics STATIC
     src/procedural/marching_cubes.cpp
     src/procedural/lsystem.cpp
     src/procedural/wfc.cpp
+    src/procedural/voronoi.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 

@@ -60,6 +60,7 @@
 #include <fuhglgraphics/procedural/marching_cubes.hpp>
 #include <fuhglgraphics/procedural/lsystem.hpp>
 #include <fuhglgraphics/procedural/wfc.hpp>
+#include <fuhglgraphics/procedural/voronoi.hpp>
 
 // NOTE: editor/gl_viewport_widget.hpp (WITH_QT only) is deliberately NOT included here:
 // its Qt/GL headers would leak GL macros (e.g. GL_UNSIGNED_INT) into every core TU and

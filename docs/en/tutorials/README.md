@@ -66,6 +66,7 @@ One small tutorial per feature. Each is self-contained: goal → code → result
 - [G25 — Marching cubes (voxel → mesh)](g25_marching_cubes.md) — `procedural::marchingCubes`/`marchingCubesChunked`: extract iso-surfaces from volumes (watertight, indexed), cave terrain from noise volumes; screenshots in [docs/images/](../../images/g25_marching_cubes_cave.png)
 - [G26 — L-systems (turtle → mesh)](g26_lsystem.md) — `procedural::LSystem`: rule rewriting (`derive`) + 3D turtle (`generate`) → trees/ferns/bushes as `MeshData`; screenshots in [docs/images/](../../images/g26_lsystem_forest.png)
 - [G27 — Wave function collapse](g27_wfc.md) — `procedural::Wfc`: edge-tag tiles + rotations, min-entropy + propagation + backtracking → dungeon layouts as scene nodes; screenshots in [docs/images/](../../images/g27_wfc_overview.png)
+- [G28 — Voronoi diagrams](g28_voronoi.md) — `procedural::voronoi2d` + `extrudeCells` (cells → prism meshes), F1/F2 distance fields, shattered plate with glowing cracks + crystals; screenshots in [docs/images/](../../images/g28_voronoi_shattered.png)
 - [G17 — Bloom](g17_bloom.md) — post pass after particles, before TAA: bright-pass above
   an adjustable `bloomThreshold` + 9-tap blur + add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   screenshots in [docs/images/](../../images/g17_bloom_on.png)
