@@ -99,8 +99,12 @@ auf nach oben zeigenden Flächen + SSR-Stärke-Boost; reine CPU-Zwillinge in `re
 (`render::TonemapOperator`: ACES / Reinhard / Uncharted2 / linear, pro Frame über `uOperator`
 im Tonemap-Pass, reine CPU-Zwillinge in `render/tonemap.hpp`) + einstellbarer Bloom-Threshold
 (`bloomThreshold`, G17) — siehe [G23-Tutorial](docs/de/tutorials/g23_tonemap.md) und Bilder in
-[docs/images/](docs/images/g23_tonemap_uncharted2.png).
-Als Nächstes: **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder
+[docs/images/](docs/images/g23_tonemap_uncharted2.png) — und **G24** — das prozedurale
+Noise-Modul (`procedural::Noise` in `procedural/noise.hpp`: seeded, deterministischer
+Value-/Perlin-/Simplex-Noise 2D+3D mit fBm/Ridged/Turbulence und Domain-Warp; gemeinsame
+Noise-Quelle für die G25–G29-Generatoren) — siehe [G24-Tutorial](docs/de/tutorials/g24_procedural_noise.md)
+und Bilder in [docs/images/](docs/images/g24_noise_wide.png).
+Als Nächstes: **G25–G29** (Marching Cubes, L-Systeme, WFC, Voronoi, SDF/Fraktale) oder **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder
 **G2** (Qt-Editor).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.

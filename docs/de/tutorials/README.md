@@ -63,6 +63,7 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   Uncharted2 / linear) pro Frame über `uOperator` im Tonemap-Pass + reine CPU-Zwillinge in
   `render/tonemap.hpp`; einstellbarer Bloom-Threshold (`bloomThreshold`, G17); Bilder in
   [docs/images/](../../images/g23_tonemap_uncharted2.png)
+- [G24 — Procedural Noise (CPU)](g24_procedural_noise.md) — `procedural::Noise`: seeded value/Perlin/Simplex 2D+3D, fBm/ridged/turbulence, Domain-Warp; Höhenfelder fürs Terrain carven, Sky-Cubemaps, Volumenfelder; Screenshots in [docs/images/](../../images/g24_noise_wide.png)
 - [G17 — Bloom](g17_bloom.md) — Post-Pass nach den Partikeln, vor TAA: Bright-Pass oberhalb
   eines einstellbaren `bloomThreshold` + 9-Tap-Blur + Add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   Bilder in [docs/images/](../../images/g17_bloom_on.png)

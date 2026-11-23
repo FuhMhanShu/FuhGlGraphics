@@ -214,6 +214,11 @@ jobs:
           cmake --build build -j --target fuhglgraphics_parallax_house_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_parallax_house_screenshot --prefix docs/images/ci/parallax_house --width 1280 --height 720 --frames 16
 
+      - name: Build + render G24 procedural-noise screenshots (noise-carved terrain + lake, noise cloud sky + IBL, sun/CSM/god rays, SSAO/volumetric/wetness/bloom)
+        run: |
+          cmake --build build -j --target fuhglgraphics_noise_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_noise_screenshot --prefix docs/images/ci/g24_noise --width 1280 --height 720 --frames 16
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)

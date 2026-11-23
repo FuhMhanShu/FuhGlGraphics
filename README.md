@@ -102,8 +102,12 @@ up-facing surfaces + SSR strength boost; pure CPU twins in `render/wetness.hpp`)
 (`render::TonemapOperator`: ACES / Reinhard / Uncharted2 / linear, per frame via `uOperator` in
 the tonemap pass, pure CPU twins in `render/tonemap.hpp`) + adjustable bloom threshold
 (`bloomThreshold`, G17) — see the [G23 tutorial](docs/en/tutorials/g23_tonemap.md) and
-screenshots in [docs/images/](docs/images/g23_tonemap_uncharted2.png).
-Next: **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
+screenshots in [docs/images/](docs/images/g23_tonemap_uncharted2.png) — and **G24** — the
+procedural noise module (`procedural::Noise` in `procedural/noise.hpp`: seeded, deterministic
+value/Perlin/Simplex noise 2D+3D with fBm/ridged/turbulence and domain warp; shared noise
+source for the G25–G29 generators) — see the [G24 tutorial](docs/en/tutorials/g24_procedural_noise.md)
+and screenshots in [docs/images/](docs/images/g24_noise_wide.png).
+Next: **G25–G29** (marching cubes, L-systems, WFC, voronoi, SDF/fractals) or **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
 (Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.
