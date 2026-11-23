@@ -9,6 +9,13 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Fixed
 
+- **G30 creature look**: eyes no longer bloom into bright balls (smaller 0.06 spheres, embedded
+  into the head, glossy dark albedo + dim amber emissive below the bloom threshold); the skin
+  is no longer lumpy (geometry detail `detailAmp` 0.035 -> 0.02 default, higher frequency, fewer
+  octaves) and the baked pattern now reads (worley scale cells with dark borders + per-cell tint,
+  wider stripes, lower normal-map `bumpStrength` 1.5, calmer fog/volumetric/bloom in the demo).
+  Curvature gain lowered to 3 in the demo so vertex-color shading darkens folds without blotching.
+  Refs `docs/images/g30_creature_*.png` re-rendered + compressed.
 - **G26 L-system leaves** were square quads; `L` now emits two crossed leaf-shaped kite quads
   (pointed tip at 1.35x leafSize along the heading, narrow base) — regression test
   `testLeafShape` asserts the tip extent. Refs `docs/images/g26_lsystem_*.png` re-rendered.
