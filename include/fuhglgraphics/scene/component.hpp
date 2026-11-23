@@ -65,6 +65,9 @@ struct MeshEntry {
     fuhgl::math::Vec3 albedo{1.f, 1.f, 1.f};
     const fuhgl::Texture* albedoTexture = nullptr;    ///< albedo texture of this mesh (G-buffer unit 3)
     const fuhgl::Texture* normalMap = nullptr;        ///< optional normal map (G-buffer unit 4)
+    const fuhgl::Texture* heightMap = nullptr;        ///< POM parallax height map (G-buffer unit 5) — enables parallax occlusion mapping in the G-buffer pass
+    float parallaxScale = 0.03f;                      ///< POM depth scale (world units at uv scale 1)
+    int parallaxLayers = 12;                          ///< POM linear search steps
     fuhgl::math::Vec3 emissive{0.f, 0.f, 0.f};
     float metallic = 0.f;
     float roughness = 0.5f;

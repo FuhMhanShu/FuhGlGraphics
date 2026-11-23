@@ -17,6 +17,7 @@ add_executable(fuhglgraphics_tests
     test_volumetric.cpp
     test_wetness.cpp
     test_tonemap.cpp
+    test_parallax.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -173,6 +174,13 @@ add_executable(fuhglgraphics_gl_smoke_tonemap gl_smoke_tonemap.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_tonemap PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_tonemap COMMAND fuhglgraphics_gl_smoke_tonemap)
 set_tests_properties(fuhglgraphics_gl_smoke_tonemap PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Parallax occlusion mapping smoke test (label "gl_context"): grazing view on a brick wall
+# with a height map \u2014 POM on vs off must differ measurably. Skips (exit code 77) without GL.
+add_executable(fuhglgraphics_gl_smoke_parallax gl_smoke_parallax.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_parallax PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_parallax COMMAND fuhglgraphics_gl_smoke_parallax)
+set_tests_properties(fuhglgraphics_gl_smoke_parallax PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
 # Qt editor-widget unit test (only with FUHGLGRAPHICS_WITH_QT=ON): runs offscreen
 # (QT_QPA_PLATFORM=offscreen), no GL context required — label "unit".
 if(FUHGLGRAPHICS_WITH_QT)

@@ -314,6 +314,8 @@ io::Json nodeToJson(const Node& n) {
                 ej.obj["metallic"] = numJson(e.metallic);
                 ej.obj["roughness"] = numJson(e.roughness);
                 ej.obj["ao"] = numJson(e.ao);
+                ej.obj["parallaxScale"] = numJson(e.parallaxScale); // heightMap texture itself is not serializable (like albedoTexture)
+                ej.obj["parallaxLayers"] = numJson(e.parallaxLayers);
                 entries.arr.push_back(ej);
             }
             m.obj["entries"] = entries;
@@ -412,6 +414,8 @@ bool nodeFromJson(Node& n, const io::Json& j, const MeshResolver& resolveMesh,
                         e.metallic = static_cast<float>(ej.at("metallic").asNumber(e.metallic));
                         e.roughness = static_cast<float>(ej.at("roughness").asNumber(e.roughness));
                         e.ao = static_cast<float>(ej.at("ao").asNumber(e.ao));
+                        e.parallaxScale = static_cast<float>(ej.at("parallaxScale").asNumber(e.parallaxScale));
+                        e.parallaxLayers = ej.at("parallaxLayers").asInt(e.parallaxLayers);
                         mc.meshes.push_back(e);
                     }
                 }

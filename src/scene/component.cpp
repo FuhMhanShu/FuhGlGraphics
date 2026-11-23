@@ -25,6 +25,9 @@ void MeshComponent::fill(const Node& node, FrameData& frame) const {
             p.emissive = e.emissive;
             p.albedoTexture = e.albedoTexture;
             p.normalMap = e.normalMap;
+            p.heightMap = e.heightMap; // POM
+            p.parallaxScale = e.parallaxScale;
+            p.parallaxLayers = e.parallaxLayers;
             p.metallic = e.metallic;
             p.roughness = e.roughness;
             p.ao = e.ao;

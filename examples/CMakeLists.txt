@@ -106,3 +106,10 @@ target_link_libraries(fuhglgraphics_tonemap_screenshot PRIVATE fuhglgraphics)
 # volumetric mist (G21)/dew wetness (G22), TAA+upscale+ACES — two shots, headless to PNG.
 add_executable(fuhglgraphics_sunrise_screenshot sunrise_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_sunrise_screenshot PRIVATE fuhglgraphics)
+
+# Parallax-mapping (POM) showcase: brick house in sunshine with procedural brick
+# albedo/height/normal textures; the G3 G-buffer pass marches the height field
+# (MeshEntry::heightMap) and offsets the UVs at grazing angles 
+# wide shot + wall closeup with POM vs without, headless to PNG.
+add_executable(fuhglgraphics_parallax_house_screenshot parallax_house_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_parallax_house_screenshot PRIVATE fuhglgraphics)
