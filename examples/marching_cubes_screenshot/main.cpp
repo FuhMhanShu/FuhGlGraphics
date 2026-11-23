@@ -169,7 +169,15 @@ int main(int argc, char** argv) {
             const float h = 20.f * noise.height2(p.x * 0.018f, p.z * 0.018f, 6) + 4.f;
             const float cave = 7.f * noise.fbm3(p.x * 0.055f, p.y * 0.075f, p.z * 0.055f, 4,
                                                 procedural::Noise::Base::Simplex);
-            return (h - p.y) + cave;
+            float d = (h - p.y) + cave;
+            // keep the field positive near the volume boundary so the iso-surface closes
+            // inside the box (otherwise the open boundary reads as see-through holes,
+            // because the pipeline culls back faces)
+            const float side = std::fmax(std::fabs(p.x), std::fabs(p.z)) - 52.f;
+            d += std::fmax(0.f, side) * 3.f;          // >0 beyond |x|,|z| = 52
+            d += std::fmax(0.f, p.y - 36.f) * 3.f;    // top
+            d += std::fmax(0.f, -4.f - p.y) * 3.f;    // bottom
+            return d;
         },
         vMin, vMax, VN, VN, VN);
     std::fprintf(stderr, "marching_cubes_screenshot: sampled %d^3 volume\n", VN);
@@ -221,9 +229,9 @@ int main(int argc, char** argv) {
         return mesh; // keep alive
     };
     std::vector<std::unique_ptr<fuhgl::render::Mesh>> blobs;
-    blobs.push_back(makeBlob({0.f, 26.f, -6.f}, 5.5f, {2.4f, 1.1f, 0.4f}));   // amber
-    blobs.push_back(makeBlob({-16.f, 20.f, 14.f}, 3.2f, {0.4f, 1.4f, 2.6f}));  // cyan
-    blobs.push_back(makeBlob({18.f, 17.f, 10.f}, 2.4f, {2.2f, 0.5f, 1.6f}));   // magenta
+    blobs.push_back(makeBlob({0.f, 26.f, -6.f}, 5.5f, {3.2f, 1.5f, 0.5f}));   // amber
+    blobs.push_back(makeBlob({-16.f, 20.f, 14.f}, 3.2f, {0.5f, 1.9f, 3.6f}));  // cyan
+    blobs.push_back(makeBlob({18.f, 17.f, 10.f}, 2.4f, {3.0f, 0.7f, 2.2f}));   // magenta
 
     // --- lights + sky/IBL ---
     scene.root().createChild("sun").attach<scene::LightComponent>().light =
@@ -259,7 +267,7 @@ int main(int argc, char** argv) {
     scene.root().effects.params.ssaoRadius = 2.5f;
     scene.root().effects.params.ssaoIntensity = 1.5f;
     scene.root().effects.params.bloomThreshold = 1.0f;
-    scene.root().effects.params.bloomStrength = 0.9f;
+    scene.root().effects.params.bloomStrength = 1.2f;
     scene.root().effects.params.volumetricDensity = 0.006f;
     scene.root().effects.params.volumetricCloudiness = 0.7f;
 
