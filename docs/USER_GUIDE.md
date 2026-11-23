@@ -253,6 +253,14 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   Pure CPU twins in `render/wetness.hpp`. Quick start: [G22 tutorial](en/tutorials/g22_wetness.md),
   demo `examples/wetness_screenshot`, screenshots: [dry](images/g22_wetness_dry.png),
   [wet](images/g22_wetness_wet.png), [puddles](images/g22_wetness_puddles.png).
+- **Tonemapping operators (G23).** `render::TonemapOperator` (ACES default / Reinhard /
+  Uncharted2 / linear) selected per frame: `renderer.tonemapOperator` (shader `uOperator` in
+  the tonemap pass) or `effects.params.tonemapOperator` (int, serialized by G19). Pure CPU
+  twins `tonemapApply()` etc. in `render/tonemap.hpp`. The bloom threshold from G17 is
+  adjustable the same way via `bloomThreshold`. Quick start: [G23 tutorial](en/tutorials/g23_tonemap.md),
+  demo `examples/tonemap_screenshot`, screenshots: [ACES](images/g23_tonemap_aces.png),
+  [Reinhard](images/g23_tonemap_reinhard.png), [Uncharted2](images/g23_tonemap_uncharted2.png),
+  [linear](images/g23_tonemap_linear.png), [ACES + bloom thr 4](images/g23_tonemap_bloomthr4.png).
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

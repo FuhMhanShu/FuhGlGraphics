@@ -22,6 +22,7 @@
 #include "decals.hpp"
 #include "effects.hpp"
 #include "gbuffer.hpp"
+#include "tonemap.hpp"
 
 #include <fuhgl/math.hpp>
 #include <fuhgl/gl/framebuffer.hpp>
@@ -144,6 +145,9 @@ public:
     void setRenderScale(float scale);
     float renderScale() const { return renderScale_; }
     float exposure = 1.f;             ///< HDR exposure before tonemapping
+    /// @brief G23: tonemapping operator of the final pass (`uOperator` in kTonemapFrag);
+    /// pure CPU twins in render/tonemap.hpp. Default ACES (previous behavior).
+    TonemapOperator tonemapOperator = TonemapOperator::Aces;
     float taaBlend = 0.1f;            ///< weight of the current frame in the TAA blend (1 on the first frame)
     float upscaleSharpness = 0.6f;    ///< RCAS sharpening amount of the FSR1-style upscale (0..1)
     fuhgl::math::Vec3 skyTop{0.25f, 0.45f, 0.9f};    ///< sky gradient, used for background pixels

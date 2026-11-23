@@ -58,6 +58,10 @@ One small tutorial per feature. Each is self-contained: goal → code → result
 - [G22 — Wetness / rain on PBR](g22_wetness.md) — `Effect::Wetness`: lighting-pass
   roughness/albedo modulation with a noise puddle mask on up-facing surfaces + SSR boost; pure
   CPU twins in `render/wetness.hpp`; screenshots in [docs/images/](../../images/g22_wetness_wet.png)
+- [G23 — Tonemapping operators](g23_tonemap.md) — `render::TonemapOperator` (ACES / Reinhard /
+  Uncharted2 / linear) selected per frame via `uOperator` in the tonemap pass + pure CPU twins in
+  `render/tonemap.hpp`; adjustable bloom threshold (`bloomThreshold`, G17); screenshots in
+  [docs/images/](../../images/g23_tonemap_uncharted2.png)
 - [G17 — Bloom](g17_bloom.md) — post pass after particles, before TAA: bright-pass above
   an adjustable `bloomThreshold` + 9-tap blur + add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   screenshots in [docs/images/](../../images/g17_bloom_on.png)

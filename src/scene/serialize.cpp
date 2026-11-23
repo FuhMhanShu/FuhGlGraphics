@@ -115,6 +115,7 @@ io::Json effectsToJson(const Effects& fx) {
     p.obj["wetnessAmount"] = numJson(q.wetnessAmount);
     p.obj["wetnessPuddle"] = numJson(q.wetnessPuddle);
     p.obj["wetnessNoiseScale"] = numJson(q.wetnessNoiseScale);
+    p.obj["tonemapOperator"] = numJson(q.tonemapOperator);
     j.obj["params"] = p;
     return j;
 }
@@ -180,6 +181,7 @@ bool effectsFromJson(const io::Json& j, Effects& fx, std::string* err) {
         q.wetnessAmount = static_cast<float>(p->at("wetnessAmount").asNumber(q.wetnessAmount));
         q.wetnessPuddle = static_cast<float>(p->at("wetnessPuddle").asNumber(q.wetnessPuddle));
         q.wetnessNoiseScale = static_cast<float>(p->at("wetnessNoiseScale").asNumber(q.wetnessNoiseScale));
+        q.tonemapOperator = p->at("tonemapOperator").asInt(q.tonemapOperator);
     }
     return true;
 }

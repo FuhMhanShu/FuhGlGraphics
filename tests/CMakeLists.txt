@@ -16,6 +16,7 @@ add_executable(fuhglgraphics_tests
     test_terrain_lod.cpp
     test_volumetric.cpp
     test_wetness.cpp
+    test_tonemap.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -166,3 +167,9 @@ add_executable(fuhglgraphics_gl_smoke_wetness gl_smoke_wetness.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_wetness PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_wetness COMMAND fuhglgraphics_gl_smoke_wetness)
 set_tests_properties(fuhglgraphics_gl_smoke_wetness PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# G23: tonemap-operator smoke test (ACES/Reinhard/Uncharted2/linear frames differ).
+add_executable(fuhglgraphics_gl_smoke_tonemap gl_smoke_tonemap.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_tonemap PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_tonemap COMMAND fuhglgraphics_gl_smoke_tonemap)
+set_tests_properties(fuhglgraphics_gl_smoke_tonemap PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

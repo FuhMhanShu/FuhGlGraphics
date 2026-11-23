@@ -9,6 +9,21 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G23 — tonemapping operators + adjustable bloom threshold**
+  (`include/fuhglgraphics/render/tonemap.hpp`, `uOperator` in `kTonemapFrag`,
+  `DeferredRenderer::tonemapOperator`, `EffectParams::tonemapOperator`): the final pass now
+  supports `render::TonemapOperator` — ACES (default, previous behavior), Reinhard, Uncharted2
+  (Hable, white point 11.2) and linear — selected per frame; gamma 1/2.2 is applied after the
+  curve as before. Pure CPU twins (`tonemapAces/Reinhard/Uncharted2/Linear`, `tonemapApply`,
+  name round-trip) are unit-tested. The G17 bloom threshold stays adjustable per frame via
+  `bloomThreshold`. Tests: `tests/test_tonemap.cpp` (unit) + `tests/gl_smoke_tonemap.cpp`
+  (label `gl_context`; HDR scene with all four operators — every pair of frames differs
+  measurably, no GL error). Demo: `examples/tonemap_screenshot` (dusk plaza with HDR lamps,
+  one PNG per operator + ACES with bloom threshold 4) headless to PNG; references
+  `docs/images/g23_tonemap_{aces,reinhard,uncharted2,linear,bloomthr4}.png`. Tutorial:
+  `docs/en/tutorials/g23_tonemap.md` + German translation.
+  Requirement entry G23 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G22 — wetness / rain on PBR materials** (`include/fuhglgraphics/render/wetness.hpp` pure
   helpers, `kLightFragWetness` block in the G3 lighting fragment shader, `Effect::Wetness`
   (kEffectCount = 21, off by default), `EffectParams::wetness*`): with the effect on, the

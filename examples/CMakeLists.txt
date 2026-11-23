@@ -94,3 +94,8 @@ target_link_libraries(fuhglgraphics_volumetric_screenshot PRIVATE fuhglgraphics)
 # albedo+roughness in the lighting pass + puddle mask + SSR boost) — headless to PNG.
 add_executable(fuhglgraphics_wetness_screenshot wetness_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_wetness_screenshot PRIVATE fuhglgraphics)
+
+# G23 tonemap demo: dusk plaza with HDR lamps, rendered per operator (ACES/Reinhard/Uncharted2/
+# linear) + one shot with bloom on and a high adjustable bloom threshold — headless to PNG.
+add_executable(fuhglgraphics_tonemap_screenshot tonemap_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_tonemap_screenshot PRIVATE fuhglgraphics)

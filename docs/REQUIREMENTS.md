@@ -245,6 +245,12 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   depressions, SSR reflects more when wet; see `tests/test_wetness.cpp`,
   `tests/gl_smoke_wetness.cpp`, `examples/wetness_screenshot`, `docs/images/g22_wetness_*.png`
   and the [G22 tutorial](en/tutorials/g22_wetness.md).
+- **G23 — tonemapping operators + bloom threshold** (`include/fuhglgraphics/render/tonemap.hpp`
+  pure CPU twins + `uOperator` in `kTonemapFrag`, `render::TonemapOperator` (ACES/Reinhard/
+  Uncharted2/linear) on `DeferredRenderer::tonemapOperator` + `EffectParams::tonemapOperator`,
+  bloom threshold adjustable via `bloomThreshold` since G17): implemented — see
+  `tests/test_tonemap.cpp`, `tests/gl_smoke_tonemap.cpp`, `examples/tonemap_screenshot`,
+  `docs/images/g23_tonemap_*.png` and the [G23 tutorial](en/tutorials/g23_tonemap.md).
 - G2, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON

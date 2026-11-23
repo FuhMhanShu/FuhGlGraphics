@@ -98,9 +98,13 @@ depth; pure CPU twins in `render/volumetric.hpp`) — see the
 (`Effect::Wetness`: lighting-pass roughness/albedo modulation with a noise puddle mask on
 up-facing surfaces + SSR strength boost; pure CPU twins in `render/wetness.hpp`) — see the
 [G22 tutorial](docs/en/tutorials/g22_wetness.md) and screenshots in
-[docs/images/](docs/images/g22_wetness_wet.png).
-Next up: **G23** (tonemap operators), then **G11**
-(engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2** (Qt editor).
+[docs/images/](docs/images/g22_wetness_wet.png) — and **G23** — tonemapping operators
+(`render::TonemapOperator`: ACES / Reinhard / Uncharted2 / linear, per frame via `uOperator` in
+the tonemap pass, pure CPU twins in `render/tonemap.hpp`) + adjustable bloom threshold
+(`bloomThreshold`, G17) — see the [G23 tutorial](docs/en/tutorials/g23_tonemap.md) and
+screenshots in [docs/images/](docs/images/g23_tonemap_uncharted2.png).
+Next: **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
+(Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.
 

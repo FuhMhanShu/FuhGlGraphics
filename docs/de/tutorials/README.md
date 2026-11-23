@@ -59,6 +59,10 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   Modulation im Lighting-Pass mit Noise-Pfützen-Maske auf nach oben zeigenden Flächen + SSR-Boost;
   reine CPU-Zwillinge in `render/wetness.hpp`; Bilder in
   [docs/images/](../../images/g22_wetness_wet.png)
+- [G23 — Tonemapping-Operatoren](g23_tonemap.md) — `render::TonemapOperator` (ACES / Reinhard /
+  Uncharted2 / linear) pro Frame über `uOperator` im Tonemap-Pass + reine CPU-Zwillinge in
+  `render/tonemap.hpp`; einstellbarer Bloom-Threshold (`bloomThreshold`, G17); Bilder in
+  [docs/images/](../../images/g23_tonemap_uncharted2.png)
 - [G17 — Bloom](g17_bloom.md) — Post-Pass nach den Partikeln, vor TAA: Bright-Pass oberhalb
   eines einstellbaren `bloomThreshold` + 9-Tap-Blur + Add (`hdrP` -> `hdrB`), `Effect::Bloom`;
   Bilder in [docs/images/](../../images/g17_bloom_on.png)

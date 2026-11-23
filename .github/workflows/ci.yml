@@ -204,6 +204,11 @@ jobs:
           cmake --build build -j --target fuhglgraphics_wetness_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_wetness_screenshot --prefix docs/images/ci/g22_wetness --width 1280 --height 720 --frames 16
 
+      - name: Build + render G23 tonemap screenshots (aces / reinhard / uncharted2 / linear / bloom-thr4)
+        run: |
+          cmake --build build -j --target fuhglgraphics_tonemap_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_tonemap_screenshot --prefix docs/images/ci/g23_tonemap --width 1280 --height 720 --frames 16
+
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
       - name: Install Qt6 (for the G4 glTF demo)

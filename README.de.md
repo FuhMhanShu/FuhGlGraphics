@@ -95,9 +95,13 @@ und Bilder in [docs/images/](docs/images/g21_volumetric_on.png) — und **G22** 
 auf PBR (`Effect::Wetness`: Roughness/Albedo-Modulation im Lighting-Pass mit Noise-Pfützen-Maske
 auf nach oben zeigenden Flächen + SSR-Stärke-Boost; reine CPU-Zwillinge in `render/wetness.hpp`)
 — siehe [G22-Tutorial](docs/de/tutorials/g22_wetness.md) und Bilder in
-[docs/images/](docs/images/g22_wetness_wet.png).
-Als Nächstes: **G23** (Tonemap-Operatoren), dann
-**G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder **G2** (Qt-Editor).
+[docs/images/](docs/images/g22_wetness_wet.png) — und **G23** — Tonemapping-Operatoren
+(`render::TonemapOperator`: ACES / Reinhard / Uncharted2 / linear, pro Frame über `uOperator`
+im Tonemap-Pass, reine CPU-Zwillinge in `render/tonemap.hpp`) + einstellbarer Bloom-Threshold
+(`bloomThreshold`, G17) — siehe [G23-Tutorial](docs/de/tutorials/g23_tonemap.md) und Bilder in
+[docs/images/](docs/images/g23_tonemap_uncharted2.png).
+Als Nächstes: **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder
+**G2** (Qt-Editor).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.
 

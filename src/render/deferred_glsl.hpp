@@ -989,12 +989,26 @@ uniform sampler2D uHdr; // unit 0: upscaled HDR
 uniform sampler2D uGDepth; // unit 1: G-buffer depth (internal resolution) for ray occlusion
 uniform float uExposure;
 uniform int uUseTonemap;
+uniform int uOperator; // G23: 0 = ACES, 1 = Reinhard, 2 = Uncharted2, 3 = linear (see render/tonemap.hpp)
 uniform vec2 uSunScreen;    // sun position in uv of the output image
 uniform float uRayStrength; // 0 = god rays off
 uniform float uRayDecay;
 uniform int uRaySamples;
 out vec4 FragColor;
 vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+// G23: Uncharted 2 (Hable) filmic curve, white point 11.2 — CPU twin: tonemapUncharted2()
+vec3 uncharted2(vec3 x) {
+    const float A = 0.15, B = 0.50, C = 0.10, D = 0.20, E = 0.02, F = 0.30, W = 11.2;
+    vec3 cur = ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - vec3(E / F);
+    vec3 white = ((vec3(W) * (A * W + C * B) + D * E) / (vec3(W) * (A * W + B) + D * F)) - vec3(E / F);
+    return clamp(cur / white, 0.0, 1.0);
+}
+vec3 tonemapOp(vec3 c, int op) {
+    if (op == 1) return c / (c + vec3(1.0));        // Reinhard
+    if (op == 2) return uncharted2(c);               // Uncharted2
+    if (op == 3) return clamp(c, 0.0, 1.0);          // linear
+    return aces(c);                                  // 0 = ACES (default)
+}
 void main() {
     vec3 c = texture(uHdr, vUV).rgb * uExposure;
     if (uRayStrength > 0.0) {
@@ -1022,7 +1036,7 @@ void main() {
         c += (acc / max(float(uRaySamples), 1.0)) * uRayStrength;
     }
     if (uUseTonemap == 1) {
-        c = aces(c);
+        c = tonemapOp(c, uOperator); // G23: operator selectable per frame
         c = pow(c, vec3(1.0 / 2.2));
     } else {
         c = clamp(c, 0.0, 1.0);

@@ -1358,6 +1358,7 @@ void DeferredRenderer::drawTonemap(fuhgl::render::RenderGraph::PassContext& ctx)
         p.setUniform(p.uniformLocation("uGDepth"), 1);
         p.setUniform("uExposure", exposure);
         p.setUniform(p.uniformLocation("uUseTonemap"), effectEnabled(Effect::Tonemap) ? 1 : 0);
+        p.setUniform(p.uniformLocation("uOperator"), static_cast<int>(tonemapOperator)); // G23
         p.setUniform("uSunScreen", sunScreen);
         p.setUniform("uRayStrength", rayStrength);
         p.setUniform("uRayDecay", godRays.decay);

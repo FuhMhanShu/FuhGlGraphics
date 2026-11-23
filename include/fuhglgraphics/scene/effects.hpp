@@ -79,6 +79,8 @@ struct EffectParams {
     float wetnessAmount = 0.8f;   ///< global rain amount 0..1 (0 = dry)
     float wetnessPuddle = 0.7f;   ///< puddle mask strength: 0 = flat wet film, 1 = only depressions
     float wetnessNoiseScale = 3.5f; ///< world units per puddle-noise cell
+    // --- G23 tonemapping operator (Effect::Tonemap) ---
+    int tonemapOperator = 0;      ///< render::TonemapOperator: 0 = ACES, 1 = Reinhard, 2 = Uncharted2, 3 = linear
 };
 
 /// @brief Effect list + parameters of one scene node (or of a whole frame after merging).
