@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
 #ifndef _WIN32
     if (!std::getenv("FUHGL_BACKEND")) setenv("FUHGL_BACKEND", "surfaceless", 0);
 #else
-    if (!std::getenv("FUHGL_BACKEND")) _putenv_s("FUHGL_BACKEND", "surfaceless", 0);
+    if (!std::getenv("FUHGL_BACKEND")) _putenv_s("FUHGL_BACKEND", "surfaceless");
 #endif
 
     fuhgl::Window window;
