@@ -139,7 +139,7 @@ bool renderToPng(fuhglgraphics::scene::Scene& scn, fuhgl::FirstPersonCamera& cam
         frame.effects.applyTo(renderer);
         frame.view.env = env;
         frame.view.fogColor = {0.72f, 0.55f, 0.42f};
-        frame.view.fogDensity = 0.0011f;
+        frame.view.fogDensity = 0.0005f;
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
                         frame.lightProbes, &frame.decals, frame.water, &frame.skins);
     }
@@ -164,7 +164,7 @@ CreatureActor buildCreature(const fuhglgraphics::procedural::Skeleton& skel,
                             int mapSize) {
     CreatureActor a;
     const fuhglgraphics::procedural::CreatureMesh cm =
-        fuhglgraphics::procedural::meshCreature(skel, pr, meshRes, {1.f, 1.f, 1.f});
+        fuhglgraphics::procedural::meshCreature(skel, pr, meshRes, {1.f, 1.f, 1.f}, /*curvatureGain=*/3.f);
     a.meshData = cm.mesh;
     a.mesh.setMeshData(a.meshData);
     const fuhglgraphics::procedural::CreatureMaps maps =
@@ -227,8 +227,11 @@ int main(int argc, char** argv) {
     // --- G30 creatures: quadruped + reptile with baked procedural maps ---
     procedural::CreatureParams prQ;
     prQ.seed = 21u;
-    prQ.scaleFreq = 5.5f;                    // big readable scales
+    prQ.scaleFreq = 6.f;    // readable scale cells                    // big readable scales
     prQ.stripeFreq = 0.8f;                   // wide stripes
+    prQ.detailAmp = 0.010f;                  // fine, subtle skin folds (not lumpy)
+    prQ.detailFreq = 10.f;
+    prQ.bumpStrength = 1.0f;                 // gentle normal-map relief
     prQ.bodyColor = {0.48f, 0.38f, 0.24f};  // tawny
     prQ.bellyColor = {0.78f, 0.70f, 0.55f};
     prQ.accentColor = {0.30f, 0.16f, 0.10f}; // dark stripes
@@ -241,9 +244,10 @@ int main(int argc, char** argv) {
     prR.bodyColor = {0.22f, 0.38f, 0.28f};  // green
     prR.bellyColor = {0.55f, 0.62f, 0.38f};
     prR.accentColor = {0.10f, 0.22f, 0.16f};
-    prR.scaleFreq = 9.f;                   // smaller scales
-    prR.detailAmp = 0.05f;                  // stronger skin folds
-    prR.detailFreq = 7.f;
+    prR.scaleFreq = 8.f;                    // smaller scales
+    prR.detailAmp = 0.014f;                 // fine, subtle skin folds
+    prR.detailFreq = 11.f;
+    prR.bumpStrength = 1.0f;
     prR.roughness = 0.35f;                  // wetter skin
     const procedural::Skeleton reptile = procedural::makeReptile();
     CreatureActor rep = buildCreature(reptile, prR, 80, 256);
@@ -278,11 +282,11 @@ int main(int argc, char** argv) {
                        const fuhgl::math::Vec3& headPos) {
         for (int s = -1; s <= 1; s += 2) {
             const fuhgl::render::MeshData eyeMd = procedural::meshFromSdf(
-                [](const fuhgl::math::Vec3& p) { return procedural::sdf::sphere(p, 0.055f); },
-                {-0.08f, -0.08f, -0.08f}, {0.08f, 0.08f, 0.08f}, 12, {1.f, 1.f, 1.f});
+                [](const fuhgl::math::Vec3& p) { return procedural::sdf::sphere(p, 0.06f); },
+                {-0.06f, -0.06f, -0.06f}, {0.06f, 0.06f, 0.06f}, 12, {1.f, 1.f, 1.f});
             fuhgl::render::Mesh* eye = new fuhgl::render::Mesh();
             eye->setMeshData(eyeMd);
-            const fuhgl::math::Vec3 local = headPos + fuhgl::math::Vec3{0.10f * s, 0.05f, 0.18f};
+            const fuhgl::math::Vec3 local = headPos + fuhgl::math::Vec3{0.10f * s, 0.04f, 0.16f};
             const fuhgl::math::Mat4 rot = fuhgl::math::rotateY(yaw);
             const fuhgl::math::Vec3 world = fuhgl::math::Vec3{spot.x, 0.f, spot.y} +
                                             fuhgl::math::Vec3{rot(0, 0) * local.x + rot(2, 0) * local.z,
@@ -291,8 +295,9 @@ int main(int argc, char** argv) {
             scene::Node& en = scene.root().createChild("eye");
             en.translation = world;
             scene::MeshEntry& ee = en.attach<scene::MeshComponent>().addMesh(eye);
-            ee.emissive = {1.6f, 0.9f, 0.25f}; // amber glow -> bloom
-            ee.albedo = {0.05f, 0.03f, 0.02f};
+            ee.emissive = {0.5f, 0.25f, 0.08f};  // dim amber (below bloom threshold)
+            ee.albedo = {0.02f, 0.015f, 0.01f};
+            ee.roughness = 0.15f; // glossy dark eyes
             ee.castShadow = false;
         }
     };
@@ -332,8 +337,8 @@ int main(int argc, char** argv) {
     scene.root().effects.params.ssaoRadius = 1.2f;
     scene.root().effects.params.ssaoIntensity = 1.5f;
     scene.root().effects.params.bloomThreshold = 1.0f;
-    scene.root().effects.params.bloomStrength = 0.9f;
-    scene.root().effects.params.volumetricDensity = 0.004f;
+    scene.root().effects.params.bloomStrength = 0.55f;
+    scene.root().effects.params.volumetricDensity = 0.0015f;
     scene.root().effects.params.volumetricCloudiness = 0.7f;
 
     render::DeferredRenderer renderer;
@@ -363,8 +368,14 @@ int main(int argc, char** argv) {
     const fuhgl::math::Vec3 torsoWorld =
         fuhgl::math::Vec3{quadSpot.x, tc.heightAt(quadSpot.x, quadSpot.y), quadSpot.y} +
         fuhgl::math::Vec3{rot(0, 0) * 0.f + rot(2, 0) * 0.f, 1.0f, rot(0, 2) * 0.f + rot(2, 2) * 0.f};
-    cam.position = torsoWorld + fuhgl::math::Vec3{1.4f, 0.9f, 1.8f};
-    aimAt(cam, torsoWorld + fuhgl::math::Vec3{0.f, 0.9f, 0.f});
+    // camera offset and aim in the creature's local frame (rotated by quadYaw): flank + head
+    const fuhgl::math::Vec3 camOffLocal{2.4f, 1.2f, 2.8f};
+    const fuhgl::math::Vec3 aimLocal{0.f, 1.1f, 0.75f};
+    const auto rotv = [&](const fuhgl::math::Vec3& v) {
+        return fuhgl::math::Vec3{rot(0, 0) * v.x + rot(2, 0) * v.z, v.y, rot(0, 2) * v.x + rot(2, 2) * v.z};
+    };
+    cam.position = torsoWorld + rotv(camOffLocal);
+    aimAt(cam, torsoWorld + rotv(aimLocal));
     const std::string closePath = args.prefix + "_closeup.png";
     if (!renderToPng(scene, cam, renderer, &env, args.frames, args.width, args.height, closePath)) {
         std::fprintf(stderr, "creature_screenshot: failed to write %s\n", closePath.c_str());

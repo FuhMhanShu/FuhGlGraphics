@@ -321,15 +321,16 @@ CreatureMaps bakeCreatureMaps(const Skeleton& skel, const CreatureParams& pr, in
                     col = col * (1.f - 0.85f * stripe) + pr.accentColor * (0.85f * stripe);
                     const float w = worley3(ps * pr.scaleFreq, pr.seed);
                     // worley F1: small near cell centers, large at cell borders -> darken the
-                    // borders so the cells read as scales
-                    const float groove = fuhgl::math::smoothstep(0.16f, 0.34f, w);
-                    col = col * (1.f - 0.65f * groove);
-                    const float var = 0.85f + 0.3f * nz.fbm3(ps.x * pr.detailFreq, ps.y * pr.detailFreq,
-                                                             ps.z * pr.detailFreq, 3, Noise::Base::Simplex);
+                    // borders so the cells read as scales; per-cell tint via a second worley
+                    const float groove = fuhgl::math::smoothstep(0.10f, 0.38f, w);
+                    const float cellTint = 0.80f + 0.35f * worley3(ps * pr.scaleFreq, pr.seed ^ 0x5bd1e995u);
+                    col = col * cellTint * (1.f - groove);
+                    const float var = 0.88f + 0.24f * nz.fbm3(ps.x * pr.detailFreq, ps.y * pr.detailFreq,
+                                                              ps.z * pr.detailFreq, 3, Noise::Base::Simplex);
                     col = col * var;
                     const float hgt = 0.5f * nz.fbm3(ps.x * pr.detailFreq * 1.3f, ps.y * pr.detailFreq * 1.3f,
                                                       ps.z * pr.detailFreq * 1.3f, 3, Noise::Base::Simplex) +
-                                      0.8f * groove;
+                                      0.5f * groove;
                     height[static_cast<std::size_t>(j) * S + i] = hgt;
                     unsigned char* o = &out.albedo[(static_cast<std::size_t>(j) * S + i) * 4];
                     o[0] = static_cast<unsigned char>(clamp01(col.x) * 255.f);
