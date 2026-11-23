@@ -39,6 +39,7 @@ add_library(fuhglgraphics STATIC
     src/version.cpp
     src/render/deferred_renderer.cpp
     src/render/debug_hud.cpp
+    src/render/ssao.cpp
     src/scene/component.cpp
     src/scene/effects.cpp
     src/scene/node.cpp

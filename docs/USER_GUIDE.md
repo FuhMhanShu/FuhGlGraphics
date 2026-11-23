@@ -210,6 +210,15 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
                   frame.lightProbes, &frame.decals, frame.water);
   ```
+- **SSAO (G15).** `render::Effect::Ssao` runs a post-graph pass `ssao` before lighting:
+  hemisphere-kernel sampling of the G-buffer (normal + depth, world-space reconstruction,
+  per-pixel kernel rotation, linearized-depth compare with range check) into the `ssao`
+  resource; the lighting pass multiplies the material AO by the factor on unit 6
+  (`renderer.texSsao()` for inspection). Params in `EffectParams`: `ssaoRadius`,
+  `ssaoIntensity`, `ssaoBias`, `ssaoSamples`. Pure helpers `render::ssaoKernel()` /
+  `ssaoRotation()` / `linearizeDepth()` in `render/ssao.hpp`. Quick start:
+  [G15 tutorial](en/tutorials/g15_ssao.md), demo `examples/ssao_screenshot`,
+  screenshots: [on](images/g15_ssao_on.png), [off](images/g15_ssao_off.png).
 - **GPU skinning (G14).** `anim::GpuSkinner` owns one skinned mesh's GPU side: VAO with the
   bind-pose vertices plus `JOINTS_0`/`WEIGHTS_0` as float4 attributes (locations 5/6) and an
   SSBO with the joint matrix palette (binding 0). On GL >= 4.3 the G3 G-buffer pass draws it

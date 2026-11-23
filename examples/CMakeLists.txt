@@ -53,3 +53,8 @@ target_link_libraries(fuhglgraphics_water_screenshot PRIVATE fuhglgraphics)
 # the G3 G-buffer pass, Effect::GpuSkinning, GL >= 4.3) — headless to PNG.
 add_executable(fuhglgraphics_gpu_skinning_screenshot gpu_skinning_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_gpu_skinning_screenshot PRIVATE fuhglgraphics)
+
+# G15 SSAO demo: courtyard (crates + wall) where the G3 "ssao" post pass darkens the
+# contact corners/edges (Effect::Ssao) — headless to PNG.
+add_executable(fuhglgraphics_ssao_screenshot ssao_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_ssao_screenshot PRIVATE fuhglgraphics)

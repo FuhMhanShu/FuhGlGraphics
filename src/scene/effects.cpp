@@ -35,6 +35,11 @@ void Effects::applyTo(render::DeferredRenderer& renderer) const {
     renderer.dofFocusDist = params.dofFocusDist;
     renderer.dofStrength = params.dofStrength;
     renderer.dofMaxCoC = params.dofMaxCoC;
+    // G15 SSAO
+    renderer.ssaoRadius = params.ssaoRadius;
+    renderer.ssaoIntensity = params.ssaoIntensity;
+    renderer.ssaoBias = params.ssaoBias;
+    renderer.ssaoSamples = params.ssaoSamples;
     // (width() > 0: the renderer was create()d, so a GL context is current and the
     //  cube map can be allocated)
     if (enabled(render::Effect::PointShadows) && !renderer.pointShadowEnabled() && renderer.width() > 0)

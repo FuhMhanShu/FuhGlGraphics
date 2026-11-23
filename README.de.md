@@ -66,8 +66,11 @@ und **G14** — GPU-Skinning (`anim::GpuSkinner`: VAO + JOINTS_0/WEIGHTS_0-Attri
 Matrix-Palette-SSBO, gezeichnet vom GLSL-430-Skinning-Shader des G3-G-Buffer-Passes, wenn
 `Effect::GpuSkinning` an ist, GL >= 4.3; CPU-Fallback darunter) — siehe
 [G14-Tutorial](docs/de/tutorials/g14_gpu_skinning.md) und Bilder in
-[docs/images/](docs/images/g14_gpu_skinning_on.png).
-Als Nächstes: **G15–G23** (technische Erweiterungen: SSAO, SSR, Bloom, Picking,
+[docs/images/](docs/images/g14_gpu_skinning_on.png) — und **G15** — SSAO (`Effect::Ssao`:
+G-Buffer-basierter Hemisphären-Kernel-Pass vor dem Lighting, AO-Faktor in der Ressource
+`ssao`, vom Lighting-Pass gesampelt) — siehe [G15-Tutorial](docs/de/tutorials/g15_ssao.md)
+und Bilder in [docs/images/](docs/images/g15_ssao_on.png).
+Als Nächstes: **G16–G23** (technische Erweiterungen: SSAO, SSR, Bloom, Picking,
 Szenen-Serialisierung, Terrain/LOD, volumetrischer Nebel, Wetness, Tonemap-Operatoren), dann
 **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder **G2** (Qt-Editor).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen

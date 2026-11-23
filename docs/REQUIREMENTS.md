@@ -198,6 +198,11 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   `src/anim/gpu_skinner.cpp`): implemented — see `tests/gl_smoke_gpu_skin.cpp`,
   `examples/gpu_skinning_screenshot`, `docs/images/g14_gpu_skinning_*.png` and the
   [G14 tutorial](en/tutorials/g14_gpu_skinning.md).
+- **G15 — SSAO** (`fuhglgraphics::render::ssao` pure helpers in `include/fuhglgraphics/render/ssao.hpp`
+  + `src/render/ssao.cpp`, "ssao" post-graph pass + `Effect::Ssao` in the G3 renderer, AO
+  sampled by the lighting pass on unit 6): implemented — see `tests/test_ssao.cpp`,
+  `tests/gl_smoke_ssao.cpp`, `examples/ssao_screenshot`, `docs/images/g15_ssao_*.png` and the
+  [G15 tutorial](en/tutorials/g15_ssao.md).
 - G2, G11 — planned.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON

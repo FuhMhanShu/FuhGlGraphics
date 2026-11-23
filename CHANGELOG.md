@@ -9,6 +9,19 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G15 — SSAO** (`fuhglgraphics::render`, `include/fuhglgraphics/render/ssao.hpp`,
+  `src/render/ssao.cpp`): a new post-graph pass `ssao` runs before the lighting pass —
+  world-position reconstruction from the G-buffer depth, a deterministic hemisphere kernel
+  (`ssaoKernel(samples, seed)`, per-pixel rotation via `ssaoRotation`, `linearizeDepth` for the
+  depth compare, range check + bias) written into the `ssao` resource (RG16F, `.r`), sampled
+  by the lighting pass on unit 6 (`uSsao`/`uSsaoEnabled`) multiplying the material AO. New
+  `render::Effect::Ssao` (kEffectCount = 17, off by default), `EffectParams::ssa*`,
+  `DeferredRenderer::texSsao()`. Tests: `tests/test_ssao.cpp` (unit: kernel/rotation/
+  linearization) + `tests/gl_smoke_ssao.cpp` (label `gl_context`; SSAO on vs off differ and
+  darken). Demo: `examples/ssao_screenshot` headless to PNG; references
+  `docs/images/g15_ssao_{on,off}.png`. Tutorial: `docs/en/tutorials/g15_ssao.md` + German
+  translation. Requirement entry G15 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 - **G14 — GPU skinning** (`fuhglgraphics::anim::GpuSkinner`, `include/fuhglgraphics/anim/gpu_skinner.hpp`,
   `src/anim/gpu_skinner.cpp`): the G6 "future work" — a PIMPL class owning one skinned mesh's GPU side:
   a VAO with the bind-pose vertices (standard layout, attribs 0..3) plus JOINTS_0/WEIGHTS_0 as float4

@@ -129,6 +129,9 @@ public:
     const fuhgl::Texture& texDepth() const;      ///< depth attachment as texture
     /// @brief Lit HDR scene before the post chain (graph resource "hdr").
     const fuhgl::Texture& hdrTexture() const;
+    /// @brief G15: screen-space AO factor (graph resource "ssao", R16F, 1 = unoccluded),
+    /// computed from the G-buffer and sampled by the lighting pass on unit 6.
+    const fuhgl::Texture& texSsao() const;
     /// @brief G13: planar-reflection target (RGBA16F, internal size * waterReflectionScale),
     /// rendered from the mirrored camera before the G-buffer when a water surface is active.
     const fuhgl::Texture& reflectionTexture() const;
@@ -241,6 +244,14 @@ public:
     float dofStrength = 12.f;   ///< CoC scale: blur radius per unit of focus error
     float dofMaxCoC = 24.f;     ///< max circle of confusion in output pixels
 
+    /// @brief G15 SSAO (Effect::Ssao): the "ssao" post pass runs before lighting and writes
+    /// the AO factor into the "ssao" resource (RG16F, .r); the lighting pass multiplies the material AO
+    /// by it. Off by default (costs a fullscreen pass + kernel loop).
+    float ssaoRadius = 1.5f;    ///< world-space sampling radius
+    float ssaoIntensity = 1.4f; ///< occlusion strength
+    float ssaoBias = 0.03f;     ///< depth bias in world units
+    int ssaoSamples = 24;       ///< hemisphere kernel samples (max 64)
+
     /// @brief G10 debug HUD (Effect::DebugHud): fps / frame time / effect toggles panel.
     DebugHud& hud() { return hud_; }
     const DebugHud& hud() const { return hud_; }
@@ -267,6 +278,7 @@ private:
     /// mirrored camera into the reflection FBO, clipped at the water plane.
     void renderReflection(const fuhgl::render::SceneView& scene, const fuhgl::math::Mat4& reflViewProj,
                           const fuhgl::math::Vec4& clipPlane, const fuhgl::math::Vec3& reflEye);
+    void drawSsao(fuhgl::render::RenderGraph::PassContext& ctx); ///< G15, runs before lighting
     void drawLighting(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawWater(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawParticles(fuhgl::render::RenderGraph::PassContext& ctx);
@@ -296,6 +308,7 @@ private:
     bool waterEnabled_ = true;       ///< Effect::Water
     bool gpuSkinningEnabled_ = true; ///< Effect::GpuSkinning (GL >= 4.3, CPU fallback below)
     const std::vector<const anim::GpuSkinner*>* curSkins_ = nullptr; ///< G14 skins of this frame
+    bool ssaoEnabled_ = false;   ///< Effect::Ssao (off by default)
     const water::WaterSurface* curWater_ = nullptr; ///< G13: active water surface this frame
     fuhgl::math::Mat4 waterModel_{};                 ///< its draw item's model matrix
     fuhgl::math::Vec4 waterClipPlane_{0.f, 1.f, 0.f, 0.f}; ///< world plane (n, d) for clipping

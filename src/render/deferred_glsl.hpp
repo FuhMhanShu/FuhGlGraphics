@@ -123,6 +123,70 @@ void main() {
 }
 )GLSL";
 
+// --- G15 SSAO pass: G-buffer normal+depth -> AO factor (R16F, resource "ssao").
+// World-space hemisphere sampling: reconstruct the world position from depth, build a
+// tangent frame around the normal, rotate the kernel per pixel (deterministic hash), project
+// each sample with the (non-jittered) viewProj and compare linearized depths with a range
+// check. Writes 1.0 everywhere when Effect::Ssao is off, so the lighting pass can always
+// sample the resource. Units: uGNormal 0, uGDepth 1.
+constexpr const char* kSsaoFrag = R"GLSL(#version 330 core
+in vec2 vUV;
+uniform sampler2D uGNormal; // unit 0
+uniform sampler2D uGDepth;  // unit 1
+uniform mat4 uInvViewProj;  // non-jittered camera viewProj inverse
+uniform mat4 uViewProj;     // non-jittered camera viewProj (sample projection)
+uniform vec2 uResolution;
+uniform vec3 uKernel[64];
+uniform int uKernelSize;
+uniform float uRadius;
+uniform float uBias;
+uniform float uIntensity;
+uniform int uSamples;
+uniform float uRotSeed;
+uniform int uSsaoEnabled;
+uniform float uZNear, uZFar;
+out vec4 FragColor;
+float linearize(float d) { return 2.0 * uZNear * uZFar / max(uZFar + uZNear - d * (uZFar - uZNear), 1e-6); }
+void main() {
+    if (uSsaoEnabled != 1) { FragColor = vec4(1.0); return; }
+    float depth = texture(uGDepth, vUV).r;
+    if (depth >= 0.99999) { FragColor = vec4(1.0); return; } // sky: no AO
+    vec4 wp = uInvViewProj * vec4(vUV * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec3 P = wp.xyz / wp.w;
+    vec3 N = normalize(texture(uGNormal, vUV).rgb * 2.0 - 1.0);
+    float rot = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + uRotSeed) * 43758.5453) * 6.2831853;
+    float cr = cos(rot), sr = sin(rot);
+    vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    vec3 T = normalize(cross(up, N));
+    vec3 B = cross(N, T);
+    float pLin = linearize(depth);
+    float occ = 0.0;
+    for (int i = 0; i < 64; ++i) {
+        if (i >= uSamples) break;
+        vec3 k = uKernel[i];
+        k = vec3(k.x * cr - k.y * sr, k.x * sr + k.y * cr, k.z); // per-pixel rotation in the tangent plane
+        vec3 sp = P + (T * k.x + B * k.y + N * k.z) * uRadius;
+        vec4 clip = uViewProj * vec4(sp, 1.0);
+        if (clip.w <= 0.0) continue;
+        vec2 suv = clip.xy / clip.w * 0.5 + 0.5;
+        if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
+        float sceneLin = linearize(texture(uGDepth, suv).r);
+        float sampleLin = linearize(clip.z / clip.w * 0.5 + 0.5);
+        float range = clamp(1.0 - abs(pLin - sceneLin) / max(uRadius, 1e-4), 0.0, 1.0);
+        occ += (sceneLin < sampleLin - uBias) ? range : 0.0; // occluded
+    }
+    float ao = clamp(1.0 - (occ / max(float(uSamples), 1.0)) * uIntensity, 0.0, 1.0);
+    FragColor = vec4(ao, 0.0, 0.0, 1.0);
+}
+)GLSL";
+
+// --- G15 SSAO uniforms for the lighting pass (uSsao on unit 6, kTextureUnitGBufferPbr slot
+// is free in this pass — gPbr is bound at unit 2) ---
+constexpr const char* kLightFragSsao = R"GLSL(
+uniform sampler2D uSsao;      // unit 6: G15 AO factor (1 = unoccluded)
+uniform int uSsaoEnabled;
+)GLSL";
+
 // --- fullscreen triangle (all post passes) ------------------------------------------
 constexpr const char* kFsVert = R"GLSL(#version 330 core
 out vec2 vUV;
@@ -471,7 +535,9 @@ void main() {
     vec3 emissive = texture(uGEmissive, vUV).rgb;
     vec4 pbr = texture(uGPbr, vUV);
     vec3 V = normalize(uCamPos - worldPos);
-    vec3 lit = shade(albedo, pbr.r, pbr.g, pbr.b, N, worldPos, V) + emissive;
+    // G15: multiply the material AO with the screen-space AO factor
+    float ssao = (uSsaoEnabled == 1) ? texture(uSsao, vUV).r : 1.0;
+    vec3 lit = shade(albedo, pbr.r, pbr.g, pbr.b * ssao, N, worldPos, V) + emissive;
     if (uFogDensity > 0.0) {
         float d = length(worldPos - uCamPos);
         lit = mix(lit, uFogColor, 1.0 - exp(-uFogDensity * d));

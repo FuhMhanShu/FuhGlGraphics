@@ -10,3 +10,4 @@ void runParticlesTests();
 void runAnimTests();
 void runProbesTests();
 void runWaterTests();
+void runSsaoTests();

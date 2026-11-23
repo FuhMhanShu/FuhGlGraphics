@@ -52,6 +52,11 @@ struct EffectParams {
     float dofFocusDist = 8.f;   ///< world-space focus distance (view depth)
     float dofStrength = 12.f;   ///< CoC scale per unit of focus error
     float dofMaxCoC = 24.f;     ///< max circle of confusion in output pixels
+    // --- G15 SSAO (Effect::Ssao) ---
+    float ssaoRadius = 1.5f;    ///< world-space sampling radius
+    float ssaoIntensity = 1.4f; ///< occlusion strength (occ fraction * intensity subtracted from 1)
+    float ssaoBias = 0.03f;     ///< depth bias in world units (avoids self-occlusion acne)
+    int ssaoSamples = 24;       ///< hemisphere kernel samples (max 64)
 };
 
 /// @brief Effect list + parameters of one scene node (or of a whole frame after merging).

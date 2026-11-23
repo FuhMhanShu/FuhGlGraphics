@@ -68,8 +68,11 @@ and **G14** — GPU skinning (`anim::GpuSkinner`: VAO + JOINTS_0/WEIGHTS_0 attri
 matrix-palette SSBO, drawn by the G3 G-buffer pass's GLSL-430 skinning shader when
 `Effect::GpuSkinning` is on, GL >= 4.3; CPU fallback below) — see the
 [G14 tutorial](docs/en/tutorials/g14_gpu_skinning.md) and screenshots in
-[docs/images/](docs/images/g14_gpu_skinning_on.png).
-Next up: **G15–G23** (technical extensions: SSAO, SSR, bloom, picking, scene serialization,
+[docs/images/](docs/images/g14_gpu_skinning_on.png) — and **G15** — SSAO (`Effect::Ssao`:
+G-buffer-based hemisphere-kernel pass before lighting, AO factor in the `ssao` resource
+sampled by the lighting pass) — see the [G15 tutorial](docs/en/tutorials/g15_ssao.md) and
+screenshots in [docs/images/](docs/images/g15_ssao_on.png).
+Next up: **G16–G23** (technical extensions: SSAO, SSR, bloom, picking, scene serialization,
 terrain/LOD, volumetric fog, wetness, tonemap operators), then **G11** (engine
 infrastructure: asset cache, JSON config, minimal Qt editor) or **G2** (Qt editor).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited

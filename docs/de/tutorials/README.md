@@ -39,12 +39,15 @@ Ein kleines Tutorial pro Feature. Jedes ist in sich abgeschlossen: Ziel → Code
   per Fresnel, Kamm- + Uferschaum, Sonnen-Glint); See-Bilder in
   [docs/images/](../../images/g13_water_1280x720.png)
 
+- [G15 — SSAO](g15_ssao.md) — Post-Pass vor dem Lighting aus dem G-Buffer
+  (Hemisphären-Kernel + Tiefenvergleich in die Ressource `ssao`, vom Lighting-Pass
+  gesampelt, `Effect::Ssao`); Bilder in [docs/images/](../../images/g15_ssao_on.png)
 - [G14 — GPU-Skinning (GL ≥ 4.3)](g14_gpu_skinning.md) — `anim::GpuSkinner` (VAO +
   JOINTS/WEIGHTS-Attribute + Matrix-Palette-SSBO), gezeichnet vom Skinning-Vertex-Shader des
   G3-G-Buffer-Passes, wenn `Effect::GpuSkinning` an ist (CPU-Fallback darunter); Bilder in
   [docs/images/](../../images/g14_gpu_skinning_on.png)
 
-Als Nächstes: **G15–G23** (technische Erweiterungen: SSAO, SSR, Bloom, Picking,
+Als Nächstes: **G16–G23** (technische Erweiterungen: SSR, Bloom, Picking,
 Szenen-Serialisierung, Terrain/LOD, volumetrischer Nebel, Wetness, Tonemap-Operatoren) /
 **G11** (Engine-Infrastruktur) / **G2** (Qt-Editor) — siehe [REQUIREMENTS.md](../../REQUIREMENTS.md).
 

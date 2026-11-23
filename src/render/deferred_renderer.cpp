@@ -1,6 +1,7 @@
 #include "fuhglgraphics/render/deferred_renderer.hpp"
 
 #include <fuhglgraphics/anim/gpu_skinner.hpp>
+#include <fuhglgraphics/render/ssao.hpp>
 #include <fuhglgraphics/particles/particle_system.hpp>
 #include <fuhglgraphics/probes/light_probes.hpp>
 #include <fuhglgraphics/water/water_surface.hpp>
@@ -49,7 +50,8 @@ struct DeferredRenderer::Impl {
         rMotion{fuhgl::Texture::Target::Tex2D}, rMatId{fuhgl::Texture::Target::Tex2D};
     fuhgl::Texture texOutput{fuhgl::Texture::Target::Tex2D};
 
-    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
+    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
+    std::vector<fuhgl::math::Vec3> ssaoKernel; ///< G15: generated once per createInternal
     bool skinProgramReady = false; ///< G14: the GLSL 430 skinning G-buffer program (GL >= 4.3)
     fuhgl::render::Mesh decalBox; ///< G8: unit box for the decal projection pass
     // G13 water: planar-reflection target + cheap forward materials + the water surface pass
@@ -269,8 +271,10 @@ bool DeferredRenderer::createInternal() {
     if (!im.decalBox.create()) return false;
     im.decalBox.setMeshData(fuhgl::render::shapes::boxData({1.f, 1.f, 1.f}, {1.f, 1.f, 1.f}));
     const std::string lightFrag = std::string(kLightFragHead) + kLightFragKit +
-                                  fuhgl::render::kSkFuncs + kLightFragProbes + kLightFragPbr + kLightFragTail;
+                                  fuhgl::render::kSkFuncs + kLightFragProbes + kLightFragSsao + kLightFragPbr + kLightFragTail;
+    im.ssaoKernel = ssaoKernel(std::min(ssaoSamples > 0 ? ssaoSamples : 24, 64), 1337u);
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
+        !compilePostFs(im.ssaoMat, kSsaoFrag, "ssao") ||
         !compilePostFs(im.taaMat, kTaaFrag, "taa") ||
         !compilePostFs(im.upscaleMat, kUpscaleFrag, "upscale") ||
         !compilePostFs(im.dofMat, kDofFrag, "dof") ||
@@ -381,13 +385,16 @@ bool DeferredRenderer::createInternal() {
     im.post.addExternal("gMotion", &gMotion, iw, ih);
     im.post.addExternal("gMatId", &(msaa_ > 0 ? im.rMatId : im.texMatId), iw, ih);
     im.post.addExternal("gDepth", &im.texDepth, iw, ih);
+    im.post.addResource("ssao", iw, ih, fuhgl::gl::GL_RG16F); // G15 AO factor in .r
     im.post.addResource("hdr", iw, ih, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("hdrW", iw, ih, fuhgl::gl::GL_RGBA16F); // hdr + G13 water
     im.post.addResource("hdrP", iw, ih, fuhgl::gl::GL_RGBA16F); // hdrW + G5 particles
     im.post.addResource("taa", iw, ih, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("up", width_, height_, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("dof", width_, height_, fuhgl::gl::GL_RGBA16F); // G10 DoF at output res
-    im.post.addPass("lighting", {"gAlbedo", "gNormal", "gPbr", "gEmissive", "gDepth"}, {"hdr"},
+    im.post.addPass("ssao", {"gNormal", "gDepth"}, {"ssao"}, // G15, runs before lighting
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawSsao(ctx); });
+    im.post.addPass("lighting", {"gAlbedo", "gNormal", "gPbr", "gEmissive", "gDepth", "ssao"}, {"hdr"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawLighting(ctx); });
     im.post.addPass("water", {"hdr", "gDepth"}, {"hdrW"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawWater(ctx); });
@@ -968,6 +975,41 @@ void DeferredRenderer::drawFs(fuhgl::render::Material& mat,
     fuhgl::gl::drawArrays(fuhgl::gl::Primitive::Triangles, 0, 3);
 }
 
+// G15 SSAO pass: G-buffer normal + depth -> AO factor (resource "ssao", R16F). Runs before
+// the lighting pass; writes 1.0 everywhere when Effect::Ssao is off so the lighting pass
+// can sample the resource unconditionally.
+void DeferredRenderer::drawSsao(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "gNormal");
+    ctx.bindInput(1, "gDepth");
+    const fuhgl::render::SceneView& s = *curScene_;
+    Impl& im = *impl_;
+    const bool on = effectEnabled(Effect::Ssao);
+    const int samples = std::min(std::max(ssaoSamples, 1), static_cast<int>(im.ssaoKernel.size()));
+    drawFs(im.ssaoMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uGNormal"), 0);
+        p.setUniform(p.uniformLocation("uGDepth"), 1);
+        p.setUniform(p.uniformLocation("uSsaoEnabled"), on ? 1 : 0);
+        p.setUniform("uInvViewProj", s.camera->viewProj(s.aspect).inverse());
+        p.setUniform("uViewProj", s.camera->viewProj(s.aspect)); // non-jittered
+        p.setUniform("uResolution", fuhgl::math::Vec2(static_cast<float>(internalWidth_),
+                                                       static_cast<float>(internalHeight_)));
+        const int ksize = std::min(static_cast<int>(im.ssaoKernel.size()), 64);
+        for (int i = 0; i < ksize; ++i) {
+            char name[16];
+            std::snprintf(name, sizeof(name), "uKernel[%d]", i);
+            p.setUniform(name, im.ssaoKernel[static_cast<std::size_t>(i)]);
+        }
+        p.setUniform(p.uniformLocation("uKernelSize"), ksize);
+        p.setUniform("uRadius", ssaoRadius);
+        p.setUniform("uBias", ssaoBias);
+        p.setUniform("uIntensity", ssaoIntensity);
+        p.setUniform(p.uniformLocation("uSamples"), samples);
+        p.setUniform("uRotSeed", static_cast<float>(frameIndex_ % 64) * 0.7f); // per-frame rotation
+        p.setUniform("uZNear", s.camera->zNear());
+        p.setUniform("uZFar", s.camera->zFar());
+    });
+}
+
 void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx) {
     const fuhgl::render::SceneView& s = *curScene_;
     Impl& im = *impl_;
@@ -977,6 +1019,7 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
     ctx.bindInput(2, "gPbr");
     ctx.bindInput(3, "gEmissive");
     ctx.bindInput(5, "gDepth");
+    ctx.bindInput(6, "ssao"); // G15
     // shadow samplers (units 4 / 10; dummies when off)
     fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitShadowMap);
     f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, s.shadowMap ? s.shadowMap->textureId() : im.dummyShadowTex.id());
@@ -1025,6 +1068,9 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
         p.setUniform(p.uniformLocation("uGPbr"), 2);
         p.setUniform(p.uniformLocation("uGEmissive"), 3);
         p.setUniform(p.uniformLocation("uGDepth"), 5);
+        // G15 SSAO (unit 6)
+        p.setUniform(p.uniformLocation("uSsao"), 6);
+        p.setUniform(p.uniformLocation("uSsaoEnabled"), effectEnabled(Effect::Ssao) ? 1 : 0);
         p.setUniform(p.uniformLocation("uShadowMap"), fuhgl::render::kTextureUnitShadowMap);
         p.setUniform(p.uniformLocation("uShadowMapArray"), fuhgl::render::kTextureUnitShadowMapArray);
         p.setUniform(p.uniformLocation("uShadowMoments"), fuhgl::render::kTextureUnitShadowMoments);
@@ -1232,6 +1278,7 @@ const fuhgl::Texture& DeferredRenderer::texMotion() const { return msaa_ > 0 ? i
 const fuhgl::Texture& DeferredRenderer::texMaterialId() const { return msaa_ > 0 ? impl_->rMatId : impl_->texMatId; }
 const fuhgl::Texture& DeferredRenderer::texDepth() const { return impl_->texDepth; }
 const fuhgl::Texture& DeferredRenderer::hdrTexture() const { return *impl_->post.texture("hdr"); }
+const fuhgl::Texture& DeferredRenderer::texSsao() const { return *impl_->post.texture("ssao"); }
 const fuhgl::Texture& DeferredRenderer::reflectionTexture() const { return impl_->reflColor; }
 fuhgl::render::RenderGraph& DeferredRenderer::postGraph() { return impl_->post; }
 
@@ -1275,6 +1322,7 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::DebugHud, hudEnabled_);
     gate(Effect::Water, waterEnabled_);
     gate(Effect::GpuSkinning, gpuSkinningEnabled_);
+    gate(Effect::Ssao, ssaoEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -1297,6 +1345,7 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::DebugHud: hudEnabled_ = on; break;
         case Effect::Water: waterEnabled_ = on; break;
         case Effect::GpuSkinning: gpuSkinningEnabled_ = on; break;
+        case Effect::Ssao: ssaoEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -1329,6 +1378,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::DebugHud: return hudEnabled_;
         case Effect::Water: return waterEnabled_;
         case Effect::GpuSkinning: return gpuSkinningEnabled_;
+        case Effect::Ssao: return ssaoEnabled_;
     }
     return false;
 }
@@ -1336,7 +1386,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
 void DeferredRenderer::setAllEffects(bool on) {
     taaEnabled_ = upscaleEnabled_ = tonemapEnabled_ = iblEnabled_ = shadows_ = csmEnabled_ = on;
     pointShadows_ = contactShadowsEnabled = particlesEnabled_ = lightProbesEnabled_ = decalsEnabled_ = waterEnabled_ = on;
-    dofEnabled_ = hudEnabled_ = gpuSkinningEnabled_ = on;
+    dofEnabled_ = hudEnabled_ = gpuSkinningEnabled_ = ssaoEnabled_ = on;
     applyCapabilities();
 }
 

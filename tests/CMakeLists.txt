@@ -8,6 +8,7 @@ add_executable(fuhglgraphics_tests
     test_anim.cpp
     test_probes.cpp
     test_water.cpp
+    test_ssao.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -100,3 +101,11 @@ add_executable(fuhglgraphics_gl_smoke_gpu_skin gl_smoke_gpu_skin.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_gpu_skin PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_gpu_skin COMMAND fuhglgraphics_gl_smoke_gpu_skin)
 set_tests_properties(fuhglgraphics_gl_smoke_gpu_skin PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for the G15 SSAO (label "gl_context"): box on ground — with
+# Effect::Ssao on vs off the frames must differ and the changed pixels must get darker
+# (AO is multiplicative), concentrated at the contact corner. Skips (exit code 77) without GL.
+add_executable(fuhglgraphics_gl_smoke_ssao gl_smoke_ssao.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_ssao PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_ssao COMMAND fuhglgraphics_gl_smoke_ssao)
+set_tests_properties(fuhglgraphics_gl_smoke_ssao PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
