@@ -285,7 +285,15 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   `heightAt()` / instancing. Quick start: [G26 tutorial](en/tutorials/g26_lsystem.md),
   demo `examples/lsystem_screenshot`, screenshots: [forest](images/g26_lsystem_forest.png),
   [tree closeup](images/g26_lsystem_tree.png).
-  Planned on top: G27 WFC, G28 voronoi, G29 SDF fractals.
+- **Wave function collapse (G27).** `procedural::Wfc w(width, height, borderTag)`;
+  `addTile(WfcTile{name, weight, {E, S, W, N tags}})`; `solve(seed)` returns per-cell
+  `{tile, rot}` placements (row-major, tile < 0 = unsolved after backtracking). Tiles rotate
+  in 90 deg steps (`wfcRotatedTags`), adjacency = equal touching tags, the border is a fixed
+  tag. Preset `Wfc::makeDungeonTiles()`. Instantiate placements as scene nodes (merge cells
+  per tile+rotation into one mesh). Quick start: [G27 tutorial](en/tutorials/g27_wfc.md),
+  demo `examples/wfc_screenshot`, screenshots: [dungeon interior](images/g27_wfc_dungeon.png),
+  [top-down overview](images/g27_wfc_overview.png).
+  Planned on top: G28 voronoi, G29 SDF fractals.
 - **Bloom (G17).** `render::Effect::Bloom` runs a post-graph pass `bloom` after particles and
   before TAA: per-channel bright-pass above `bloomThreshold`, 9-tap golden-angle blur at
   `bloomRadius` texels, added with `bloomStrength` (input `hdrP`, output `hdrB`, so TAA

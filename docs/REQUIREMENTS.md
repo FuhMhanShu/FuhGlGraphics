@@ -284,8 +284,14 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   → `MeshData` (tapered cylinders + leaf quads); presets `makeTree(variant)`, `makeFern()`,
   `makeBush()`. See `tests/test_procedural_lsystem.cpp`, `examples/lsystem_screenshot`,
   `docs/images/g26_lsystem_*.png` and the [G26 tutorial](en/tutorials/g26_lsystem.md).
-- **G27–G29 — procedural generation algorithms** — planned (same `procedural/` module,
+- **G27 — wave function collapse (tiled)** — implemented: `procedural::Wfc` in
+  `include/fuhglgraphics/procedural/wfc.hpp` + `src/procedural/wfc.cpp`: `WfcTile` edge tags
+  in cyclic dir order (E, S, W, N) + 4 rotations (`wfcRotatedTags`), `compatible()`,
+  `solve(seed, maxBacktracks)` with min-entropy selection, AC-3-style propagation, border-tag
+  constraint and seeded backtracking; preset `Wfc::makeDungeonTiles()` (floor, wall bands,
+  caps, corners, doors, pillar). Placements instantiate as G9 nodes. See
+  `tests/test_procedural_wfc.cpp`, `examples/wfc_screenshot`, `docs/images/g27_wfc_*.png`
+  and the [G27 tutorial](en/tutorials/g27_wfc.md).
+- **G28–G29 — procedural generation algorithms** — planned (same `procedural/` module,
   one feature per PR with unit test + gl_smoke + example screenshot + tutorial en/de):
-  G27 wave function collapse (tiled, edge tags + rotations, backtracking → scene
-  placements), G28 2D Voronoi cells + extrusion meshes, G29 SDF/3D fractals
-  (Mandelbulb) meshed via G25.
+  G28 2D Voronoi cells + extrusion meshes, G29 SDF/3D fractals (Mandelbulb) meshed via G25.
