@@ -52,7 +52,7 @@ struct DeferredRenderer::Impl {
         rMotion{fuhgl::Texture::Target::Tex2D}, rMatId{fuhgl::Texture::Target::Tex2D};
     fuhgl::Texture texOutput{fuhgl::Texture::Target::Tex2D};
 
-    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, ssrMat, bloomMat, volumetricMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
+    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, hbaoMat, ssrMat, bloomMat, flareMat, volumetricMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat;
     std::vector<fuhgl::math::Vec3> ssaoKernel; ///< G15: generated once per createInternal
     bool skinProgramReady = false; ///< G14: the GLSL 430 skinning G-buffer program (GL >= 4.3)
     fuhgl::render::Mesh decalBox; ///< G8: unit box for the decal projection pass
@@ -277,8 +277,10 @@ bool DeferredRenderer::createInternal() {
     im.ssaoKernel = ssaoKernel(std::min(ssaoSamples > 0 ? ssaoSamples : 24, 64), 1337u);
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
         !compilePostFs(im.ssaoMat, kSsaoFrag, "ssao") ||
+        !compilePostFs(im.hbaoMat, kHbaoFrag, "hbao") ||
         !compilePostFs(im.ssrMat, kSsrFrag, "ssr") ||
         !compilePostFs(im.bloomMat, kBloomFrag, "bloom") ||
+        !compilePostFs(im.flareMat, kFlareFrag, "flare") ||
         !compilePostFs(im.volumetricMat, kVolumetricFrag, "volumetric") ||
         !compilePostFs(im.taaMat, kTaaFrag, "taa") ||
         !compilePostFs(im.upscaleMat, kUpscaleFrag, "upscale") ||
@@ -391,18 +393,22 @@ bool DeferredRenderer::createInternal() {
     im.post.addExternal("gMatId", &(msaa_ > 0 ? im.rMatId : im.texMatId), iw, ih);
     im.post.addExternal("gDepth", &im.texDepth, iw, ih);
     im.post.addResource("ssao", iw, ih, fuhgl::gl::GL_RG16F); // G15 AO factor in .r
+    im.post.addResource("hbao", iw, ih, fuhgl::gl::GL_RG16F); // G25 horizon-based AO factor in .r
     im.post.addResource("hdr", iw, ih, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("hdrS", iw, ih, fuhgl::gl::GL_RGBA16F); // G16: hdr + screen-space reflections
     im.post.addResource("hdrW", iw, ih, fuhgl::gl::GL_RGBA16F); // hdr + G13 water
     im.post.addResource("hdrP", iw, ih, fuhgl::gl::GL_RGBA16F); // hdrW + G5 particles
     im.post.addResource("hdrV", iw, ih, fuhgl::gl::GL_RGBA16F); // G21: hdrP + volumetric fog
     im.post.addResource("hdrB", iw, ih, fuhgl::gl::GL_RGBA16F); // G17: hdrV + bloom
+    im.post.addResource("hdrF", iw, ih, fuhgl::gl::GL_RGBA16F); // G24: hdrB + lens flare/anamorphic
     im.post.addResource("taa", iw, ih, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("up", width_, height_, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("dof", width_, height_, fuhgl::gl::GL_RGBA16F); // G10 DoF at output res
     im.post.addPass("ssao", {"gNormal", "gDepth"}, {"ssao"}, // G15, runs before lighting
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawSsao(ctx); });
-    im.post.addPass("lighting", {"gAlbedo", "gNormal", "gPbr", "gEmissive", "gDepth", "ssao"}, {"hdr"},
+    im.post.addPass("hbao", {"gNormal", "gDepth"}, {"hbao"}, // G25, runs before lighting (next to SSAO)
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawHbao(ctx); });
+    im.post.addPass("lighting", {"gAlbedo", "gNormal", "gPbr", "gEmissive", "gDepth", "ssao", "hbao"}, {"hdr"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawLighting(ctx); });
     im.post.addPass("ssr", {"hdr", "gNormal", "gDepth", "gPbr"}, {"hdrS"}, // G16, after lighting
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawSsr(ctx); });
@@ -414,7 +420,9 @@ bool DeferredRenderer::createInternal() {
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawVolumetric(ctx); });
     im.post.addPass("bloom", {"hdrV"}, {"hdrB"}, // G17, after volumetric fog, before TAA
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawBloom(ctx); });
-    im.post.addPass("taa", {"hdrB", "gMotion", "taa"}, {"taa"},
+    im.post.addPass("flare", {"hdrB"}, {"hdrF"}, // G24 lens flare + anamorphic, after bloom, before TAA
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawFlare(ctx); });
+    im.post.addPass("taa", {"hdrF", "gMotion", "taa"}, {"taa"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTaa(ctx); }, /*feedback=*/true);
     im.post.addPass("upscale", {"taa"}, {"up"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawUpscale(ctx); });
@@ -1041,6 +1049,30 @@ void DeferredRenderer::drawSsao(fuhgl::render::RenderGraph::PassContext& ctx) {
     });
 }
 
+// G25 HBAO pass: G-buffer normal + depth -> horizon-based AO factor (resource "hbao",
+// RG16F). Runs before lighting next to G15 SSAO; writes 1.0 everywhere when Effect::Hbao is
+// off so the lighting pass can sample the resource unconditionally. March mirrors the CPU
+// twin render/hbao.hpp.
+void DeferredRenderer::drawHbao(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "gNormal");
+    ctx.bindInput(1, "gDepth");
+    const fuhgl::render::SceneView& s = *curScene_;
+    const bool on = effectEnabled(Effect::Hbao);
+    drawFs(impl_->hbaoMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uGNormal"), 0);
+        p.setUniform(p.uniformLocation("uGDepth"), 1);
+        p.setUniform(p.uniformLocation("uHbaoEnabled"), on ? 1 : 0);
+        p.setUniform("uInvViewProj", s.camera->viewProj(s.aspect).inverse());
+        p.setUniform("uViewProj", s.camera->viewProj(s.aspect)); // non-jittered
+        p.setUniform("uRadius", hbaoRadius);
+        p.setUniform("uBias", hbaoBias);
+        p.setUniform(p.uniformLocation("uDirs"), std::min(std::max(hbaoDirections, 1), 16));
+        p.setUniform(p.uniformLocation("uSteps"), std::min(std::max(hbaoSteps, 1), 8));
+        p.setUniform("uPower", hbaoPower);
+        p.setUniform("uRotSeed", static_cast<float>(frameIndex_ % 64) * 0.7f); // per-frame rotation
+    });
+}
+
 void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx) {
     const fuhgl::render::SceneView& s = *curScene_;
     Impl& im = *impl_;
@@ -1051,6 +1083,7 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
     ctx.bindInput(3, "gEmissive");
     ctx.bindInput(5, "gDepth");
     ctx.bindInput(6, "ssao"); // G15
+    ctx.bindInput(24, "hbao"); // G25 (unit 24: sky cube = 16, probes = 17..23)
     // shadow samplers (units 4 / 10; dummies when off)
     fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitShadowMap);
     f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, s.shadowMap ? s.shadowMap->textureId() : im.dummyShadowTex.id());
@@ -1102,6 +1135,8 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
         // G15 SSAO (unit 6)
         p.setUniform(p.uniformLocation("uSsao"), 6);
         p.setUniform(p.uniformLocation("uSsaoEnabled"), effectEnabled(Effect::Ssao) ? 1 : 0);
+        p.setUniform(p.uniformLocation("uHbao"), 24); // G25
+        p.setUniform(p.uniformLocation("uHbaoEnabled"), effectEnabled(Effect::Hbao) ? 1 : 0);
         // G22 wetness
         p.setUniform(p.uniformLocation("uWetnessEnabled"), effectEnabled(Effect::Wetness) ? 1 : 0);
         p.setUniform("uWetness", wetnessAmount);
@@ -1282,8 +1317,38 @@ void DeferredRenderer::drawBloom(fuhgl::render::RenderGraph::PassContext& ctx) {
     });
 }
 
+// G24 lens flare + anamorphic streaks pass: hdrB -> hdrF (the TAA pass blends hdrF). The
+// sun's screen position comes from projecting SceneView::sunDirection at infinity
+// (w = 0 direction; valid when the sun is in front of the camera). Plain copy when both
+// Effect::LensFlare and Effect::Anamorphic are off.
+void DeferredRenderer::drawFlare(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, "hdrB");
+    const fuhgl::render::SceneView& s = *curScene_;
+    const fuhgl::math::Mat4 vp = s.camera->viewProj(s.aspect); // non-jittered
+    const fuhgl::math::Vec4 clip = vp * fuhgl::math::Vec4(s.sunDirection, 0.f);
+    const bool sunValid = clip.w > 1e-3f;
+    const fuhgl::math::Vec2 sunUV =
+        sunValid ? fuhgl::math::Vec2(clip.x / clip.w * 0.5f + 0.5f, clip.y / clip.w * 0.5f + 0.5f)
+                 : fuhgl::math::Vec2(0.f, 0.f);
+    drawFs(impl_->flareMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uSrc"), 0);
+        p.setUniform("uTexel", fuhgl::math::Vec2(1.f / static_cast<float>(internalWidth_),
+                                                  1.f / static_cast<float>(internalHeight_)));
+        p.setUniform("uSunUV", sunUV);
+        p.setUniform(p.uniformLocation("uSunValid"), sunValid ? 1 : 0);
+        p.setUniform(p.uniformLocation("uFlareEnabled"), effectEnabled(Effect::LensFlare) ? 1 : 0);
+        p.setUniform(p.uniformLocation("uAnamorphicEnabled"), effectEnabled(Effect::Anamorphic) ? 1 : 0);
+        p.setUniform("uFlareStrength", lensFlareStrength);
+        p.setUniform("uFlareTint", lensFlareTint);
+        p.setUniform("uAnamorphicStrength", anamorphicStrength);
+        p.setUniform("uAnamorphicStretch", anamorphicStretch);
+        p.setUniform("uAnamorphicThreshold", anamorphicThreshold);
+        p.setUniform("uAnamorphicTint", anamorphicTint);
+    });
+}
+
 void DeferredRenderer::drawTaa(fuhgl::render::RenderGraph::PassContext& ctx) {
-    ctx.bindInput(0, "hdrB"); // lighting + water + particles + G17 bloom
+    ctx.bindInput(0, "hdrF"); // lighting + water + particles + G17 bloom + G24 flare/anamorphic
     ctx.bindInput(1, "gMotion");
     ctx.bindInput(2, "taa");
     const bool taaOn = effectEnabled(Effect::Taa);
@@ -1442,6 +1507,9 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::Bloom, bloomEnabled_);
     gate(Effect::VolumetricFog, volumetricEnabled_);
     gate(Effect::Wetness, wetnessEnabled_);
+    gate(Effect::LensFlare, lensFlareEnabled_);
+    gate(Effect::Anamorphic, anamorphicEnabled_);
+    gate(Effect::Hbao, hbaoEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -1469,6 +1537,9 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::Bloom: bloomEnabled_ = on; break;
         case Effect::VolumetricFog: volumetricEnabled_ = on; break;
         case Effect::Wetness: wetnessEnabled_ = on; break;
+        case Effect::LensFlare: lensFlareEnabled_ = on; break;
+        case Effect::Anamorphic: anamorphicEnabled_ = on; break;
+        case Effect::Hbao: hbaoEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -1506,6 +1577,9 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::Bloom: return bloomEnabled_;
         case Effect::VolumetricFog: return volumetricEnabled_;
         case Effect::Wetness: return wetnessEnabled_;
+        case Effect::LensFlare: return lensFlareEnabled_;
+        case Effect::Anamorphic: return anamorphicEnabled_;
+        case Effect::Hbao: return hbaoEnabled_;
     }
     return false;
 }
@@ -1516,6 +1590,7 @@ void DeferredRenderer::setAllEffects(bool on) {
     dofEnabled_ = hudEnabled_ = gpuSkinningEnabled_ = ssaoEnabled_ = ssrEnabled_ = bloomEnabled_ = on;
     volumetricEnabled_ = on;
     wetnessEnabled_ = on;
+    lensFlareEnabled_ = anamorphicEnabled_ = hbaoEnabled_ = on;
     applyCapabilities();
 }
 

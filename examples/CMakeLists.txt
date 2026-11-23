@@ -113,3 +113,8 @@ target_link_libraries(fuhglgraphics_sunrise_screenshot PRIVATE fuhglgraphics)
 # wide shot + wall closeup with POM vs without, headless to PNG.
 add_executable(fuhglgraphics_parallax_house_screenshot parallax_house_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_parallax_house_screenshot PRIVATE fuhglgraphics)
+
+# G24/G25 post-effect showcase: dusk plaza with lens flare + anamorphic streaks on the low sun
+# (on vs off) and a daylight courtyard with HBAO vs SSAO (contact-corner occlusion) — headless to PNG.
+add_executable(fuhglgraphics_postfx_screenshot postfx_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_postfx_screenshot PRIVATE fuhglgraphics)

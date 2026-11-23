@@ -32,6 +32,7 @@
 #include <fuhglgraphics/render/wetness.hpp>
 #include <fuhglgraphics/render/tonemap.hpp>
 #include <fuhglgraphics/render/parallax.hpp>
+#include <fuhglgraphics/render/hbao.hpp>
 
 #include <fuhglgraphics/scene/component.hpp>
 #include <fuhglgraphics/scene/effects.hpp>

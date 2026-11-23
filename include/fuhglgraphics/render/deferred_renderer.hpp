@@ -297,6 +297,26 @@ public:
     float wetnessPuddle = 0.7f;    ///< puddle mask strength (0 = flat film, 1 = depressions only)
     float wetnessNoiseScale = 3.5f; ///< world units per puddle-noise cell
 
+    /// @brief G25 HBAO (Effect::Hbao): the "hbao" post pass runs before lighting (next to G15
+    /// SSAO) and writes the horizon-based AO factor into the "hbao" resource (RG16F, .r),
+    /// sampled by the lighting pass on unit 24 when enabled (preferred over SSAO). Off by
+    /// default. Pure CPU twin of the march: render/hbao.hpp.
+    float hbaoRadius = 1.5f;     ///< world-space march radius
+    float hbaoBias = 0.05f;      ///< height-above-plane bias (self-occlusion), world units
+    int hbaoDirections = 8;      ///< tangent directions (clamped 1..16)
+    int hbaoSteps = 4;           ///< march steps per direction (clamped 1..8)
+    float hbaoPower = 1.6f;      ///< final exponent on the combined factor
+
+    /// @brief G24 lens flare (Effect::LensFlare) + anamorphic streaks (Effect::Anamorphic):
+    /// the "flare" post pass runs after bloom and before TAA (hdrB -> hdrF). The sun's screen
+    /// position is derived from SceneView::sunDirection. Off by default.
+    float lensFlareStrength = 0.8f;   ///< glow/ghost/streak intensity around the sun
+    fuhgl::math::Vec3 lensFlareTint{1.f, 0.9f, 0.7f}; ///< warm flare tint
+    float anamorphicStrength = 0.5f;  ///< streak intensity
+    float anamorphicStretch = 10.f;   ///< horizontal blur width in texels per tap
+    float anamorphicThreshold = 1.0f; ///< HDR luminance threshold of the streak source
+    fuhgl::math::Vec3 anamorphicTint{0.55f, 0.7f, 1.f}; ///< cool blue streak tint
+
     /// @brief G10 debug HUD (Effect::DebugHud): fps / frame time / effect toggles panel.
     DebugHud& hud() { return hud_; }
     const DebugHud& hud() const { return hud_; }
@@ -324,8 +344,10 @@ private:
     void renderReflection(const fuhgl::render::SceneView& scene, const fuhgl::math::Mat4& reflViewProj,
                           const fuhgl::math::Vec4& clipPlane, const fuhgl::math::Vec3& reflEye);
     void drawSsao(fuhgl::render::RenderGraph::PassContext& ctx); ///< G15, runs before lighting
+    void drawHbao(fuhgl::render::RenderGraph::PassContext& ctx); ///< G25, runs before lighting (next to SSAO)
     void drawSsr(fuhgl::render::RenderGraph::PassContext& ctx);   ///< G16, runs after lighting
     void drawBloom(fuhgl::render::RenderGraph::PassContext& ctx); ///< G17, after particles, before TAA
+    void drawFlare(fuhgl::render::RenderGraph::PassContext& ctx); ///< G24, after bloom, before TAA
     void drawVolumetric(fuhgl::render::RenderGraph::PassContext& ctx); ///< G21, after particles, before bloom
     void drawLighting(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawWater(fuhgl::render::RenderGraph::PassContext& ctx);
@@ -361,6 +383,9 @@ private:
     bool bloomEnabled_ = false;  ///< Effect::Bloom (off by default)
     bool volumetricEnabled_ = false; ///< Effect::VolumetricFog (off by default)
     bool wetnessEnabled_ = false;    ///< Effect::Wetness (off by default)
+    bool lensFlareEnabled_ = false;  ///< Effect::LensFlare (off by default)
+    bool anamorphicEnabled_ = false; ///< Effect::Anamorphic (off by default)
+    bool hbaoEnabled_ = false;       ///< Effect::Hbao (off by default)
     const water::WaterSurface* curWater_ = nullptr; ///< G13: active water surface this frame
     fuhgl::math::Mat4 waterModel_{};                 ///< its draw item's model matrix
     fuhgl::math::Vec4 waterClipPlane_{0.f, 1.f, 0.f, 0.f}; ///< world plane (n, d) for clipping

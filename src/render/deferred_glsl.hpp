@@ -206,6 +206,75 @@ void main() {
 }
 )GLSL";
 
+// --- G25 HBAO pass: G-buffer normal + depth -> horizon-based AO factor (resource "hbao",
+// RG16F, .r), runs before lighting next to G15 SSAO; the lighting pass prefers it when
+// Effect::Hbao is on. For uDirs tangent-plane directions (per-pixel rotated by uRotSeed)
+// the march samples the scene surface at radius*r along each direction (world space,
+// projected with uViewProj), takes the max horizon elevation sin(beta) = heightAbove/len
+// above the tangent plane (samples with heightAbove <= uBias are ignored) and multiplies
+// cos(beta) per direction (cosine-weighted visible hemisphere fraction). Writes 1.0
+// everywhere when Effect::Hbao is off. Pure CPU twin: render/hbao.hpp. Units: uGNormal 0,
+// uGDepth 1.
+constexpr const char* kHbaoFrag = R"GLSL(#version 330 core
+in vec2 vUV;
+uniform sampler2D uGNormal; // unit 0
+uniform sampler2D uGDepth;  // unit 1
+uniform mat4 uInvViewProj;  // non-jittered camera viewProj inverse (world reconstruction)
+uniform mat4 uViewProj;     // non-jittered camera viewProj (march sample projection)
+uniform int uHbaoEnabled;
+uniform float uRadius;      // world-space march radius
+uniform float uBias;        // height-above-plane bias in world units (self-occlusion)
+uniform int uDirs;          // tangent directions (clamped 1..16)
+uniform int uSteps;         // march steps per direction (clamped 1..8)
+uniform float uPower;       // final exponent
+uniform float uRotSeed;     // per-frame direction rotation
+out vec4 FragColor;
+void main() {
+    if (uHbaoEnabled != 1) { FragColor = vec4(1.0); return; }
+    float depth = texture(uGDepth, vUV).r;
+    if (depth >= 0.99999) { FragColor = vec4(1.0); return; } // sky: no AO
+    vec4 wp = uInvViewProj * vec4(vUV * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec3 P = wp.xyz / wp.w;                                     // world position
+    vec3 N = normalize(texture(uGNormal, vUV).rgb * 2.0 - 1.0);  // world normal
+    vec3 up = abs(N.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 T = normalize(cross(up, N));
+    vec3 B = cross(N, T);
+    float rot = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + uRotSeed) * 43758.5453) * 6.2831853;
+    float cr = cos(rot), sr = sin(rot);
+    int dirs = clamp(uDirs, 1, 16);
+    int steps = clamp(uSteps, 1, 8);
+    float ao = 1.0;
+    for (int d = 0; d < 16; ++d) {
+        if (d >= dirs) break;
+        float phi = 6.2831853 * float(d) / float(dirs);
+        vec2 dir2 = vec2(cos(phi) * cr - sin(phi) * sr, cos(phi) * sr + sin(phi) * cr);
+        vec3 dirW = T * dir2.x + B * dir2.y; // unit, in the tangent plane (world space)
+        float sinBetaMax = -1.5707963;
+        for (int s = 1; s <= 8; ++s) {
+            if (s > steps) break;
+            float r = uRadius * float(s) / float(steps);
+            vec4 clip = uViewProj * vec4(P + dirW * r, 1.0);
+            if (clip.w <= 0.0) continue;
+            vec2 suv = clip.xy / clip.w * 0.5 + 0.5;
+            if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
+            float sd = texture(uGDepth, suv).r;
+            if (sd >= 0.99999) continue; // sky: no occluder along this ray
+            vec4 swp = uInvViewProj * vec4(suv * 2.0 - 1.0, sd * 2.0 - 1.0, 1.0);
+            vec3 S = swp.xyz / swp.w;
+            float heightAbove = dot(S - P, N);
+            if (heightAbove <= uBias) continue;
+            float len = length(S - P);
+            if (len < 1e-5) continue;
+            float sinB = heightAbove / len;
+            if (sinB > sinBetaMax) sinBetaMax = sinB;
+        }
+        if (sinBetaMax > 0.0) ao *= clamp(cos(asin(clamp(sinBetaMax, 0.0, 1.0))), 0.0, 1.0);
+    }
+    ao = clamp(ao, 0.0, 1.0);
+    FragColor = vec4(pow(ao, uPower), 0.0, 0.0, 1.0);
+}
+)GLSL";
+
 // --- G16 SSR pass: lit HDR + G-buffer -> HDR with screen-space reflections (resource
 // "hdrS"). World-space raymarch of the reflection vector against the G-buffer depth
 // (linearized compare, thickness band, binary refine), then the hit HDR color is added with
@@ -325,6 +394,64 @@ void main() {
 }
 )GLSL";
 
+// --- G24 lens flare + anamorphic streaks pass: hdrB -> hdrF (feeds TAA), runs after bloom.
+// Anamorphic (Effect::Anamorphic): wide horizontal blur of the HDR bright-pass above
+// uAnamorphicThreshold 4 every bright light (sun, lamps) gets a horizontal streak.
+// Lens flare (Effect::LensFlare): around the sun's screen position uSunUV \u2014 central glow,
+// 6 inverted ghosts through the screen center (modulated by the bright-pass there) and a
+// thin vertical diffraction streak. Plain copy when both are off. Unit: uSrc 0.
+constexpr const char* kFlareFrag = R"GLSL(#version 330 core
+in vec2 vUV;
+uniform sampler2D uSrc; // unit 0: hdrB
+uniform vec2 uTexel;
+uniform vec2 uSunUV;      // sun screen position (valid when uSunValid == 1)
+uniform int uSunValid;
+uniform int uAnamorphicEnabled;
+uniform int uFlareEnabled;
+uniform float uAnamorphicStrength;
+uniform float uAnamorphicStretch;   // texels per tap
+uniform float uAnamorphicThreshold; // HDR luminance threshold of the streak source
+uniform vec3 uAnamorphicTint;
+uniform float uFlareStrength;
+uniform vec3 uFlareTint;
+out vec4 FragColor;
+float lum3(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+void main() {
+    vec3 col = texture(uSrc, vUV).rgb;
+    if (uAnamorphicEnabled == 1) {
+        const int N = 16;
+        vec3 streak = vec3(0.0);
+        float wsum = 0.0;
+        for (int i = -N; i <= N; ++i) {
+            vec2 uv = vec2(clamp(vUV.x + float(i) * uTexel.x * uAnamorphicStretch, 0.0, 1.0), vUV.y);
+            vec3 s = texture(uSrc, uv).rgb;
+            float w = exp(-abs(float(i)) / 6.0);
+            streak += max(s - vec3(uAnamorphicThreshold), vec3(0.0)) * w;
+            wsum += w;
+        }
+        col += uAnamorphicTint * uAnamorphicStrength * (streak / max(wsum, 1e-5));
+    }
+    if (uFlareEnabled == 1 && uSunValid == 1) {
+        vec2 d = vUV - uSunUV;
+        col += uFlareTint * uFlareStrength * 0.6 * exp(-dot(d, d) * 220.0); // central glow
+        vec2 center = vec2(0.5, 0.5);
+        for (int k = 0; k < 6; ++k) { // inverted ghosts through the screen center
+            float g = 0.35 + 0.22 * float(k);
+            vec2 guv = clamp(center + (uSunUV - center) * (-g), vec2(0.0), vec2(1.0));
+            float r = length(vUV - guv);
+            float rad = 0.05 + 0.035 * float(k % 3);
+            float sprite = smoothstep(rad, rad * 0.25, r);
+            vec3 tint = uFlareTint * (0.6 + 0.4 * sin(float(k) * 1.7 + 1.3));
+            float srcLum = lum3(texture(uSrc, guv).rgb);
+            col += tint * sprite * uFlareStrength * (0.12 + 0.25 * srcLum);
+        }
+        float streakV = exp(-abs(d.x) * 900.0) * exp(-abs(d.y) * 18.0); // vertical diffraction streak
+        col += uFlareTint * uFlareStrength * 0.35 * streakV;
+    }
+    FragColor = vec4(col, 1.0);
+}
+)GLSL";
+
 // --- G21 volumetric fog/clouds pass: HDR + fog in-scatter (resource "hdrV", feeds bloom).
 // Per pixel: reconstruct the world position from the G-buffer depth (sky -> march to
 // uMaxDist), raymarch the view ray through the 3D-noise volume (height falloff + fBm),
@@ -422,6 +549,8 @@ void main() {
 constexpr const char* kLightFragSsao = R"GLSL(
 uniform sampler2D uSsao;      // unit 6: G15 AO factor (1 = unoccluded)
 uniform int uSsaoEnabled;
+uniform sampler2D uHbao;      // unit 24: G25 horizon-based AO factor (preferred when on)
+uniform int uHbaoEnabled;
 )GLSL";
 
 // --- G22 wetness/rain modulation for the lighting pass. Pure CPU twins: render/wetness.hpp.
@@ -810,8 +939,9 @@ void main() {
     vec3 V = normalize(uCamPos - worldPos);
     // G22: wetness/rain film modulates albedo + roughness before shading
     applyWetness(albedo, pbr.g, worldPos, N);
-    // G15: multiply the material AO with the screen-space AO factor
-    float ssao = (uSsaoEnabled == 1) ? texture(uSsao, vUV).r : 1.0;
+    // G15/G25: multiply the material AO with the screen-space AO factor (HBAO preferred when on)
+    float ssao = (uHbaoEnabled == 1) ? texture(uHbao, vUV).r
+                                     : ((uSsaoEnabled == 1) ? texture(uSsao, vUV).r : 1.0);
     vec3 lit = shade(albedo, pbr.r, pbr.g, pbr.b * ssao, N, worldPos, V) + emissive;
     if (uFogDensity > 0.0) {
         float d = length(worldPos - uCamPos);

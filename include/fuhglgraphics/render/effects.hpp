@@ -38,10 +38,13 @@ enum class Effect {
     Bloom,          ///< G17 bloom: bright-pass (adjustable threshold) + blur + add in the HDR chain before TAA
     VolumetricFog,  ///< G21 volumetric fog/clouds: raymarched 3D-noise volume with height falloff + HG phase (post pass after particles, before bloom)
     Wetness,        ///< G22 wetness/rain on PBR: lighting-pass roughness/albedo modulation + puddle mask + SSR boost
+    LensFlare,      ///< G24 lens flare around the sun: glow + inverted ghosts + diffraction streak (post pass after bloom)
+    Anamorphic,     ///< G24 anamorphic streaks: wide horizontal blur of the HDR bright-pass (same post pass, own toggle)
+    Hbao,           ///< G25 horizon-based ambient occlusion from the G-buffer (pass before lighting, preferred over G15 SSAO)
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 21;
+constexpr int kEffectCount = 24;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -67,6 +70,9 @@ inline const char* effectName(Effect e) {
         case Effect::Bloom: return "bloom";
         case Effect::VolumetricFog: return "volumetric fog";
         case Effect::Wetness: return "wetness";
+        case Effect::LensFlare: return "lens flare";
+        case Effect::Anamorphic: return "anamorphic streaks";
+        case Effect::Hbao: return "HBAO";
     }
     return "unknown";
 }
