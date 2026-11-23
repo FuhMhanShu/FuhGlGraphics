@@ -201,6 +201,10 @@ public:
 
     /// @brief Generates the heightmap and the LOD meshes. Needs a current GL context.
     bool create(int gridWidth, int gridHeight, float sizeX_, float sizeZ_, float heightScale_);
+    /// @brief Rebuilds the LOD meshes from the current `heights` (e.g. after editing the
+    /// heightmap in place to carve a lake basin) — `heightAt()` then matches too.
+    /// Needs a current GL context. Returns false when `heights` does not match gridW*gridH.
+    bool rebuildLod();
     /// @brief Terrain height at node-local (x, z) — bilinear heightmap sample * heightScale.
     float heightAt(float x, float z) const;
     void fill(const Node& node, FrameData& frame) const override; // defined in component.cpp

@@ -98,6 +98,17 @@ bool TerrainComponent::create(int gridWidth, int gridHeight, float sizeX_, float
     return true;
 }
 
+bool TerrainComponent::rebuildLod() {
+    if (gridW < 2 || gridH < 2 || sizeX <= 0.f || sizeZ <= 0.f ||
+        heights.size() != static_cast<std::size_t>(gridW) * gridH)
+        return false;
+    lodMesh = fuhgl::render::terrainLods(heights.data(), gridW, gridH, sizeX, sizeZ, heightScale,
+                                         levels, fovYDeg);
+    if (lodMesh.levelCount() <= 0) return false;
+    if (!customDistances.empty()) lodMesh.setDistances(customDistances);
+    return true;
+}
+
 float TerrainComponent::heightAt(float x, float z) const {
     if (heights.empty() || gridW < 2 || gridH < 2) return 0.f;
     // node-local xz -> normalized uv (the terrain grid is centered at the node origin)
