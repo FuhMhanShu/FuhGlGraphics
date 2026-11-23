@@ -51,6 +51,12 @@ FuhGLCore.
 | G22 | Wetness / rain on PBR | lighting-pass modulation: roughness/albedo down, puddle mask from a noise texture, SSR boost (`Effect::Wetness`) |
 | G23 | Tonemapping operators + bloom threshold | `render::TonemapOperator` (ACES / Reinhard / Uncharted2 / linear) selected per frame in the tonemap pass + pure CPU twins; bloom threshold in G17 |
 | G13 | Realistic water (sea/lake) | new `water/` module: `water::WaterSurface` (Gerstner-wave grid mesh + shading params) as a G9 `WaterComponent` -> `FrameData::water` -> G3 `DeferredRenderer::render(..., water)` with `render::Effect::Water`: planar reflection pass (mirrored camera + clip plane at the water plane into an RGBA16F target at `waterReflectionScale`), water post pass in the HDR chain (Gerstner displacement + analytic wave normal in the vertex shader, fresnel mix of reflection/refraction, depth-based shore foam + crest foam, sun glint, fog); GL 3.3-capable, toggleable |
+| G24 | Procedural noise module (CPU) | new `procedural/` module: `procedural::Noise` — seeded, deterministic value noise, Perlin (gradient) noise and Simplex noise in 2D + 3D, plus fBm and ridged variants built on them; shared by G25/G27/G28/G29 and usable for heightmaps (terrain carving), clouds and textures; pure CPU, unit-testable, no GL |
+| G25 | Marching Cubes (voxel → mesh) | `procedural::marchingCubes(...)`: classic 33-case marching cubes over a sampled scalar volume (std::function field or float grid), linear edge interpolation, normals from the field gradient, output `fuhgl::render::MeshData` (11 floats/vertex); chunked variant `procedural::MarchingCubesChunks` for large volumes (one MeshData per chunk, seams welded by shared grid sampling); used by G29 |
+| G26 | L-systems (Lindenmayer) → mesh | `procedural::LSystem`: axiom + production rules + iterations, 3D turtle interpretation (F/f draw/move, +/- roll, &/^ pitch, \\| yaw, [ ] push/pop) with radius taper per depth; output `MeshData` (tapered cylinders per segment, optional leaf quads); typical use: trees/corals as G9 mesh nodes or instanced |
+| G27 | Wave Function Collapse (tiled) | `procedural::Wfc`: 2D tiled WFC over a grid with edge-tag tiles + 4 rotations, min-entropy cell selection, constraint propagation, seeded backtracking on contradiction; output = tile+rotation placement per cell, instantiated as G9 scene-graph nodes (instancing per tile); typical use: dungeons, cities, stations |
+| G28 | Voronoi diagrams | `procedural::voronoi2d(...)`: seeded 2D Voronoi cells (polygon per seed point via half-plane clipping, robust for moderate n) + cell edges; `procedural::extrudeCells(...)` → `MeshData` prisms (cracked ground plates, city blocks, crystal shards); optional F1/F2 distance field helper |
+| G29 | 3D fractals / SDF (e.g. Mandelbulb) | `procedural::Sdf`: distance-estimator SDFs — Mandelbulb (power 8), sphere/box/rounded-box, smooth-min combos; `procedural::meshFromSdf(...)` converts an SDF to `MeshData` via G25 marching cubes; typical use: emissive fractal sculptures rendered with bloom/god rays |
 
 ## 4. Non-functional requirements
 
@@ -255,3 +261,9 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
 - **G12 — asset creator Qt tool** — planned; design agreed in
   [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON
   project files, MCP stdio chat). Implementation in phases P1–P5 after review.
+- **G24–G29 — procedural generation algorithms** — planned (new `procedural/` module,
+  one feature per PR with unit test + gl_smoke + example screenshot + tutorial en/de):
+  G24 seeded CPU noise (value/Perlin/Simplex 2D+3D, fBm/ridged), G25 marching cubes
+  (chunked, `MeshData` out), G26 L-systems (3D turtle → `MeshData`), G27 wave function
+  collapse (tiled, edge tags + rotations, backtracking → scene placements), G28 2D
+  Voronoi cells + extrusion meshes, G29 SDF/3D fractals (Mandelbulb) meshed via G25.
