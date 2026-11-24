@@ -375,10 +375,10 @@ int main(int argc, char** argv) {
                     peakZ = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
                 }
             }
-        const float camX = peakX * 0.3f - 20.f, camZ = world.sizeZ * 0.425f;
-        cam.position = {camX, std::max(tc.heightAt(camX, camZ), world.waterLevelWorld) + 9.f, camZ};
-        // aim between the lake (near the center) and the peak so both are in frame
-        aimAt(cam, {peakX * 0.5f, world.waterLevelWorld + 4.f, peakZ * 0.5f});
+        // high south-shore camera looking straight across the lake toward the peak behind it
+        const float camX = 0.f, camZ = world.sizeZ * 0.45f;
+        cam.position = {camX, world.waterLevelWorld + 16.f, camZ};
+        aimAt(cam, {peakX * 0.4f, world.waterLevelWorld, peakZ * 0.4f});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
                          water ? &water->surface : nullptr)) {
