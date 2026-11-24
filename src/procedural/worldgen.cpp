@@ -320,7 +320,7 @@ std::vector<WfcTile> makeCityTiles() {
     // edge tags in cyclic dir order (E, S, W, N); rotations are handled by the WFC solver
     return {
         {"block", 4.f, {"s", "s", "s", "s"}},   // building lot (fills the border ring too)
-        {"plaza", 0.6f, {"p", "p", "p", "p"}},   // park square, only next to plazas
+        {"plaza", 1.2f, {"p", "p", "p", "p"}},   // park square, only next to plazas
         {"streetH", 1.f, {"r", "s", "r", "s"}}, // road along E-W
         {"streetV", 1.f, {"s", "r", "s", "r"}}, // road along N-S (rotation of streetH)
         {"cross", 0.4f, {"r", "r", "r", "r"}},   // 4-way crossing
