@@ -645,17 +645,18 @@ int main(int argc, char** argv) {
             return 1;
         }
         scene.root().effects.enable(render::Effect::Water);
-        // lake around the plateau
+        // lake around the plateau — placed a bit below the nominal level with small waves so
+        // wave crests can never reach the plateau (water over the city would look broken)
         scene::Node& wn = scene.root().createChild("lake");
-        wn.translation = {0.f, world.waterLevelWorld, 0.f};
+        wn.translation = {0.f, world.waterLevelWorld - 0.5f, 0.f};
         scene::WaterComponent& wc = wn.attach<scene::WaterComponent>();
         if (!wc.surface.create(160, p.worldSize * 1.1f)) {
             std::fprintf(stderr, "worldgen_screenshot: water create failed\n");
             return 1;
         }
         wc.surface.waves = {
-            {{1.f, 0.15f}, 0.30f, 16.f, 2.0f, 0.65f},
-            {{0.7f, 0.7f}, 0.18f, 8.f, 1.4f, 0.55f},
+            {{1.f, 0.15f}, 0.16f, 16.f, 2.0f, 0.65f},
+            {{0.7f, 0.7f}, 0.10f, 8.f, 1.4f, 0.55f},
         };
         wc.surface.reflectionStrength = 0.8f;
         wc.surface.foamStrength = 1.f;
