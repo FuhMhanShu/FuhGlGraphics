@@ -52,7 +52,8 @@ struct WorldGenParams {
     float buildingHeight = 6.f;   ///< base wall height of placed houses (jittered per block)
     float houseFootprint = 0.62f; ///< house footprint as a fraction of the cell
     int blocksPerDistrict = 0;    ///< >0: extrude this many voronoi district plates under the city
-    int parkBushesPerPlaza = 3;   ///< bushes scattered on each plaza (park) cell
+    float parkFraction = 0.12f;   ///< fraction of interior block cells turned into parks (lawn + bushes)
+    int parkBushesPerPlaza = 3;   ///< bushes scattered on each park cell
     int maxBacktracks = 20000;    ///< WFC solver backtrack budget
 };
 
@@ -94,8 +95,9 @@ struct GeneratedWorld {
 
     // --- placed objects ---
     std::vector<PlacedMesh> trees;         ///< landscape: scattered L-system trees
-    std::vector<PlacedMesh> bushes;        ///< landscape: bushes; city: park greenery on plaza cells
-    std::vector<PlacedMesh> buildings;     ///< city: one procedural house per "block" cell (mesh = walls+door+windows, roofMesh = gabled roof)
+    std::vector<PlacedMesh> bushes;        ///< landscape: bushes; city: park greenery
+    std::vector<PlacedMesh> buildings;     ///< city: one procedural house per non-park "block" cell (mesh = walls+door+windows, roofMesh = gabled roof)
+    int parkCellCount = 0;                 ///< city: number of cells turned into parks (plaza + converted blocks)
 };
 
 /// @brief City tile set for the WFC solver: edge tags "r" = road, "s" = lot/sidewalk edge

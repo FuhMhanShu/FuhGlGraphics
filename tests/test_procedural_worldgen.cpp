@@ -164,9 +164,14 @@ void testCityLayout() {
         CHECK(tag(0, z, 2) == "s" || tag(0, z, 2).empty());
         CHECK(tag(w.cityW - 1, z, 0) == "s" || tag(w.cityW - 1, z, 0).empty());
     }
-    // one procedural house per block cell, placed on the cell center; house = walls+details
-    // (more vertices than a plain box) + a separate gabled-roof mesh part
-    CHECK(w.buildings.size() == static_cast<std::size_t>(blocks));
+    // houses on non-park block cells; park cells (plaza tiles + converted interior blocks)
+    // carry lawn + bushes instead
+    int plazaTiles = 0;
+    for (const auto& c : w.cells)
+        if (c.tile >= 0 && w.tiles[c.tile].name == "plaza") ++plazaTiles;
+    CHECK(w.parkCellCount >= plazaTiles);
+    CHECK(w.buildings.size() + static_cast<std::size_t>(w.parkCellCount) ==
+          static_cast<std::size_t>(blocks));
     for (const auto& b : w.buildings) {
         CHECK(b.mesh.vertexCount() > 24);      // box alone has 24 vertices
         CHECK(b.roofMesh.vertexCount() > 0);   // roof prism
@@ -176,14 +181,9 @@ void testCityLayout() {
         CHECK_NEAR(gx, std::round(gx), 1e-3f);
         CHECK_NEAR(gz, std::round(gz), 1e-3f);
     }
-    // park greenery on plaza cells
-    int plazas = 0;
-    for (const auto& c : w.cells)
-        if (c.tile >= 0 && w.tiles[c.tile].name == "plaza") ++plazas;
-    if (plazas > 0) {
-        CHECK(!w.bushes.empty());
-        CHECK(w.bushes.size() == static_cast<std::size_t>(plazas) * p.parkBushesPerPlaza);
-    }
+    // park greenery: bushes on every park cell
+    CHECK(w.bushes.size() == static_cast<std::size_t>(w.parkCellCount) * p.parkBushesPerPlaza);
+    CHECK(w.parkCellCount > 0); // parkFraction guarantees parks for interior blocks
 }
 
 void testCityTilesSolvable() {

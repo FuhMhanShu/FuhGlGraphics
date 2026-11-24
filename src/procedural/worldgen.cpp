@@ -242,7 +242,28 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
             if (c.tile < 0) continue; // unsolved cell stays plain ground
             const std::string& name = w.tiles[c.tile].name;
             const fuhgl::math::Mat4 place = fuhgl::math::translate({wx, 0.f, wz});
-            if (name == "block") {
+            // interior block cells become parks with probability parkFraction (guarantees
+            // green spaces even when the WFC layout contains no plaza tiles)
+            const bool isPark = name == "plaza" ||
+                                (name == "block" && x > 0 && z > 0 && x + 1 < gw && z + 1 < gw &&
+                                 rng.nextf() < p.parkFraction);
+            if (isPark) {
+                ++w.parkCellCount;
+                fuhgl::render::MeshData lawn =
+                    fuhgl::render::shapes::boxData({p.cellSize * 0.46f, 0.02f, p.cellSize * 0.46f},
+                                                   {0.16f, 0.42f, 0.16f});
+                shiftY(lawn, 0.04f);
+                appendTransformed(w.roads, lawn, place);
+                for (int b = 0; b < p.parkBushesPerPlaza; ++b) {
+                    PlacedMesh pm;
+                    pm.mesh = LSystem::makeBush().generate();
+                    pm.position = {wx + (rng.nextf() - 0.5f) * p.cellSize * 0.6f, 0.06f,
+                                   wz + (rng.nextf() - 0.5f) * p.cellSize * 0.6f};
+                    pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
+                    pm.scale = 0.5f + 0.5f * rng.nextf();
+                    w.bushes.push_back(std::move(pm));
+                }
+            } else if (name == "block") {
                 // concrete lot
                 fuhgl::render::MeshData lot =
                     fuhgl::render::shapes::boxData({p.cellSize * 0.47f, 0.025f, p.cellSize * 0.47f},
@@ -259,22 +280,6 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                 pm.position = {wx, 0.05f, wz};
                 pm.rotY = -c.rot * fuhgl::math::kPi * 0.5f;
                 w.buildings.push_back(std::move(pm));
-            } else if (name == "plaza") {
-                // park: lawn slab + scattered bushes
-                fuhgl::render::MeshData lawn =
-                    fuhgl::render::shapes::boxData({p.cellSize * 0.46f, 0.02f, p.cellSize * 0.46f},
-                                                   {0.16f, 0.42f, 0.16f});
-                shiftY(lawn, 0.04f);
-                appendTransformed(w.roads, lawn, place);
-                for (int b = 0; b < p.parkBushesPerPlaza; ++b) {
-                    PlacedMesh pm;
-                    pm.mesh = LSystem::makeBush().generate();
-                    pm.position = {wx + (rng.nextf() - 0.5f) * p.cellSize * 0.6f, 0.06f,
-                                   wz + (rng.nextf() - 0.5f) * p.cellSize * 0.6f};
-                    pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
-                    pm.scale = 0.5f + 0.5f * rng.nextf();
-                    w.bushes.push_back(std::move(pm));
-                }
             } else {
                 // street / crossing / T / end: light sidewalk underlay + dark asphalt slab
                 fuhgl::render::MeshData walk =
