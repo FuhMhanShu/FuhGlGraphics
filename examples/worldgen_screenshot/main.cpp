@@ -691,7 +691,7 @@ int main(int argc, char** argv) {
         };
         for (const auto& b : world.houses) {
             const fuhgl::math::Mat4 m = fuhgl::math::translate(b.position) *
-                                        fuhgl::math::fromAxisAngle(b.rotY, {0.f, 1.f, 0.f}) *
+                                        fuhgl::math::rotateY(b.rotY) *
                                         fuhgl::math::scale({b.scale, b.scale, b.scale});
             appendT(wallsAll, b.mesh, m);
             if (b.detailMesh.vertexCount() > 0) appendT(detAll, b.detailMesh, m);
