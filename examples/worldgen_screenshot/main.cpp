@@ -386,7 +386,8 @@ int main(int argc, char** argv) {
         };
         addPlant("tree", world.trees, 30);
         addPlant("bush", world.bushes, 31);
-        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.35f, 0.5f, 0.6f}));
+        // sun in the south (behind the camera) so the camera-facing slopes are lit
+        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.35f, 0.55f, -0.65f}));
 
         // ground-level view from the south shore: lake + meadow in the foreground,
         // the highest peak in the background, sky above — camera derived from the heightmap
