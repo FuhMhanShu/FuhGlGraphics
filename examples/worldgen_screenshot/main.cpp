@@ -82,55 +82,6 @@ bool renderToPng(fuhglgraphics::scene::Scene& scn, fuhgl::FirstPersonCamera& cam
     return fuhglgraphics::screenshot::writePng(outPath.c_str(), pixels.data(), width, height);
 }
 
-fuhgl::math::Vec3 lerpColor(const fuhgl::math::Vec3& a, const fuhgl::math::Vec3& b, float t) {
-    return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t};
-}
-
-// heightmap (gridW*gridH, [0,1], row-major) -> terrain MeshData (11 floats/vertex),
-// colored by normalized height: lake bed / sand / grass / rock / snow
-fuhgl::render::MeshData heightmapMesh(const fuhglgraphics::procedural::GeneratedWorld& w) {
-    fuhgl::render::MeshData md;
-    const int g = w.gridW;
-    const float cell = w.sizeX / static_cast<float>(g - 1);
-    const float water = w.waterLevelWorld / w.heightScale;
-    md.vertices.reserve(static_cast<std::size_t>(g) * g * 11);
-    auto sample = [&](int i, int j) {
-        i = std::min(g - 1, std::max(0, i));
-        j = std::min(g - 1, std::max(0, j));
-        return w.heightmap[static_cast<std::size_t>(i) + g * j];
-    };
-    for (int j = 0; j < g; ++j)
-        for (int i = 0; i < g; ++i) {
-            const float u = static_cast<float>(i) / static_cast<float>(g - 1);
-            const float v = static_cast<float>(j) / static_cast<float>(g - 1);
-            const float h = sample(i, j);
-            const float px = (u - 0.5f) * w.sizeX;
-            const float pz = (v - 0.5f) * w.sizeZ;
-            const float py = h * w.heightScale;
-            const float slope = w.heightScale / (2.f * cell); // world-units rise per world-unit x/z
-            const fuhgl::math::Vec3 n = fuhgl::math::normalize(
-                {(sample(i - 1, j) - sample(i + 1, j)) * slope, 1.f,
-                 (sample(i, j - 1) - sample(i, j + 1)) * slope});
-            fuhgl::math::Vec3 c;
-            if (h < water) c = lerpColor({0.23f, 0.30f, 0.38f}, {0.76f, 0.70f, 0.50f}, h / std::max(water, 1e-5f));
-            else if (h < 0.42f) c = lerpColor({0.76f, 0.70f, 0.50f}, {0.24f, 0.42f, 0.18f}, (h - water) / std::max(0.42f - water, 1e-5f));
-            else if (h < 0.72f) c = lerpColor({0.24f, 0.42f, 0.18f}, {0.45f, 0.44f, 0.42f}, (h - 0.42f) / 0.30f);
-            else c = lerpColor({0.45f, 0.44f, 0.42f}, {0.90f, 0.92f, 0.95f}, (h - 0.72f) / 0.28f);
-            md.vertices.push_back(px); md.vertices.push_back(py); md.vertices.push_back(pz);
-            md.vertices.push_back(n.x); md.vertices.push_back(n.y); md.vertices.push_back(n.z);
-            md.vertices.push_back(c.x); md.vertices.push_back(c.y); md.vertices.push_back(c.z);
-            md.vertices.push_back(u); md.vertices.push_back(v);
-        }
-    for (int j = 0; j < g - 1; ++j)
-        for (int i = 0; i < g - 1; ++i) {
-            const std::uint32_t a = static_cast<std::uint32_t>(i + g * j);
-            const std::uint32_t b = a + 1, c = a + g, d = c + 1;
-            md.indices.push_back(a); md.indices.push_back(c); md.indices.push_back(b);
-            md.indices.push_back(b); md.indices.push_back(c); md.indices.push_back(d);
-        }
-    return md;
-}
-
 // arena owning all uploaded meshes of one scene
 struct MeshArena {
     std::vector<std::unique_ptr<fuhgl::render::Mesh>> meshes;
@@ -287,6 +238,7 @@ int main(int argc, char** argv) {
     render::DeferredRenderer renderer;
     if (!renderer.create(args.width, args.height, 0)) return 1;
     renderer.enableCsmShadows(1024, 4);
+    renderer.setWaterReflectionScale(0.5f);
     fuhgl::Skybox skybox;
     if (!skybox.create()) std::fprintf(stderr, "worldgen_screenshot: skybox create failed\n");
     const fuhgl::math::Vec3 skyTop{0.20f, 0.38f, 0.72f}, skyHorizon{0.82f, 0.85f, 0.92f};
@@ -325,9 +277,30 @@ int main(int argc, char** argv) {
 
         scene::Scene scene;
         MeshArena arena;
-        addMeshNode(scene, arena, "terrain", heightmapMesh(world), {1.f, 1.f, 1.f}, 0.95f, 1, false);
 
-        // lake water surface at the water level
+        // terrain: TerrainComponent, heightmap copied from the GeneratedWorld (transposed to
+        // the component's row-major z*j+i layout), LOD meshes rebuilt from it
+        scene::Node& tn = scene.root().createChild("terrain");
+        scene::TerrainComponent& tc = tn.attach<scene::TerrainComponent>();
+        tc.levels = 4;
+        tc.fovYDeg = 55.f;
+        tc.albedo = {0.34f, 0.38f, 0.26f};
+        tc.customDistances = {70.f, 170.f, 340.f};
+        if (!tc.create(world.gridW, world.gridH, world.sizeX, world.sizeZ, world.heightScale)) {
+            std::fprintf(stderr, "worldgen_screenshot: terrain create failed\n");
+            return 1;
+        }
+        for (int j = 0; j < world.gridH; ++j)
+            for (int i = 0; i < world.gridW; ++i)
+                tc.heights[static_cast<std::size_t>(j) * tc.gridW + i] =
+                    world.heightmap[static_cast<std::size_t>(i) + world.gridW * j];
+        if (!tc.rebuildLod()) {
+            std::fprintf(stderr, "worldgen_screenshot: terrain rebuildLod failed\n");
+            return 1;
+        }
+
+        // lake water surface at the water level (G13 — needs Effect::Water)
+        scene.root().effects.enable(render::Effect::Water);
         scene::WaterComponent* water = nullptr;
         if (world.waterLevelWorld > 0.f) {
             scene::Node& wn = scene.root().createChild("lake");
@@ -358,8 +331,8 @@ int main(int argc, char** argv) {
             grass.instancing.layout = scene::InstanceLayout::Random;
             grass.instancing.extent = {p.worldSize - 8.f, 4.f, p.worldSize - 8.f};
             grass.instancing.seed = 7u;
-            grass.instancing.heightFn = [&world](float x, float z) {
-                const float h = world.heightAt(x, z);
+            grass.instancing.heightFn = [&tc, &world](float x, float z) {
+                const float h = tc.heightAt(x, z);
                 return h < world.waterLevelWorld + 0.15f ? -1000.f : h + 0.22f;
             };
             scene::MeshEntry& ge = grass.attach<scene::MeshComponent>().addMesh(&blade);
