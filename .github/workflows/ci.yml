@@ -255,7 +255,7 @@ jobs:
           cmake --build build -j --target fuhglgraphics_creature_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_creature_screenshot --prefix docs/images/ci/g30_creature --width 1280 --height 720 --frames 16
 
-      - name: Build + render G31 world-generator screenshots (generateWorld: landscape heightmap+trees, WFC city + district plates; landscape/city overview + street level)
+      - name: Build + render G31 world-generator screenshots (generateWorld landscape heightmap+trees, WFC city + district plates; landscape/city overview + street level)
         run: |
           cmake --build build -j --target fuhglgraphics_worldgen_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_worldgen --width 1280 --height 720 --frames 16 --seed 777
