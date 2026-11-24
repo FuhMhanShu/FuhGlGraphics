@@ -60,6 +60,7 @@ add_library(fuhglgraphics STATIC
     src/procedural/sdf.cpp
     src/procedural/creature.cpp
     src/procedural/worldgen.cpp
+    src/procedural/house.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 

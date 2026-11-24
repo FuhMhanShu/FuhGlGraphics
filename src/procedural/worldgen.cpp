@@ -60,174 +60,6 @@ void shiftY(fuhgl::render::MeshData& md, float dy) {
     for (std::size_t i = 0; i < md.vertexCount(); ++i) md.vertices[i * 11 + 1] += dy;
 }
 
-/// @brief Appends one box (half extents `half`, centered at `pos`) with a flat color to `dst`.
-void appendBox(fuhgl::render::MeshData& dst, const fuhgl::math::Vec3& half,
-               const fuhgl::math::Vec3& pos, const fuhgl::math::Vec3& color) {
-    fuhgl::render::MeshData b = fuhgl::render::shapes::boxData(half, color);
-    shiftY(b, pos.y);
-    appendTransformed(dst, b, fuhgl::math::translate({pos.x, 0.f, pos.z}));
-}
-
-// --- procedural houses ---------------------------------------------------------------
-// A house is built from three mesh parts so the app can give each its own material:
-//   walls    (`mesh`)     — the wall boxes (app applies the brick POM set here)
-//   details  (`detailMesh`) — door, windows, chimney, bay window (plain vertex colors)
-//   roof     (`roofMesh`) — gable (Satteldach), lean-to (Schleppdach) or flat slab
-
-void pushVertex(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& p, const fuhgl::math::Vec3& n,
-                const fuhgl::math::Vec3& c, float u, float v) {
-    md.vertices.push_back(p.x); md.vertices.push_back(p.y); md.vertices.push_back(p.z);
-    md.vertices.push_back(n.x); md.vertices.push_back(n.y); md.vertices.push_back(n.z);
-    md.vertices.push_back(c.x); md.vertices.push_back(c.y); md.vertices.push_back(c.z);
-    md.vertices.push_back(u); md.vertices.push_back(v);
-}
-
-/// @brief Triangle with the shading normal derived from the winding (CCW seen from outside).
-void addTri(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& a, const fuhgl::math::Vec3& b,
-            const fuhgl::math::Vec3& c, const fuhgl::math::Vec3& col) {
-    const fuhgl::math::Vec3 n = fuhgl::math::normalize(fuhgl::math::cross(b - a, c - a));
-    const std::uint32_t base = static_cast<std::uint32_t>(md.vertexCount());
-    pushVertex(md, a, n, col, 0.f, 0.f);
-    pushVertex(md, b, n, col, 1.f, 0.f);
-    pushVertex(md, c, n, col, 0.5f, 1.f);
-    md.indices.push_back(base); md.indices.push_back(base + 1); md.indices.push_back(base + 2);
-}
-
-/// @brief Quad (a,b,c,d) with the shading normal derived from the winding (CCW from outside).
-void addQuad(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& a, const fuhgl::math::Vec3& b,
-             const fuhgl::math::Vec3& c, const fuhgl::math::Vec3& d, const fuhgl::math::Vec3& col) {
-    const fuhgl::math::Vec3 n = fuhgl::math::normalize(fuhgl::math::cross(b - a, d - a));
-    const std::uint32_t base = static_cast<std::uint32_t>(md.vertexCount());
-    pushVertex(md, a, n, col, 0.f, 0.f);
-    pushVertex(md, b, n, col, 1.f, 0.f);
-    pushVertex(md, c, n, col, 1.f, 1.f);
-    pushVertex(md, d, n, col, 0.f, 1.f);
-    md.indices.push_back(base); md.indices.push_back(base + 1); md.indices.push_back(base + 2);
-    md.indices.push_back(base); md.indices.push_back(base + 2); md.indices.push_back(base + 3);
-}
-
-/// @brief Gable roof (Satteldach, ridge along x), base at y = 0 — caller shifts it onto the walls.
-fuhgl::render::MeshData makeGableRoof(float w, float d, float roofH, const fuhgl::math::Vec3& color) {
-    const float hw = w * 0.5f + 0.14f, hd = d * 0.5f + 0.14f; // eave overhang
-    fuhgl::render::MeshData md;
-    addQuad(md, {-hw, 0.f, hd}, {hw, 0.f, hd}, {hw, roofH, 0.f}, {-hw, roofH, 0.f}, color);  // south slope
-    addQuad(md, {hw, 0.f, -hd}, {-hw, 0.f, -hd}, {-hw, roofH, 0.f}, {hw, roofH, 0.f}, color); // north slope
-    addTri(md, {hw, 0.f, hd}, {hw, 0.f, -hd}, {hw, roofH, 0.f}, color);                      // east gable
-    addTri(md, {-hw, 0.f, -hd}, {-hw, 0.f, hd}, {-hw, roofH, 0.f}, color);                   // west gable
-    return md;
-}
-
-/// @brief Lean-to roof (Schleppdach): single slope, high at the back (z-), low at the front (z+).
-fuhgl::render::MeshData makeShedRoof(float w, float d, float roofH, const fuhgl::math::Vec3& color) {
-    const float hw = w * 0.5f + 0.14f, hd = d * 0.5f + 0.14f;
-    const float yLow = roofH * 0.45f, yHigh = roofH;
-    const fuhgl::math::Vec3 A{-hw, yLow, hd}, B{hw, yLow, hd}, C{hw, yHigh, -hd}, D{-hw, yHigh, -hd};
-    const fuhgl::math::Vec3 E{hw, yLow, -hd}, F{-hw, yLow, -hd};
-    fuhgl::render::MeshData md;
-    addQuad(md, A, B, C, D, color); // slope
-    addQuad(md, F, D, C, E, color); // vertical back
-    addTri(md, B, E, C, color);     // east end
-    addTri(md, A, D, F, color);     // west end
-    return md;
-}
-
-/// @brief Flat roof: thin slab slightly larger than the footprint (parapet look).
-fuhgl::render::MeshData makeFlatRoof(float w, float d, float thickness, const fuhgl::math::Vec3& color) {
-    fuhgl::render::MeshData md = fuhgl::render::shapes::boxData({w * 0.5f + 0.1f, thickness * 0.5f, d * 0.5f + 0.1f}, color);
-    shiftY(md, thickness * 0.5f);
-    return md;
-}
-
-/// @brief One procedural house in the given style. `walls` gets the wall boxes, `details` the
-/// door/windows/chimney/bay (plain vertex colors, own MeshEntry), `roof` the roof (roofType out).
-/// Local space, base at y = 0, front door faces +z.
-void makeHouse(HouseStyle style, float w, float d, float wallH, Rng& rng, fuhgl::render::MeshData& walls,
-               fuhgl::render::MeshData& details, fuhgl::render::MeshData& roof, int& roofType) {
-    const fuhgl::math::Vec3 winCol{0.72f, 0.84f, 0.95f};  // pale glass
-    const fuhgl::math::Vec3 doorCol{0.30f, 0.18f, 0.10f}; // dark wood
-    const fuhgl::math::Vec3 chimCol{0.55f, 0.53f, 0.50f};
-    fuhgl::math::Vec3 wallCol, roofCol;
-    switch (style) {
-        case HouseStyle::Village:
-            wallCol = rng.nextf() < 0.5f ? fuhgl::math::Vec3{0.85f, 0.80f, 0.72f}
-                                        : fuhgl::math::Vec3{0.55f, 0.42f, 0.30f};
-            roofCol = rng.nextf() < 0.5f ? fuhgl::math::Vec3{0.45f, 0.16f, 0.12f}
-                                        : fuhgl::math::Vec3{0.30f, 0.22f, 0.18f};
-            break;
-        case HouseStyle::Highrise:
-            wallCol = fuhgl::math::Vec3{0.55f, 0.60f, 0.66f};
-            roofCol = fuhgl::math::Vec3{0.35f, 0.36f, 0.38f};
-            break;
-        case HouseStyle::Town:
-        default:
-            wallCol = fuhgl::math::Vec3{0.78f, 0.60f, 0.48f};
-            roofCol = fuhgl::math::Vec3{0.50f, 0.24f, 0.14f};
-            break;
-    }
-
-    walls = fuhgl::render::shapes::boxData({w * 0.5f, wallH * 0.5f, d * 0.5f}, wallCol);
-    shiftY(walls, wallH * 0.5f);
-
-    // door on the front face
-    appendBox(details, {0.45f, 0.95f, 0.04f}, {0.f, 0.95f, d * 0.5f + 0.03f}, doorCol);
-
-    if (style == HouseStyle::Highrise) {
-        // window grid on front + back, optional upper setback, flat roof
-        const int cols = std::max(2, static_cast<int>(w / 1.1f));
-        const int rows = std::max(2, static_cast<int>(wallH / 2.4f));
-        for (int r = 0; r < rows; ++r)
-            for (int cix = 0; cix < cols; ++cix) {
-                const float x = (static_cast<float>(cix) - (cols - 1) * 0.5f) * (w / cols) * 0.8f;
-                const float y = 1.4f + static_cast<float>(r) * (wallH - 1.4f) / std::max(1, rows - 1) * 0.9f;
-                appendBox(details, {0.42f, 0.62f, 0.03f}, {x, y, d * 0.5f + 0.02f}, winCol);
-                appendBox(details, {0.42f, 0.62f, 0.03f}, {x, y, -d * 0.5f - 0.02f}, winCol);
-            }
-        if (rng.nextf() < 0.5f) { // setback: smaller upper box
-            const float uh = wallH * (0.25f + 0.15f * rng.nextf());
-            fuhgl::render::MeshData upper =
-                fuhgl::render::shapes::boxData({w * 0.3f, uh * 0.5f, d * 0.3f}, wallCol);
-            shiftY(upper, wallH + uh * 0.5f);
-            appendTransformed(walls, upper, fuhgl::math::translate({0.f, 0.f, 0.f}));
-            wallH += uh;
-        }
-        roof = makeFlatRoof(w, d, 0.25f, roofCol);
-        roofType = 2;
-        shiftY(roof, wallH);
-        return;
-    }
-
-    // village / town: windows per floor on front + back
-    const int floors = std::max(1, static_cast<int>(wallH / 2.8f + 0.5f));
-    for (int f = 0; f < floors; ++f) {
-        const float y = 1.3f + f * 2.8f;
-        if (y > wallH - 0.8f) break;
-        for (int s = -1; s <= 1; s += 2) {
-            appendBox(details, {0.30f, 0.42f, 0.03f}, {s * w * 0.24f, y, d * 0.5f + 0.02f}, winCol);
-            appendBox(details, {0.30f, 0.42f, 0.03f}, {s * w * 0.24f, y, -d * 0.5f - 0.02f}, winCol);
-        }
-    }
-
-    // roof: gable or lean-to; village sometimes gets a bay window (Erker) with its own little roof
-    const bool shed = rng.nextf() < 0.35f;
-    const float roofH = std::max(1.1f, wallH * (shed ? 0.35f : 0.45f));
-    roof = shed ? makeShedRoof(w, d, roofH, roofCol) : makeGableRoof(w, d, roofH, roofCol);
-    roofType = shed ? 1 : 0;
-    shiftY(roof, wallH);
-
-    if (style == HouseStyle::Village && rng.nextf() < 0.45f) {
-        // Erker: protruding bay on the front with its own small gable roof and windows
-        const float bw = w * 0.36f, bd = 0.55f, bh = wallH * 0.62f;
-        appendBox(details, {bw * 0.5f, bh * 0.5f, bd * 0.5f}, {0.f, bh * 0.5f + 0.3f, d * 0.5f + bd * 0.5f}, wallCol);
-        appendBox(details, {0.22f, 0.3f, 0.03f}, {-bw * 0.22f, bh * 0.55f + 0.3f, d * 0.5f + bd + 0.02f}, winCol);
-        appendBox(details, {0.22f, 0.3f, 0.03f}, {bw * 0.22f, bh * 0.55f + 0.3f, d * 0.5f + bd + 0.02f}, winCol);
-        fuhgl::render::MeshData bayRoof = makeGableRoof(bw, bd, bh * 0.45f, roofCol);
-        shiftY(bayRoof, 0.3f + bh);
-        appendTransformed(roof, bayRoof, fuhgl::math::translate({0.f, 0.f, d * 0.5f + bd * 0.5f}));
-    }
-    if (rng.nextf() < 0.6f) // chimney
-        appendBox(details, {0.16f, roofH * 0.7f + 0.4f, 0.16f},
-                  {w * 0.28f, wallH + roofH * 0.5f, -d * 0.22f}, chimCol);
-}
 void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
     Noise noise(p.seed);
     const int g = std::max(2, p.terrainGrid);
@@ -311,6 +143,7 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
 /// asphalt slab, block cells a concrete lot + a procedural house, plaza cells a lawn + park
 /// bushes; optional voronoi district plates underneath.
 void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
+    HouseGenerator houseGen;
     const int gw = std::max(2, p.cityGrid);
     Wfc wfc(gw, gw, "s"); // border tag "s": the ring closes with blocks/sidewalk edges
     w.tiles = makeCityTiles();
@@ -364,16 +197,20 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                 appendTransformed(w.roads, lot, place);
                 // procedural house on the lot
                 const float n = noise.value2(wx * 0.05f + 13.1f, wz * 0.05f + 7.7f); // per-block jitter
-                const float styleScale = p.houseStyle == HouseStyle::Village ? 0.55f
-                                       : p.houseStyle == HouseStyle::Highrise ? 3.0f : 1.f;
-                const float wallH = p.buildingHeight * styleScale * (0.6f + 0.8f * n);
-                const float fw = p.cellSize * p.houseFootprint * (0.8f + 0.4f * n);
-                const float fd = p.cellSize * p.houseFootprint * (0.8f + 0.4f * noise.value2(wz * 0.07f, wx * 0.07f));
+                const std::uint32_t houseSeed =
+                    p.seed ^ 0x11A5u ^ (static_cast<std::uint32_t>(x) * 73856093u) ^
+                    (static_cast<std::uint32_t>(z) * 19349663u);
+                HouseGenerator::Params hp =
+                    HouseGenerator::randomParams(p.houseStyle, p.cellSize, houseSeed);
+                hp.seed = houseSeed;
+                hp.width *= (0.8f + 0.4f * n);
+                hp.depth *= (0.8f + 0.4f * noise.value2(wz * 0.07f, wx * 0.07f));
+                const HouseMesh hm = houseGen.generate(hp);
                 PlacedMesh pm;
-                Rng houseRng(p.seed ^ 0x11A5u ^ (static_cast<std::uint32_t>(x) * 73856093u) ^
-                             (static_cast<std::uint32_t>(z) * 19349663u));
-                makeHouse(p.houseStyle, fw, fd, wallH, houseRng, pm.mesh, pm.detailMesh, pm.roofMesh,
-                          pm.roofType);
+                pm.mesh = hm.walls;
+                pm.detailMesh = hm.details;
+                pm.roofMesh = hm.roof;
+                pm.roofType = static_cast<int>(hm.spec.roofType);
                 pm.position = {wx, 0.05f, wz};
                 pm.rotY = -c.rot * fuhgl::math::kPi * 0.5f;
                 w.buildings.push_back(std::move(pm));

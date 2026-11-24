@@ -106,6 +106,26 @@ Das Layout ist ein G27-WFC-Solve über `makeCityTiles()` — Edge-Tags `"r"` (St
 `streetH`, `streetV`, `cross`, `tE`, `endE`, Rotationen übernimmt der Solver. Straßen-/Plaza-Zellen
 werden zu gemergten Road-Slabs, `block`-Zellen zu Gebäude-Boxen mit pro Block gejitterter Höhe/Farbe.
 
+## HouseGenerator-Klasse (variantenreiche Häuser)
+
+Für volle Kontrolle über einzelne Häuser `procedural::HouseGenerator` in
+`procedural/house.hpp` direkt nutzen — `generateWorld` verwendet sie intern für die Stadtblöcke:
+
+```cpp
+fuhglgraphics::procedural::HouseGenerator gen;
+auto p = fuhglgraphics::procedural::HouseGenerator::randomParams(
+    fuhglgraphics::procedural::HouseStyle::Village, /*cellSize=*/8.f, /*seed=*/123u);
+const auto house = gen.generate(p);
+// house.walls    -> Fassade (hier Brick-POM-Satz anhängen)
+// house.details  -> Tür/Fenster/Kamin/Erker/Gauben/Fachwerk (reine Vertex-Farben)
+// house.roof     -> Dachkörper; house.spec.roofType = Gable | Shed | Hipped | Flat
+// house.spec     -> welche Varianten gezogen wurden (hasBay, hasDormers, hasAnnex, hasPorch, ...)
+```
+
+Varianten: Dachformen Satteldach, Schleppdach, Walmdach, Flachdach; Features Erker, Dachgauben,
+Anbau, Vordach, Kamin, Fachwerk; der Stil Highrise ergänzt Fensterraster + Rücksprung + Flachdach.
+Deterministisch pro Seed; Unit-Tests in `tests/test_procedural_house.cpp`.
+
 ## Screenshot-Demo
 
 `examples/worldgen_screenshot` rendert beide Modi headless zu PNG (CI rendert

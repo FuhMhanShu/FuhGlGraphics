@@ -219,7 +219,7 @@ void testHouseStyles() {
     CHECK(villageH < townH);      // village houses are lower than town houses
     CHECK(highriseH > townH * 2); // highrise towers over town houses
     for (const auto& b : hr.buildings) { // highrise: flat roofs + window grid details
-        CHECK(b.roofType == 2);
+        CHECK(b.roofType == static_cast<int>(RoofType::Flat));
         CHECK(b.detailMesh.vertexCount() > 24);
     }
     base.houseStyle = HouseStyle::Town;

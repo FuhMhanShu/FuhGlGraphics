@@ -29,3 +29,4 @@ void runProceduralVoronoiTests();
 void runProceduralSdfTests();
 void runProceduralCreatureTests();
 void runProceduralWorldgenTests();
+void runProceduralHouseTests();

@@ -9,6 +9,7 @@
 /// that the app attaches to a scene::Scene (upload via Mesh::setMeshData, place via node
 /// transforms — see examples/wfc_screenshot for the scene side).
 
+#include "house.hpp"
 #include "lsystem.hpp"
 #include "noise.hpp"
 #include "voronoi.hpp"
@@ -20,13 +21,6 @@
 #include <vector>
 
 namespace fuhglgraphics::procedural {
-
-/// @brief Architectural style of the generated city houses (WorldGenParams::houseStyle).
-enum class HouseStyle {
-    Village,  ///< 1-2 floors, gable or lean-to roof, bay window (Erker), chimney
-    Town,     ///< 2-3 floors, windows per floor, gable/lean-to roof, door
-    Highrise, ///< tall slab with a window grid on the facades + optional setback, flat roof
-};
 
 /// @brief Parameters of generateWorld(). `mode` switches between Landscape and City;
 /// all other members are plain knobs with sensible defaults.
@@ -72,7 +66,7 @@ struct PlacedMesh {
     fuhgl::render::MeshData mesh;          ///< local-space triangle data (11 floats/vertex)
     fuhgl::render::MeshData roofMesh;      ///< optional roof part (city houses) — own MeshEntry, e.g. shingle texture
     fuhgl::render::MeshData detailMesh;    ///< optional details (city houses: door/windows/chimney/bay) — own MeshEntry, plain vertex colors
-    int roofType = 0;                      ///< city houses: 0 = gable (Satteldach), 1 = lean-to (Schleppdach), 2 = flat
+    int roofType = 0;                      ///< city houses: cast of procedural::RoofType (0 gable, 1 lean-to, 2 hipped, 3 flat)
     fuhgl::math::Vec3 position{0.f, 0.f, 0.f}; ///< world position
     float rotY = 0.f;                      ///< rotation around +Y in radians
     float scale = 1.f;
