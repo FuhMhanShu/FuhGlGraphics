@@ -489,9 +489,11 @@ int main(int argc, char** argv) {
         } else {
             lakeSouthZ = world.sizeZ * 0.25f;
         }
-        const float camX = lakeCx + 12.f, camZ = lakeSouthZ + 16.f;
-        cam.position = {camX, world.heightAt(camX, camZ) + 8.f, camZ};
-        aimAt(cam, {lakeCx - 12.f, world.waterLevelWorld + 3.f, lakeCz - 28.f});
+        // high vantage SE of the lake, looking NW across the water: sky on top, mountains
+        // (rock/snow) behind the far shore, lake band in the middle, grass foreground
+        const float camX = lakeCx + 30.f, camZ = lakeSouthZ + 14.f;
+        cam.position = {camX, world.heightAt(camX, camZ) + 16.f, camZ};
+        aimAt(cam, {lakeCx - 20.f, world.waterLevelWorld + 5.f, lakeCz - 35.f});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
                          water ? &water->surface : nullptr, &env)) {
