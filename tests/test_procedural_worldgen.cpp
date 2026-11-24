@@ -7,6 +7,7 @@
 
 #include <fuhglgraphics/procedural/worldgen.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <set>
 
@@ -53,20 +54,29 @@ void testLandscapeHeightmap() {
         CHECK(h >= 0.f && h <= 1.f);
     }
     // island falloff: the border ring lands on the shore (slightly above the water level
-    // when a lake is carved, near zero otherwise)
+    // when a lake is carved, near zero otherwise); erosion may deposit a little sediment there
     const int g = w.gridW;
-    const float borderMax = p.waterLevel > 0.f ? p.waterLevel * 1.05f + 0.02f : 0.05f;
+    const float borderMax = p.waterLevel > 0.f ? p.waterLevel * 1.05f + 0.15f : 0.2f;
     for (int i = 0; i < g; ++i) {
         CHECK(w.heightmap[i] <= borderMax);
         CHECK(w.heightmap[i + g * (g - 1)] <= borderMax);
         CHECK(w.heightmap[g * i] <= borderMax);
         CHECK(w.heightmap[g * i + g - 1] <= borderMax);
     }
-    // lake basin: with waterLevel > 0 some samples are carved below the water level
-    int belowWater = 0;
-    for (const float h : w.heightmap)
-        if (h < p.waterLevel * 0.5f) ++belowWater;
-    CHECK(belowWater > 0);
+    // lake basin: with waterLevel > 0 some samples end below the water level
+    float minH = 1.f;
+    for (const float h : w.heightmap) minH = std::min(minH, h);
+    CHECK(minH < p.waterLevel);
+    // splatmap + flowmap exist and are in range
+    CHECK(w.splatmap.size() == static_cast<std::size_t>(g) * g * 4);
+    CHECK(w.flowmap.size() == static_cast<std::size_t>(g) * g);
+    int snowPixels = 0, rockPixels = 0;
+    for (std::size_t i = 0; i < w.splatmap.size(); i += 4) {
+        if (w.splatmap[i + 3] > 200) ++snowPixels; // A = snow
+        if (w.splatmap[i + 1] > 150) ++rockPixels; // G = rock
+    }
+    CHECK(snowPixels > 0);  // high peaks are snow-covered
+    CHECK(rockPixels > 0);  // steep slopes are rock
 }
 
 void testHeightAt() {
@@ -78,10 +88,40 @@ void testHeightAt() {
     const float z = -w.sizeZ * 0.5f + 20.f * (w.sizeZ / (w.gridH - 1)); // node z=20
     const float expect = w.heightmap[10 + w.gridW * 20] * w.heightScale;
     CHECK_NEAR(w.heightAt(x, z), expect, 1e-3f);
-    // clamping: outside the rect returns the border sample, never NaN
-    CHECK_NEAR(w.heightAt(-1e6f, 0.f), w.heightmap[0] * w.heightScale, 1e-3f);
-    CHECK_NEAR(w.heightAt(1e6f, 1e6f), w.heightmap[w.gridW * w.gridH - 1] * w.heightScale, 1e-3f);
+    // clamping: far outside the rect clamps to the edge column/row, never NaN
+    CHECK_NEAR(w.heightAt(-1e6f, 0.f), w.heightAt(-w.sizeX, 0.f), 1e-3f);
+    CHECK_NEAR(w.heightAt(1e6f, 1e6f), w.heightAt(w.sizeX, w.sizeZ), 1e-3f);
     CHECK(std::isfinite(w.heightAt(0.f, 0.f)));
+}
+
+void testErosionAndScatter() {
+    WorldGenParams p = landscapeParams();
+    p.erosionDroplets = 1500;
+    p.thermalPasses = 3;
+    const GeneratedWorld w = generateWorld(p);
+    // heightmap still valid after erosion
+    for (const float h : w.heightmap) CHECK(h >= 0.f && h <= 1.f);
+    // flow map was produced and normalized
+    float maxFlow = 0.f;
+    for (const float f : w.flowmap) maxFlow = std::max(maxFlow, f);
+    CHECK(maxFlow > 0.f && maxFlow <= 1.f + 1e-6f);
+    // poisson scatter: min distance respected among trees
+    for (std::size_t i = 0; i < w.trees.size(); ++i)
+        for (std::size_t j = i + 1; j < w.trees.size(); ++j) {
+            const float dx = w.trees[i].position.x - w.trees[j].position.x;
+            const float dz = w.trees[i].position.z - w.trees[j].position.z;
+            CHECK(dx * dx + dz * dz >= p.treeMinDist * p.treeMinDist * 0.9f);
+        }
+    // rocks scattered and on the ground
+    CHECK(!w.rocks.empty());
+    for (const auto& r : w.rocks) {
+        CHECK(r.mesh.vertexCount() > 0);
+        CHECK_NEAR(r.position.y, w.heightAt(r.position.x, r.position.z) + 0.1f, 0.5f);
+    }
+    // determinism with erosion
+    const GeneratedWorld w2 = generateWorld(p);
+    CHECK(w2.heightmap == w.heightmap);
+    CHECK(w2.splatmap == w.splatmap);
 }
 
 void testLandscapeTrees() {
@@ -274,6 +314,7 @@ void testDeterminismAndModes() {
 void runProceduralWorldgenTests() {
     testLandscapeHeightmap();
     testHeightAt();
+    testErosionAndScatter();
     testLandscapeTrees();
     testCityLayout();
     testHouseStyles();

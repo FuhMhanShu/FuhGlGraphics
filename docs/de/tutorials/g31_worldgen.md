@@ -30,35 +30,69 @@ p.mode = WorldGenParams::Mode::Landscape;
 p.seed = 777;
 p.worldSize = 200.f;        // X/Z-Ausdehnung in Welt-Einheiten (Zentrum im Ursprung)
 p.terrainGrid = 129;        // Auflösung der Heightmap
-p.terrainHeight = 14.f;     // Höhenskalierung (Heightmap selbst ist in [0,1])
+p.terrainHeight = 34.f;     // Höhenskalierung (Heightmap selbst ist in [0,1])
 p.noiseScale = 0.045f;      // Noise-Skalierung pro Welt-Einheit
-p.warpStrength = 0.8f;      // optionaler Domain-Warp (0 = aus)
-p.heightExponent = 0.8f;    // Kontrast-Shaping pow(h, exponent); <1 -> ausgeprägtere Gipfel
-p.waterLevel = 0.30f;       // >0: Seebecken unterhalb dieses normalisierten Pegels
+p.octaves = 6;              // fBm-Oktaven der Flachland-Schicht
+p.warpStrength = 0.6f;      // Domain-Warp des Noise-Inputs (0 = aus)
+p.heightExponent = 0.85f;   // Kontrast-Shaping pow(h, exponent); <1 -> ausgeprägtere Gipfel
+p.waterLevel = 0.30f;       // >0: Wasser/See auf diesem normalisierten Pegel
+p.lakeRadius = 55.f;        // >0: runder Seebecken-Radius um das Zentrum
 p.lakeCarve = 0.18f;         // Beckentiefe unterhalb des Pegels
-p.treeCount = 140;          // verstreute L-System-Bäume
-p.bushCount = 160;          // verstreute L-System-Büsche
-p.grassBlades = 4000;       // Hinweis fürs App: instanziertes Gras via Instancing::heightFn
-p.treeMinDist = 6.f;
+p.erosionDroplets = 4000;   // hydraulische Erosion: Tropfen-Partikelsim (0 = aus)
+p.thermalPasses = 4;        // thermische Erosion: Durchläufe (0 = aus)
+p.talus = 0.09f;             // Talus-Schwelle (normalisierter Höhenabfall pro Zelle)
+p.treeCount = 130;          // verstreute L-System-Bäume (Poisson-Disk, grasgewichtet)
+p.bushCount = 180;          // verstreute Büsche
+p.rockCount = 60;           // verstreute Felsen (Splatmap-Felsmaske)
+p.grassBlades = 6000;       // Hinweis fürs App: instanziertes Gras via Instancing::heightFn
+p.treeMinDist = 6.f;        // Poisson-Disk-Mindestabstand
 
 const auto w = generateWorld(p);
 w.heightmap;                // gridW*gridH floats, zeilenweise (x + gridW*z), [0,1]
 w.heightAt(x, z);           // bilineare Welt-Höhe (Sample * heightScale, geclampt)
 w.waterLevelWorld;          // Pegel in Welt-Einheiten (hier WaterComponent platzieren)
+w.splatmap;                 // gridW*gridH RGBA-Gewichte: R Gras, G Fels, B Sand, A Schnee
+w.flowmap;                  // gridW*gridH float [0,1]: hydraulische Flussakkumulation (Flussbetten)
 w.trees;                    // PlacedMesh: Mesh (L-System-Baum) + position/rotY/scale/tint
 w.bushes;                   // PlacedMesh: Büsche, gleiche Platzierungsregeln
+w.rocks;                    // PlacedMesh: Kugel-Felsen auf steilen/Fels-Splatmap-Bereichen
 ```
 
-Das Höhenfeld ist G24 ridged fBm (Simplex-Basis) mit Island-Falloff am Rand und optionalem
-Seebecken unterhalb von `waterLevel`. Bäume sind G26-L-Systeme per Rejection-Sampling: sie stehen
-auf dem Terrain (`heightAt`), meiden den See und halten `treeMinDist` ein.
+### Landschafts-Pipeline (was `generateLandscape` macht)
 
-An die Szene hängen (Heightmap → Grid-`MeshData`, Bäume → je ein Knoten):
+1. **Makro-Relief** — eine Heightmap aus kombinierten Schichten: Domain-Warping des Noise-Inputs
+   (`warpStrength`), eine sehr niederfrequente *Continentalness*-Simplex-Maske, die Flachland
+   (fBm) vs. Gebirgszüge (*ridged* Multifraktal, scharfe Grate) wählt, Kontrast-Shaping
+   `pow(h, heightExponent)`, das runde `lakeRadius`-Becken und ein Island-Falloff am Rand.
+2. **Erosion** — `erosionDroplets` virtuelle Regentropfen laufen bergab über die Heightmap, nehmen
+   Sediment auf und lagern es ab (hydraulische Erosion frisst Täler/Flussbetten und füllt die
+   `flowmap`), danach relaxieren `thermalPasses` jeden Hang steiler als der `talus`-Winkel zu
+   Geröllhalden (thermische Erosion).
+3. **Splatmap** — pro Zelle: G Fels aus der Welt-Steigung (Band relativ zur steilsten vorhandenen
+   Steigung, damit Klippen bei jeder heightScale/Auflösung Fels bekommen), A Schnee aus der Höhe
+   (`smoothstep(0.58, 0.8, h)`), B Sand nahe dem Pegel plus `flowmap`-Flussbetten, R Gras als Rest.
+   `splatmap` als RGBA-Textur hochladen und als Terrain-Splatmap verwenden.
+4. **Meshing & LOD** — Grid-`MeshData` aus `heightmap` bauen (uv = Grid-uv, damit die Splatmap 1:1
+   auf die Zellen mappt). Für große Welten stattdessen `scene::TerrainComponent`: kapselt dieselbe
+   Heightmap in einem `LodMesh` (F38/F41 quadtree-artiges LOD mit bildschirmraum-basierten
+   Umschaltdistanzen) — `w.heightmap` in `TerrainComponent::heights` kopieren und `rebuildLod()`
+   rufen; Triplanar-Mapping für steile Klippen liegt im Terrain-Shader (shader-seitig).
+5. **Scattering** — Poisson-Disk-Sampling (Dart-Throwing mit Spatial Hash, garantierter
+   `treeMinDist`), gewichtet mit der Splatmap: Bäume/Büsche auf Gras über dem Pegel, Felsen auf
+   der Felsmaske. Gras selbst ist app-seitig GPU-Instancing (`Node::instancing`) mit einer
+   `heightFn`, die Halme auf `heightAt` snappt und unter Wasser / auf Fels-Schnee-Sand-Texeln
+   versteckt (Dichte-Maske).
+
+An die Szene hängen (Terrain-Grid-Mesh mit Splatmap als Albedo-Textur oder `TerrainComponent` +
+Splatmap-Shader; Bäume/Büsche/Felsen → je ein Knoten; Gras → ein instanzierter Knoten):
 
 ```cpp
 scene::Scene scene;
-// terrain: MeshData aus w.heightmap bauen (pos/normal/color/uv pro Vertex) ...
-scene.root().createChild("terrain").attach<scene::MeshComponent>().addMesh(terrainMesh);
+scene::Node& tn = scene.root().createChild("terrain");
+fuhgl::render::Mesh terrainMesh;
+terrainMesh.setMeshData(terrainMeshData(w)); // Grid aus w.heightmap, uv = Grid-uv
+auto& te = tn.attach<scene::MeshComponent>().addMesh(&terrainMesh);
+te.albedoTexture = &splatmapTexture;         // RGBA: R Gras / G Fels / B Sand / A Schnee
 for (size_t i = 0; i < w.trees.size(); ++i) {
     auto& n = scene.root().createChild("tree" + std::to_string(i));
     n.translation = w.trees[i].position;
@@ -159,26 +193,33 @@ const auto city = procedural::generateCityWorld(p);
 
 ## Screenshot-Demo
 
-`examples/worldgen_screenshot` rendert beide Modi headless zu PNG (CI rendert
-`docs/images/ci/g31_worldgen_{landscape,city,city_street}.png`, per optipng komprimiert;
-eingecheckte Referenzen in [docs/images/](../../images/g31_worldgen_city.png)):
+`examples/worldgen_screenshot` rendert alle Modi headless zu PNG (CI rendert
+`docs/images/ci/g31_worldgen_{landscape,city,city_street}.png` und
+`docs/images/ci/g31_pipeline{,_street}.png`, per optipng komprimiert; eingecheckte Referenzen in
+[docs/images/](../../images/g31_worldgen_city.png)):
 
 ```bash
 cmake --build build --target fuhglgraphics_worldgen_screenshot
 FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
-    --prefix g31_worldgen --width 1280 --height 720 --frames 16 --seed 777
-# schreibt g31_worldgen_landscape.png, g31_worldgen_city.png, g31_worldgen_city_street.png
+    --prefix g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode both
+FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
+    --prefix g31_pipeline --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline
+# schreibt g31_worldgen_{landscape,city,city_street}.png und g31_pipeline{,_street}.png
 ```
 
 ![G31 Landschaft](../../images/g31_worldgen_landscape.png)
 ![G31 Stadt Übersicht](../../images/g31_worldgen_city.png)
 ![G31 Stadt Straßenebene](../../images/g31_worldgen_city_street.png)
+![G31 Pipeline-Stadt Übersicht](../../images/g31_pipeline.png)
+![G31 Pipeline Straßenebene](../../images/g31_pipeline_street.png)
 
 ## Tests
 
 - `tests/test_procedural_worldgen.cpp` (Unit): Heightmap-Größe/Wertebereich/Rand/See, `heightAt`
-  Sampling + Clamping, Baum-Platzierungsregeln (auf dem Terrain, nicht im See, Mindestabstand),
-  WFC-Layout-Gültigkeit inkl. Rand-Tags, Block→Gebäude-Mapping, Determinismus pro Seed, Modus-Wahl.
+  Sampling + Clamping, Erosion (Tropfen senken die Gipfel, flowmap bleibt in [0,1]), Splatmap-Kanäle
+  (Gras/Fels/Sand/Schnee vorhanden und im Wertebereich), Poisson-Scatter (Mindestabstand, Felsen
+  auf der Felsmaske, Determinismus pro Seed), Baum-Platzierungsregeln (auf dem Terrain, nicht im
+  See, Mindestabstand), WFC-Layout-Gültigkeit inkl. Rand-Tags, Block→Gebäude-Mapping, Modus-Wahl.
 
 ## Hinweise
 

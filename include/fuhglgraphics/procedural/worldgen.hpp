@@ -43,10 +43,14 @@ struct WorldGenParams {
     float waterLevel = 0.f;       ///< normalized [0,1] water level; >0 carves a lake basin below it
     float lakeCarve = 0.18f;      ///< basin depth factor for samples below waterLevel
     float lakeRadius = 0.f;       ///< >0: carve a round lake basin of this radius (world units) around the center
-    int treeCount = 120;          ///< scattered L-system trees (0 = off)
+    int erosionDroplets = 4000;   ///< hydraulic erosion droplets on the heightmap (0 = off)
+    int thermalPasses = 4;        ///< thermal erosion passes (talus-angle relaxation) (0 = off)
+    float talus = 0.09f;          ///< thermal talus threshold (normalized height drop per cell; ~35° world slope at default grid/height)
+    int treeCount = 120;          ///< scattered L-system trees, poisson-disk sampled (0 = off)
     int bushCount = 160;          ///< scattered L-system bushes (0 = off)
+    int rockCount = 40;           ///< scattered rocks on steep/rocky splatmask areas (0 = off)
     int grassBlades = 4000;       ///< hint for the app: instanced grass blades over the terrain (scene-side)
-    float treeMinDist = 6.f;      ///< min distance between trees (rejection sampling)
+    float treeMinDist = 6.f;      ///< min distance between scatter points (poisson disk)
 
     // --- city (mode == City) ---
     int cityGrid = 12;            ///< WFC cells per side
@@ -101,8 +105,17 @@ struct GeneratedWorld {
     // --- placed objects ---
     std::vector<PlacedMesh> trees;         ///< landscape: scattered L-system trees
     std::vector<PlacedMesh> bushes;        ///< landscape: bushes; city: park greenery
+    std::vector<PlacedMesh> rocks;         ///< landscape: scattered rocks (splatmap rock/slope)
     std::vector<PlacedMesh> buildings;     ///< city: one procedural house per non-park "block" cell (mesh = walls+door+windows, roofMesh = gabled roof)
     int parkCellCount = 0;                 ///< city: number of cells turned into parks (plaza + converted blocks)
+
+    // --- landscape splatmap (mode == Landscape) ---
+    /// @brief gridW*gridH RGBA weights per cell: R = grass, G = rock (slope band relative to the
+    /// steepest slope in the terrain), B = sand (shore + flow channels from the hydraulic
+    /// erosion), A = snow (altitude). Upload as a texture and use as the terrain albedo/splat map.
+    std::vector<unsigned char> splatmap;
+    /// @brief Flow accumulation of the hydraulic erosion (normalized [0,1]) — riverbeds/wet areas.
+    std::vector<float> flowmap;
 };
 
 /// @brief City tile set for the WFC solver: edge tags "r" = road, "s" = lot/sidewalk edge

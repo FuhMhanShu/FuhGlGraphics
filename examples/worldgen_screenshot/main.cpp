@@ -1,14 +1,17 @@
 // G31 world-generator screenshot tool: builds a LANDSCAPE and a CITY with
-// procedural::generateWorld() (WorldGenParams) and attaches the result to a scene::Scene
-// (heightmap terrain + water surface + instanced grass + L-system trees/bushes; city ground,
-// sidewalk/asphalt roads, voronoi district plates, procedural houses with POM brick walls +
-// shingle roofs, park lawns with bushes), rendered headless (surfaceless EGL) to PNG for
-// docs/images/.
+// procedural::generateWorld() (WorldGenParams) / procedural::generateCityWorld() and attaches
+// the result to a scene::Scene. Landscape: heightmap terrain (macro relief + hydraulic/thermal
+// erosion) with the biome splatmap (R grass / G rock / B sand / A snow) as albedo texture,
+// water surface, GPU-instanced grass weighted by the splatmap, L-system trees/bushes and
+// scattered rocks. City: ground, sidewalk/asphalt roads, voronoi district plates, procedural
+// houses with POM brick walls + shingle roofs, park lawns with bushes. Pipeline mode: the
+// generateCityWorld() pipeline (terrain+zones -> road graph -> lot subdivision -> houses).
+// Rendered headless (surfaceless EGL) to PNG for docs/images/.
 //
 // Usage: fuhglgraphics_worldgen_screenshot --prefix g31_worldgen [--width 1280] [--height 720]
-//          [--frames 16] [--seed 777] [--mode both|landscape|city]
-//   writes <prefix>_landscape.png, <prefix>_city.png and <prefix>_city_street.png
-//   (skipping the shots of a mode not selected).
+//          [--frames 16] [--seed 777] [--mode both|landscape|city|pipeline] [--style town]
+//   writes <prefix>_landscape.png, <prefix>_city.png, <prefix>_city_street.png and
+//   <prefix>_pipeline*.png (skipping the shots of a mode not selected).
 //
 // Exit code 2 when no headless GL context is available.
 
@@ -130,6 +133,84 @@ fuhgl::Texture makeTex(int size, std::uint32_t seed, const std::function<void(in
     t.setParameteri(fuhgl::gl::GL_TEXTURE_WRAP_S, fuhgl::gl::GL_REPEAT);
     t.setParameteri(fuhgl::gl::GL_TEXTURE_WRAP_T, fuhgl::gl::GL_REPEAT);
     return t;
+}
+
+// upload a raw RGBA8 image (w*h*4 bytes, row-major) as a 2D texture
+fuhgl::Texture makeTexFromRGBA(int w, int h, const std::vector<unsigned char>& rgba) {
+    fuhgl::Texture t(fuhgl::Texture::Target::Tex2D);
+    t.bind();
+    t.setImage2D(0, fuhgl::gl::GL_RGBA8, w, h, fuhgl::gl::GL_RGBA, fuhgl::gl::GL_UNSIGNED_BYTE,
+                 rgba.data());
+    t.generateMipmap();
+    t.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_LINEAR_MIPMAP_LINEAR);
+    t.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_LINEAR);
+    t.setParameteri(fuhgl::gl::GL_TEXTURE_WRAP_S, fuhgl::gl::GL_CLAMP_TO_EDGE);
+    t.setParameteri(fuhgl::gl::GL_TEXTURE_WRAP_T, fuhgl::gl::GL_CLAMP_TO_EDGE);
+    return t;
+}
+
+// blend the GeneratedWorld splatmap weights (R grass / G rock / B sand / A snow) into an RGB
+// albedo texture with fixed biome base colors — a production terrain shader would instead
+// mix 4 material textures with these weights (triplanar on steep slopes)
+fuhgl::Texture makeSplatAlbedoTex(const procedural::GeneratedWorld& world) {
+    const int g = world.gridW;
+    const fuhgl::math::Vec3 grass{0.24f, 0.42f, 0.15f}, rock{0.42f, 0.40f, 0.38f},
+        sand{0.72f, 0.64f, 0.46f}, snow{0.92f, 0.94f, 0.98f};
+    std::vector<unsigned char> data(static_cast<std::size_t>(g) * g * 4, 0);
+    for (int j = 0; j < g; ++j)
+        for (int i = 0; i < g; ++i) {
+            const std::size_t s = (static_cast<std::size_t>(i) + g * j) * 4;
+            const float r = world.splatmap[s + 0] / 255.f, gr = world.splatmap[s + 1] / 255.f,
+                        b = world.splatmap[s + 2] / 255.f, a = world.splatmap[s + 3] / 255.f;
+            const float sum = std::max(0.0001f, r + gr + b + a);
+            fuhgl::math::Vec3 c = (grass * r + rock * gr + sand * b + snow * a) * (1.f / sum);
+            // slight per-texel variation so large flat areas do not look flat
+            const std::uint32_t n = hashPx(i, j, 99u);
+            c = c * (0.92f + 0.16f * ((n & 0xffu) / 255.f));
+            unsigned char* o = &data[s];
+            o[0] = static_cast<unsigned char>(std::min(1.f, c.x) * 255.f);
+            o[1] = static_cast<unsigned char>(std::min(1.f, c.y) * 255.f);
+            o[2] = static_cast<unsigned char>(std::min(1.f, c.z) * 255.f);
+            o[3] = 255;
+        }
+    return makeTexFromRGBA(g, g, data);
+}
+
+// static grid mesh built from a GeneratedWorld heightmap (pos3/normal3/color3/uv2 per vertex,
+// uv = grid uv so the splatmap texture maps 1:1 onto the cells). In a production scene the
+// terrain comes from scene::TerrainComponent (LodMesh LOD over the same heightmap).
+fuhgl::render::MeshData terrainMeshData(const procedural::GeneratedWorld& world) {
+    const int gw = world.gridW, gh = world.gridH;
+    fuhgl::render::MeshData md;
+    md.vertices.reserve(static_cast<std::size_t>(gw) * gh * fuhgl::render::MeshData::kFloatsPerVertex);
+    const float cellX = world.sizeX / (gw - 1), cellZ = world.sizeZ / (gh - 1);
+    auto hAt = [&](int x, int z) {
+        x = std::min(gw - 1, std::max(0, x));
+        z = std::min(gh - 1, std::max(0, z));
+        return world.heightmap[static_cast<std::size_t>(x) + gw * z] * world.heightScale;
+    };
+    for (int j = 0; j < gh; ++j)
+        for (int i = 0; i < gw; ++i) {
+            const float x = -world.sizeX * 0.5f + i * cellX;
+            const float z = -world.sizeZ * 0.5f + j * cellZ;
+            const float y = hAt(i, j);
+            const float dfdx = (hAt(i + 1, j) - hAt(i - 1, j)) / (2.f * cellX);
+            const float dfdz = (hAt(i, j + 1) - hAt(i, j - 1)) / (2.f * cellZ);
+            const fuhgl::math::Vec3 n = fuhgl::math::normalize({-dfdx, 1.f, -dfdz});
+            const float vert[fuhgl::render::MeshData::kFloatsPerVertex] = {
+                x, y, z, n.x, n.y, n.z, 1.f, 1.f, 1.f,
+                static_cast<float>(i) / (gw - 1), static_cast<float>(j) / (gh - 1)};
+            md.vertices.insert(md.vertices.end(), vert,
+                               vert + fuhgl::render::MeshData::kFloatsPerVertex);
+        }
+    for (int j = 0; j < gh - 1; ++j)
+        for (int i = 0; i < gw - 1; ++i) {
+            const unsigned v00 = static_cast<unsigned>(j * gw + i), v10 = v00 + 1,
+                           v01 = v00 + gw, v11 = v01 + 1;
+            md.indices.push_back(v00); md.indices.push_back(v01); md.indices.push_back(v11);
+            md.indices.push_back(v00); md.indices.push_back(v11); md.indices.push_back(v10);
+        }
+    return md;
 }
 
 // brick pattern: running bond, mortar grooves; returns height in [0,1] (bricks high, mortar low)
@@ -280,34 +361,33 @@ int main(int argc, char** argv) {
         p.lakeRadius = 55.f;      // central lake basin
         p.treeCount = 130;
         p.bushCount = 180;
-        p.grassBlades = 0; // grass instancing stays available via params; not in this shot
+        p.rockCount = 60;
+        p.grassBlades = 6000; // GPU-instanced grass blades, weighted by the splatmap below
         p.treeMinDist = 6.f;
         const procedural::GeneratedWorld world = procedural::generateWorld(p);
-        std::fprintf(stderr, "worldgen_screenshot: landscape seed %u: grid %d, %zu trees, %zu bushes\n",
-                     args.seed, world.gridW, world.trees.size(), world.bushes.size());
+        std::fprintf(stderr,
+                     "worldgen_screenshot: landscape seed %u: grid %d, %zu trees, %zu bushes, %zu rocks\n",
+                     args.seed, world.gridW, world.trees.size(), world.bushes.size(),
+                     world.rocks.size());
 
         scene::Scene scene;
         MeshArena arena;
 
-        // terrain: TerrainComponent, heightmap copied from the GeneratedWorld (transposed to
-        // the component's row-major z*j+i layout), LOD meshes rebuilt from it
+        // terrain: static grid mesh from the GeneratedWorld heightmap; the biome splatmap
+        // (R grass / G rock / B sand / A snow, from slope + erosion flow + altitude) is
+        // blended into the albedo texture. Production scenes can instead feed the same
+        // heightmap into scene::TerrainComponent (LodMesh LOD) with a splatmap shader.
+        const fuhgl::Texture splatTex = makeSplatAlbedoTex(world);
         scene::Node& tn = scene.root().createChild("terrain");
-        scene::TerrainComponent& tc = tn.attach<scene::TerrainComponent>();
-        tc.levels = 4;
-        tc.fovYDeg = 55.f;
-        tc.albedo = {0.30f, 0.28f, 0.24f};
-        tc.customDistances = {70.f, 170.f, 340.f};
-        if (!tc.create(world.gridW, world.gridH, world.sizeX, world.sizeZ, world.heightScale)) {
-            std::fprintf(stderr, "worldgen_screenshot: terrain create failed\n");
-            return 1;
-        }
-        for (int j = 0; j < world.gridH; ++j)
-            for (int i = 0; i < world.gridW; ++i)
-                tc.heights[static_cast<std::size_t>(j) * tc.gridW + i] =
-                    world.heightmap[static_cast<std::size_t>(i) + world.gridW * j];
-        if (!tc.rebuildLod()) {
-            std::fprintf(stderr, "worldgen_screenshot: terrain rebuildLod failed\n");
-            return 1;
+        fuhgl::render::Mesh terrainMesh;
+        terrainMesh.setMeshData(terrainMeshData(world));
+        {
+            scene::MeshEntry& te = tn.attach<scene::MeshComponent>().addMesh(&terrainMesh);
+            te.albedo = {1.f, 1.f, 1.f};
+            te.albedoTexture = &splatTex;
+            te.roughness = 1.f;
+            te.castShadow = true;
+            te.materialId = 1;
         }
 
         // lake water surface at the water level (G13 — needs Effect::Water)
@@ -332,8 +412,8 @@ int main(int argc, char** argv) {
             water->surface.shallowColor = {0.06f, 0.30f, 0.38f};
         }
 
-        // instanced grass snapped onto the terrain (hidden under water) — skipped when
-        // grassBlades == 0 (kept available via WorldGenParams::grassBlades)
+        // GPU-instanced grass blades snapped onto the terrain; the heightFn hides blades
+        // under water and on non-grass splatmap texels (rock/snow/sand) — a density mask
         if (p.grassBlades > 0) {
             fuhgl::render::Mesh blade;
             fuhgl::render::shapes::box(blade, {0.015f, 0.22f, 0.015f}, {0.25f, 0.45f, 0.18f});
@@ -343,9 +423,16 @@ int main(int argc, char** argv) {
             grass.instancing.layout = scene::InstanceLayout::Random;
             grass.instancing.extent = {p.worldSize - 8.f, 4.f, p.worldSize - 8.f};
             grass.instancing.seed = 7u;
-            grass.instancing.heightFn = [&tc, &world](float x, float z) {
-                const float h = tc.heightAt(x, z);
-                return h < world.waterLevelWorld + 0.15f ? -1000.f : h + 0.22f;
+            grass.instancing.heightFn = [&world](float x, float z) {
+                const float h = world.heightAt(x, z);
+                if (h < world.waterLevelWorld + 0.15f) return -1000.f;
+                const int g = world.gridW;
+                const float u = std::min(1.f, std::max(0.f, x / world.sizeX + 0.5f)) * (g - 1);
+                const float v = std::min(1.f, std::max(0.f, z / world.sizeZ + 0.5f)) * (g - 1);
+                const std::size_t idx =
+                    (static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v)) * 4;
+                if (world.splatmap[idx + 0] < 110) return -1000.f; // grass weight too low
+                return h + 0.22f;
             };
             scene::MeshEntry& ge = grass.attach<scene::MeshComponent>().addMesh(&blade);
             ge.albedo = {0.55f, 0.75f, 0.35f};
@@ -371,6 +458,7 @@ int main(int argc, char** argv) {
         };
         addPlant("tree", world.trees, 30);
         addPlant("bush", world.bushes, 31);
+        addPlant("rock", world.rocks, 32);
         // warm sun in the south (behind the shore camera) so the seen slopes are lit
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.30f, 0.50f, 0.85f}));
 
@@ -388,7 +476,7 @@ int main(int argc, char** argv) {
             }
         // G24-style composition: elevated camera on the south shore looking across the lake
         // toward the mountains, sky in the upper frame
-        cam.position = {-20.f, tc.heightAt(-20.f, 85.f) + 10.f, 85.f};
+        cam.position = {-20.f, world.heightAt(-20.f, 85.f) + 10.f, 85.f};
         aimAt(cam, {25.f, world.waterLevelWorld + 5.f, -35.f});
         (void)peakH; (void)peakX; (void)peakZ;
         const std::string path = args.prefix + "_landscape.png";
