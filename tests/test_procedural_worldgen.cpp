@@ -23,6 +23,7 @@ WorldGenParams landscapeParams() {
     p.terrainHeight = 12.f;
     p.waterLevel = 0.35f;
     p.treeCount = 40;
+    p.bushCount = 25;
     p.treeMinDist = 5.f;
     return p;
 }
@@ -35,6 +36,7 @@ WorldGenParams cityParams() {
     p.cellSize = 8.f;
     p.buildingHeight = 6.f;
     p.blocksPerDistrict = 24;
+    p.parkBushesPerPlaza = 3;
     return p;
 }
 
@@ -50,13 +52,15 @@ void testLandscapeHeightmap() {
     for (const float h : w.heightmap) {
         CHECK(h >= 0.f && h <= 1.f);
     }
-    // island falloff: the border ring sinks to (nearly) zero
+    // island falloff: the border ring lands on the shore (slightly above the water level
+    // when a lake is carved, near zero otherwise)
     const int g = w.gridW;
+    const float borderMax = p.waterLevel > 0.f ? p.waterLevel * 1.05f + 0.02f : 0.05f;
     for (int i = 0; i < g; ++i) {
-        CHECK(w.heightmap[i] < 0.05f);
-        CHECK(w.heightmap[i + g * (g - 1)] < 0.05f);
-        CHECK(w.heightmap[g * i] < 0.05f);
-        CHECK(w.heightmap[g * i + g - 1] < 0.05f);
+        CHECK(w.heightmap[i] <= borderMax);
+        CHECK(w.heightmap[i + g * (g - 1)] <= borderMax);
+        CHECK(w.heightmap[g * i] <= borderMax);
+        CHECK(w.heightmap[g * i + g - 1] <= borderMax);
     }
     // lake basin: with waterLevel > 0 some samples are carved below the water level
     int belowWater = 0;
@@ -85,6 +89,13 @@ void testLandscapeTrees() {
     const GeneratedWorld w = generateWorld(p);
     CHECK(!w.trees.empty());
     CHECK(w.trees.size() <= static_cast<std::size_t>(p.treeCount));
+    CHECK(!w.bushes.empty());
+    CHECK(w.bushes.size() <= static_cast<std::size_t>(p.bushCount));
+    for (const auto& b : w.bushes) {
+        CHECK(b.mesh.vertexCount() > 0);
+        CHECK_NEAR(b.position.y, w.heightAt(b.position.x, b.position.z), 1e-2f);
+        CHECK(b.position.y >= w.waterLevelWorld);
+    }
     const float half = p.worldSize * 0.5f;
     for (const auto& t : w.trees) {
         CHECK(t.mesh.vertexCount() > 0);
@@ -155,15 +166,26 @@ void testCityLayout() {
         CHECK(tag(0, z, 2) == "s" || tag(0, z, 2).empty());
         CHECK(tag(w.cityW - 1, z, 0) == "s" || tag(w.cityW - 1, z, 0).empty());
     }
-    // one building per block cell, placed on the cell center
-    CHECK(w.buildings.size() == static_cast<std::size_t>(blocks));
+    // houses on non-park block cells; park cells (plaza tiles + converted interior blocks)
+    // carry lawn + bushes instead
+    int plazaTiles = 0;
+    for (const auto& c : w.cells)
+        if (c.tile >= 0 && w.tiles[c.tile].name == "plaza") ++plazaTiles;
+    CHECK(w.parkCellCount >= plazaTiles);
+    CHECK(w.buildings.size() + static_cast<std::size_t>(w.parkCellCount) ==
+          static_cast<std::size_t>(blocks));
     for (const auto& b : w.buildings) {
-        CHECK(b.mesh.vertexCount() > 0);
+        CHECK(b.mesh.vertexCount() > 24);      // box alone has 24 vertices
+        CHECK(b.roofMesh.vertexCount() > 0);   // roof prism
+        CHECK(b.roofMesh.indices.size() >= 12);
         const float gx = (b.position.x / p.cellSize) + (p.cityGrid - 1) * 0.5f;
         const float gz = (b.position.z / p.cellSize) + (p.cityGrid - 1) * 0.5f;
         CHECK_NEAR(gx, std::round(gx), 1e-3f);
         CHECK_NEAR(gz, std::round(gz), 1e-3f);
     }
+    // park greenery: bushes on every park cell
+    CHECK(w.bushes.size() == static_cast<std::size_t>(w.parkCellCount) * p.parkBushesPerPlaza);
+    CHECK(w.parkCellCount > 0); // parkFraction guarantees parks for interior blocks
 }
 
 void testCityTilesSolvable() {

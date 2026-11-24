@@ -255,6 +255,11 @@ jobs:
           cmake --build build -j --target fuhglgraphics_creature_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_creature_screenshot --prefix docs/images/ci/g30_creature --width 1280 --height 720 --frames 16
 
+      - name: Build + render G31 world-generator screenshots (generateWorld landscape heightmap+trees, WFC city + district plates; landscape/city overview + street level)
+        run: |
+          cmake --build build -j --target fuhglgraphics_worldgen_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_worldgen --width 1280 --height 720 --frames 16 --seed 777
+
       - name: Build + render G36 ice-cave screenshots (SDF cave with campfire inside — G35 flame particles, ice crystals + SSR/SSS, water puddle, HBAO, bloom, volumetric fog, entrance glow; wide/crystals/entrance)
         run: |
           cmake --build build -j --target fuhglgraphics_cave_screenshot
@@ -294,7 +299,16 @@ jobs:
       - name: Screenshot perceptual diff (CI renders vs docs/images references)
         run: python3 docs/screenshot_diff.py docs/images docs/images/ci --min-psnr 28
 
+      # Lossless PNG recompression (smaller artifact + smaller checked-in references when
+      # the ci renders are copied into docs/images/).
+      - name: Compress rendered screenshots (optipng, lossless)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y optipng
+          optipng -o7 -quiet docs/images/ci/*.png
+
       - name: Upload screenshots
+        if: always() # keep the artifact even when the PSNR diff fails (needed to update references)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: g3-screenshots
