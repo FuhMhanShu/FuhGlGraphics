@@ -350,8 +350,10 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   0.02 → 0.035) and lower distortion (`distortion` 0.12 → 0.02, `refractionDistortion`
   0.06 → 0.035). Much less foam: `foamCrestStart` 0.72 → 0.95, `foamCrestSoftness`
   0.18 → 0.04, `shoreFoamWidth` 1.2 → 0.3, `foamStrength` 1.0 → 0.3. Reference images
-  `docs/images/g13_water_*.png` re-rendered and all `docs/images/*.png` losslessly
-  re-compressed with `docs/compress_png.py`.
+  re-rendered with the new defaults (`g13_water_*`, plus the other water scenes the CI
+  screenshot diff compares: `cave_*`, `g24_noise_*`, `sunrise_*`) and all
+  `docs/images/*.png` losslessly re-compressed with `docs/compress_png.py`
+  (44 MB → 22 MB).
 
 ### Planned
 
