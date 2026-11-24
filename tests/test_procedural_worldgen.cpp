@@ -174,10 +174,14 @@ void testCityLayout() {
     CHECK(w.parkCellCount >= plazaTiles);
     CHECK(w.buildings.size() + static_cast<std::size_t>(w.parkCellCount) ==
           static_cast<std::size_t>(blocks));
+    std::set<int> roofTypes;
     for (const auto& b : w.buildings) {
-        CHECK(b.mesh.vertexCount() > 24);      // box alone has 24 vertices
-        CHECK(b.roofMesh.vertexCount() > 0);   // roof prism
-        CHECK(b.roofMesh.indices.size() >= 12);
+        CHECK(b.mesh.vertexCount() >= 24);      // walls box (highrise may add a setback box)
+        CHECK(b.detailMesh.vertexCount() > 0);  // door/windows/chimney
+        CHECK(b.detailMesh.indices.size() >= 3);
+        CHECK(b.roofMesh.vertexCount() > 0);    // roof
+        CHECK(b.roofType >= 0 && b.roofType <= 2);
+        roofTypes.insert(b.roofType);
         const float gx = (b.position.x / p.cellSize) + (p.cityGrid - 1) * 0.5f;
         const float gz = (b.position.z / p.cellSize) + (p.cityGrid - 1) * 0.5f;
         CHECK_NEAR(gx, std::round(gx), 1e-3f);
@@ -186,6 +190,47 @@ void testCityLayout() {
     // park greenery: bushes on every park cell
     CHECK(w.bushes.size() == static_cast<std::size_t>(w.parkCellCount) * p.parkBushesPerPlaza);
     CHECK(w.parkCellCount > 0); // parkFraction guarantees parks for interior blocks
+    CHECK(!roofTypes.empty());
+}
+
+// average wall height (max y of the walls mesh) of the generated houses
+float avgWallHeight(WorldGenParams p) {
+    const GeneratedWorld w = generateWorld(p);
+    double sum = 0;
+    for (const auto& b : w.buildings) {
+        float maxY = 0.f;
+        for (std::size_t i = 0; i < b.mesh.vertexCount(); ++i)
+            maxY = std::max(maxY, b.mesh.vertices[i * 11 + 1]);
+        sum += maxY;
+    }
+    return w.buildings.empty() ? 0.f : static_cast<float>(sum / w.buildings.size());
+}
+
+void testHouseStyles() {
+    WorldGenParams base = cityParams();
+    base.houseStyle = HouseStyle::Village;
+    const float villageH = avgWallHeight(base);
+    base.houseStyle = HouseStyle::Town;
+    const float townH = avgWallHeight(base);
+    base.houseStyle = HouseStyle::Highrise;
+    const GeneratedWorld hr = generateWorld(base);
+    const float highriseH = avgWallHeight(base);
+    CHECK(villageH > 0.f && townH > 0.f && highriseH > 0.f);
+    CHECK(villageH < townH);      // village houses are lower than town houses
+    CHECK(highriseH > townH * 2); // highrise towers over town houses
+    for (const auto& b : hr.buildings) { // highrise: flat roofs + window grid details
+        CHECK(b.roofType == 2);
+        CHECK(b.detailMesh.vertexCount() > 24);
+    }
+    base.houseStyle = HouseStyle::Town;
+    const GeneratedWorld town = generateWorld(base);
+    bool anyGable = false, anyShed = false;
+    for (const auto& b : town.buildings) {
+        if (b.roofType == 0) anyGable = true; // Satteldach
+        if (b.roofType == 1) anyShed = true;  // Schleppdach
+    }
+    CHECK(anyGable);
+    CHECK(anyShed); // both roof variants occur with seed 777
 }
 
 void testCityTilesSolvable() {
@@ -231,6 +276,7 @@ void runProceduralWorldgenTests() {
     testHeightAt();
     testLandscapeTrees();
     testCityLayout();
+    testHouseStyles();
     testCityTilesSolvable();
     testDeterminismAndModes();
 }

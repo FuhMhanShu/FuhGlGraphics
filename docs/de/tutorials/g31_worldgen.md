@@ -79,8 +79,9 @@ p.mode = WorldGenParams::Mode::City;
 p.seed = 777;
 p.cityGrid = 12;            // WFC-Zellen pro Seite
 p.cellSize = 8.f;           // Welt-Größe einer Zelle
-p.buildingHeight = 7.f;     // Basis-Wandhöhe (pro Block gejittert)
+p.buildingHeight = 7.f;     // Basis-Wandhöhe (pro Stil skaliert, pro Block gejittert)
 p.houseFootprint = 0.62f;   // Haus-Grundfläche als Anteil der Zelle
+p.houseStyle = HouseStyle::Town; // Village | Town | Highrise — Architekturstil
 p.blocksPerDistrict = 28;   // >0: Voronoi-Stadtteilplatten unter der Stadt
 p.parkBushesPerPlaza = 3;   // Büsche pro Plaza (Park)
 ```
@@ -91,9 +92,12 @@ w.tiles;                    // Tile-Set (w.cells[].tile indexiert hinein)
 w.cityGround;               // MeshData-Basisplatte (Oberkante bei y = 0)
 w.roads;                    // gemergte Platten: Bürgersteig + dunkler Asphalt (Straßen), Beton-Lots, Park-Rasen
 w.districts;                // Voronoi-Platten (leer bei blocksPerDistrict == 0)
-w.buildings;                // ein prozedurales Haus pro "block"-Zelle: mesh = Wände+Tür+Fenster+Kamin,
-                            // roofMesh = Satteldach (separater MeshEntry, z.B. Schindel-Textur);
-                            // an die Wände kommt der Brick-POM-Satz (albedo/normal/heightMap + parallaxScale)
+w.buildings;                // ein prozedurales Haus pro Nicht-Park-"block"-Zelle, drei Mesh-Teile:
+                            // mesh = Wände (hier Brick-POM-Satz anhängen), detailMesh = Tür/Fenster/
+                            // Kamin/Erker ( reine Vertex-Farben), roofMesh = Dach
+                            // (roofType: 0 = Satteldach, 1 = Schleppdach, 2 = flach);
+                            // Stile: Village (Erker + Kamin), Town (Fenster pro Etage),
+                            // Highrise (Fensterraster + Rücksprung + Flachdach)
 w.bushes;                   // Park-Grün auf Plaza-Zellen
 ```
 

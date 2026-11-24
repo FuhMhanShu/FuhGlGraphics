@@ -90,9 +90,12 @@ w.tiles;                    // tile set (w.cells[].tile indexes into it)
 w.cityGround;               // MeshData base plate (top at y = 0)
 w.roads;                    // merged slabs: sidewalk + dark asphalt (streets), concrete lots, park lawns
 w.districts;                // voronoi plates (empty when blocksPerDistrict == 0)
-w.buildings;                // one procedural house per "block" cell: mesh = walls+door+windows+chimney,
-                            // roofMesh = gabled roof (separate MeshEntry, e.g. shingle texture);
-                            // attach the brick POM set (albedo/normal/heightMap + parallaxScale) to the walls
+w.buildings;                // one procedural house per non-park "block" cell, three mesh parts:
+                            // mesh = walls (attach the brick POM set here), detailMesh = door/windows/
+                            // chimney/bay window (plain vertex colors), roofMesh = roof
+                            // (roofType: 0 = gable/Satteldach, 1 = lean-to/Schleppdach, 2 = flat);
+                            // styles: Village (bay window + chimney), Town (windows per floor),
+                            // Highrise (window grid + setback + flat roof)
 w.bushes;                   // park greenery on plaza cells
 ```
 

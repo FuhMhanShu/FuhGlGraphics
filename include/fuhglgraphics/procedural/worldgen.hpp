@@ -21,6 +21,13 @@
 
 namespace fuhglgraphics::procedural {
 
+/// @brief Architectural style of the generated city houses (WorldGenParams::houseStyle).
+enum class HouseStyle {
+    Village,  ///< 1-2 floors, gable or lean-to roof, bay window (Erker), chimney
+    Town,     ///< 2-3 floors, windows per floor, gable/lean-to roof, door
+    Highrise, ///< tall slab with a window grid on the facades + optional setback, flat roof
+};
+
 /// @brief Parameters of generateWorld(). `mode` switches between Landscape and City;
 /// all other members are plain knobs with sensible defaults.
 struct WorldGenParams {
@@ -50,8 +57,9 @@ struct WorldGenParams {
     // --- city (mode == City) ---
     int cityGrid = 12;            ///< WFC cells per side
     float cellSize = 8.f;         ///< world size of one city cell
-    float buildingHeight = 6.f;   ///< base wall height of placed houses (jittered per block)
+    float buildingHeight = 6.f;   ///< base wall height of placed houses (scaled per houseStyle, jittered per block)
     float houseFootprint = 0.62f; ///< house footprint as a fraction of the cell
+    HouseStyle houseStyle = HouseStyle::Town; ///< architectural style of the houses
     int blocksPerDistrict = 0;    ///< >0: extrude this many voronoi district plates under the city
     float parkFraction = 0.12f;   ///< fraction of interior block cells turned into parks (lawn + bushes)
     int parkBushesPerPlaza = 3;   ///< bushes scattered on each park cell
@@ -62,7 +70,9 @@ struct WorldGenParams {
 /// + a tint. Attach as a scene node (translation/rotation/scale) with the mesh uploaded.
 struct PlacedMesh {
     fuhgl::render::MeshData mesh;          ///< local-space triangle data (11 floats/vertex)
-    fuhgl::render::MeshData roofMesh;      ///< optional second part (city houses: gabled roof) — own MeshEntry, e.g. shingle texture
+    fuhgl::render::MeshData roofMesh;      ///< optional roof part (city houses) — own MeshEntry, e.g. shingle texture
+    fuhgl::render::MeshData detailMesh;    ///< optional details (city houses: door/windows/chimney/bay) — own MeshEntry, plain vertex colors
+    int roofType = 0;                      ///< city houses: 0 = gable (Satteldach), 1 = lean-to (Schleppdach), 2 = flat
     fuhgl::math::Vec3 position{0.f, 0.f, 0.f}; ///< world position
     float rotY = 0.f;                      ///< rotation around +Y in radians
     float scale = 1.f;

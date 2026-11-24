@@ -39,6 +39,7 @@ struct Args {
     int width = 1280, height = 720, frames = 16;
     unsigned seed = 777u;
     std::string mode = "both"; // both | landscape | city
+    std::string style = "town"; // village | town | highrise (city house style)
 };
 
 Args parseArgs(int argc, char** argv) {
@@ -50,6 +51,7 @@ Args parseArgs(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc) a.frames = std::atoi(argv[++i]);
         else if (std::strcmp(argv[i], "--seed") == 0 && i + 1 < argc) a.seed = static_cast<unsigned>(std::atoi(argv[++i]));
         else if (std::strcmp(argv[i], "--mode") == 0 && i + 1 < argc) a.mode = argv[++i];
+        else if (std::strcmp(argv[i], "--style") == 0 && i + 1 < argc) a.style = argv[++i];
     }
     return a;
 }
@@ -62,11 +64,13 @@ void aimAt(fuhgl::FirstPersonCamera& cam, const fuhgl::math::Vec3& target) {
 
 bool renderToPng(fuhglgraphics::scene::Scene& scn, fuhgl::FirstPersonCamera& cam,
                  fuhglgraphics::render::DeferredRenderer& renderer, int frames, int width, int height,
-                 const std::string& outPath, fuhglgraphics::water::WaterSurface* water = nullptr) {
+                 const std::string& outPath, fuhglgraphics::water::WaterSurface* water = nullptr,
+                 const fuhgl::render::Environment* env = nullptr) {
     using namespace fuhglgraphics;
     for (int i = 0; i < frames; ++i) {
         scene::FrameData frame;
         scn.fillFrame(frame, &cam, width, height);
+        frame.view.env = env; // IBL environment baked from the sky cubemap
         frame.effects.applyTo(renderer);
         frame.view.fogColor = {0.80f, 0.83f, 0.90f};
         frame.view.fogDensity = 0.0009f;
@@ -206,7 +210,8 @@ void addSunAndSky(fuhglgraphics::scene::Scene& scene, fuhgl::FirstPersonCamera& 
     scene.root().effects.enable(render::Effect::Upscale);
     scene.root().effects.enable(render::Effect::Tonemap);
     scene.root().effects.enable(render::Effect::CsmShadows);
-    scene.root().effects.params.exposure = 1.05f;
+    scene.root().effects.enable(render::Effect::Ibl);
+    scene.root().effects.params.exposure = 1.12f;
     scene.root().effects.params.taaBlend = 0.08f;
     scene.root().effects.params.shadowCenter = {0.f, 8.f, 0.f};
     scene.root().effects.params.shadowRadius = 160.f;
@@ -244,6 +249,10 @@ int main(int argc, char** argv) {
     const fuhgl::math::Vec3 skyTop{0.20f, 0.38f, 0.72f}, skyHorizon{0.82f, 0.85f, 0.92f};
     skybox.makeGradient(skyTop, skyHorizon, 256);
     if (skybox.texture().id() != 0) renderer.setSkyCubemap(&skybox.texture());
+    fuhgl::render::Environment env; // IBL baked from the same sky cubemap
+    if (skybox.texture().id() != 0 && !env.createFromCubemap(skybox.texture(), 16, 32, 64))
+        std::fprintf(stderr, "worldgen_screenshot: IBL bake failed, continuing without env\n");
+    env.intensity = 0.8f;
     renderer.skyTop = skyTop;
     renderer.skyBottom = skyHorizon;
 
@@ -361,8 +370,8 @@ int main(int argc, char** argv) {
         };
         addPlant("tree", world.trees, 30);
         addPlant("bush", world.bushes, 31);
-        // warm low sun in the north (in front of the camera), G24-style
-        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.30f, 0.35f, -0.90f}));
+        // warm sun in the south (behind the shore camera) so the seen slopes are lit
+        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.30f, 0.50f, 0.85f}));
 
         // G24-style composition: elevated camera on the south shore, looking across the lake
         // toward the highest peak — camera derived from the heightmap
@@ -376,13 +385,14 @@ int main(int argc, char** argv) {
                     peakZ = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
                 }
             }
-        // south-shore camera looking straight across the central lake toward the mountains
-        const float camX = 0.f, camZ = p.lakeRadius + 25.f;
-        cam.position = {camX, std::max(tc.heightAt(camX, camZ), world.waterLevelWorld) + 8.f, camZ};
-        aimAt(cam, {peakX * 0.4f, world.waterLevelWorld, peakZ * 0.4f});
+        // G24-style composition: elevated camera on the south shore looking across the lake
+        // toward the mountains, sky in the upper frame
+        cam.position = {-20.f, tc.heightAt(-20.f, 85.f) + 10.f, 85.f};
+        aimAt(cam, {25.f, world.waterLevelWorld + 5.f, -35.f});
+        (void)peakH; (void)peakX; (void)peakZ;
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
-                         water ? &water->surface : nullptr)) {
+                         water ? &water->surface : nullptr, &env)) {
             std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", path.c_str());
             return 1;
         }
@@ -394,6 +404,9 @@ int main(int argc, char** argv) {
         procedural::WorldGenParams p;
         p.mode = procedural::WorldGenParams::Mode::City;
         p.seed = args.seed;
+        p.houseStyle = args.style == "village" ? procedural::HouseStyle::Village
+                     : args.style == "highrise" ? procedural::HouseStyle::Highrise
+                                                 : procedural::HouseStyle::Town;
         p.cityGrid = 12;
         p.cellSize = 8.f;
         p.buildingHeight = 8.f;
@@ -439,6 +452,13 @@ int main(int argc, char** argv) {
             walls.roughness = 0.85f;
             walls.castShadow = true;
             walls.materialId = 5;
+            if (b.detailMesh.vertexCount() > 0) { // door/windows/chimney/bay: plain vertex colors
+                scene::MeshEntry& det = mc.addMesh(arena.add(b.detailMesh));
+                det.albedo = {1.4f, 1.4f, 1.4f};
+                det.roughness = 0.4f;
+                det.castShadow = true;
+                det.materialId = 8;
+            }
             if (b.roofMesh.vertexCount() > 0) {
                 scene::MeshEntry& roof = mc.addMesh(arena.add(b.roofMesh)); // built on top of the walls
                 roof.albedoTexture = &shingle;
@@ -467,7 +487,7 @@ int main(int argc, char** argv) {
         cam.position = {0.f, 80.f, 100.f};
         aimAt(cam, {0.f, 0.f, 0.f});
         const std::string ovPath = args.prefix + "_city.png";
-        if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, ovPath)) {
+        if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, ovPath, nullptr, &env)) {
             std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", ovPath.c_str());
             return 1;
         }
@@ -477,7 +497,7 @@ int main(int argc, char** argv) {
         cam.position = {streetSpot.x, 2.4f, streetSpot.z + world.cityCellSize * 2.2f};
         aimAt(cam, {streetSpot.x * 0.3f, 2.2f, streetSpot.z * 0.3f});
         const std::string stPath = args.prefix + "_city_street.png";
-        if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, stPath)) {
+        if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, stPath, nullptr, &env)) {
             std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", stPath.c_str());
             return 1;
         }
