@@ -52,13 +52,15 @@ void testLandscapeHeightmap() {
     for (const float h : w.heightmap) {
         CHECK(h >= 0.f && h <= 1.f);
     }
-    // island falloff: the border ring sinks to (nearly) zero
+    // island falloff: the border ring lands on the shore (slightly above the water level
+    // when a lake is carved, near zero otherwise)
     const int g = w.gridW;
+    const float borderMax = p.waterLevel > 0.f ? p.waterLevel * 1.05f + 0.02f : 0.05f;
     for (int i = 0; i < g; ++i) {
-        CHECK(w.heightmap[i] < 0.05f);
-        CHECK(w.heightmap[i + g * (g - 1)] < 0.05f);
-        CHECK(w.heightmap[g * i] < 0.05f);
-        CHECK(w.heightmap[g * i + g - 1] < 0.05f);
+        CHECK(w.heightmap[i] <= borderMax);
+        CHECK(w.heightmap[i + g * (g - 1)] <= borderMax);
+        CHECK(w.heightmap[g * i] <= borderMax);
+        CHECK(w.heightmap[g * i + g - 1] <= borderMax);
     }
     // lake basin: with waterLevel > 0 some samples are carved below the water level
     int belowWater = 0;

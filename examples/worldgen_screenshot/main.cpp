@@ -401,7 +401,8 @@ int main(int argc, char** argv) {
                 }
             }
         const float camX = peakX * 0.3f, camZ = world.sizeZ * 0.475f;
-        cam.position = {camX, world.heightAt(camX, camZ) + 2.5f, camZ};
+        const float groundY = world.heightAt(camX, camZ);
+        cam.position = {camX, std::max(groundY + 2.5f, world.waterLevelWorld + 2.f), camZ};
         aimAt(cam, {peakX, peakH * world.heightScale * 0.6f, peakZ});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,

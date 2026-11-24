@@ -171,7 +171,12 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
             float h = noise.ridged2(nx, nz, p.octaves, Noise::Base::Simplex);
             h = std::pow(h, expo);                                                 // sharper peaks
             const float edge = std::max(std::fabs(u - 0.5f), std::fabs(v - 0.5f)) * 2.f; // [0,1] to border
-            h *= 1.f - smoothstep(0.82f, 1.f, edge);                               // island falloff
+            const float fall = 1.f - smoothstep(0.82f, 1.f, edge);                 // island falloff
+            if (p.waterLevel > 0.f)
+                // falloff lands on a shore ring slightly above the water level (not below it)
+                h = h * fall + p.waterLevel * 1.05f * (1.f - fall);
+            else
+                h *= fall;
             if (p.waterLevel > 0.f && h < p.waterLevel) h *= p.lakeCarve;           // lake basin
             w.heightmap[static_cast<std::size_t>(i) + g * j] = h;
         }
