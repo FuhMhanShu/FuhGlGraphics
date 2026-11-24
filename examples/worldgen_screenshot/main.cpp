@@ -16,6 +16,7 @@
 // Exit code 2 when no headless GL context is available.
 
 #include <fuhglgraphics/graphics.hpp>
+#include <fuhglgraphics/procedural/citygen.hpp>
 #include <fuhglgraphics/procedural/worldgen.hpp>
 
 #include <fuhgl/fuhgl.hpp>
@@ -179,20 +180,23 @@ fuhgl::Texture makeSplatAlbedoTex(const fuhglgraphics::procedural::GeneratedWorl
 // static grid mesh built from a GeneratedWorld heightmap (pos3/normal3/color3/uv2 per vertex,
 // uv = grid uv so the splatmap texture maps 1:1 onto the cells). In a production scene the
 // terrain comes from scene::TerrainComponent (LodMesh LOD over the same heightmap).
-fuhgl::render::MeshData terrainMeshData(const fuhglgraphics::procedural::GeneratedWorld& world) {
-    const int gw = world.gridW, gh = world.gridH;
+// static grid mesh from a raw heightmap (pos3/normal3/color3/uv2 per vertex, uv = grid uv).
+// In a production scene with a huge world use scene::TerrainComponent (LodMesh LOD) over the
+// same heightmap instead; for the headless shots a static mesh keeps the render deterministic.
+fuhgl::render::MeshData terrainMeshDataRaw(const std::vector<float>& heightmap, int gw, int gh,
+                                           float sizeX, float sizeZ, float heightScale) {
     fuhgl::render::MeshData md;
     md.vertices.reserve(static_cast<std::size_t>(gw) * gh * fuhgl::render::MeshData::kFloatsPerVertex);
-    const float cellX = world.sizeX / (gw - 1), cellZ = world.sizeZ / (gh - 1);
+    const float cellX = sizeX / (gw - 1), cellZ = sizeZ / (gh - 1);
     auto hAt = [&](int x, int z) {
         x = std::min(gw - 1, std::max(0, x));
         z = std::min(gh - 1, std::max(0, z));
-        return world.heightmap[static_cast<std::size_t>(x) + gw * z] * world.heightScale;
+        return heightmap[static_cast<std::size_t>(x) + gw * z] * heightScale;
     };
     for (int j = 0; j < gh; ++j)
         for (int i = 0; i < gw; ++i) {
-            const float x = -world.sizeX * 0.5f + i * cellX;
-            const float z = -world.sizeZ * 0.5f + j * cellZ;
+            const float x = -sizeX * 0.5f + i * cellX;
+            const float z = -sizeZ * 0.5f + j * cellZ;
             const float y = hAt(i, j);
             const float dfdx = (hAt(i + 1, j) - hAt(i - 1, j)) / (2.f * cellX);
             const float dfdz = (hAt(i, j + 1) - hAt(i, j - 1)) / (2.f * cellZ);
@@ -211,6 +215,14 @@ fuhgl::render::MeshData terrainMeshData(const fuhglgraphics::procedural::Generat
             md.indices.push_back(v00); md.indices.push_back(v11); md.indices.push_back(v10);
         }
     return md;
+}
+
+fuhgl::render::MeshData terrainMeshData(const fuhglgraphics::procedural::GeneratedWorld& w) {
+    return terrainMeshDataRaw(w.heightmap, w.gridW, w.gridH, w.sizeX, w.sizeZ, w.heightScale);
+}
+
+fuhgl::render::MeshData terrainMeshData(const fuhglgraphics::procedural::CityWorld& w) {
+    return terrainMeshDataRaw(w.heightmap, w.gridW, w.gridH, w.sizeX, w.sizeZ, w.heightScale);
 }
 
 // brick pattern: running bond, mortar grooves; returns height in [0,1] (bricks high, mortar low)
@@ -625,24 +637,17 @@ int main(int argc, char** argv) {
 
         scene::Scene scene;
         MeshArena arena;
-        // terrain from the pipeline heightmap
+        // terrain from the pipeline heightmap as a static grid mesh (LodMesh LOD is flaky
+        // under headless llvmpipe for this shot; production scenes use TerrainComponent)
         scene::Node& tn = scene.root().createChild("terrain");
-        scene::TerrainComponent& tc = tn.attach<scene::TerrainComponent>();
-        tc.levels = 4;
-        tc.fovYDeg = 55.f;
-        tc.albedo = {0.20f, 0.28f, 0.14f}; // grass green: roads/houses stay readable on it
-        tc.customDistances = {80.f, 200.f, 400.f};
-        if (!tc.create(world.gridW, world.gridH, world.sizeX, world.sizeZ, world.heightScale)) {
-            std::fprintf(stderr, "worldgen_screenshot: terrain create failed\n");
-            return 1;
-        }
-        for (int j = 0; j < world.gridH; ++j)
-            for (int i = 0; i < world.gridW; ++i)
-                tc.heights[static_cast<std::size_t>(j) * tc.gridW + i] =
-                    world.heightmap[static_cast<std::size_t>(i) + world.gridW * j];
-        if (!tc.rebuildLod()) {
-            std::fprintf(stderr, "worldgen_screenshot: terrain rebuildLod failed\n");
-            return 1;
+        fuhgl::render::Mesh terrainMesh;
+        terrainMesh.setMeshData(terrainMeshData(world));
+        {
+            scene::MeshEntry& te = tn.attach<scene::MeshComponent>().addMesh(&terrainMesh);
+            te.albedo = {0.20f, 0.28f, 0.14f}; // grass green: roads/houses stay readable on it
+            te.roughness = 1.f;
+            te.castShadow = true;
+            te.materialId = 1;
         }
         scene.root().effects.enable(render::Effect::Water);
         // lake around the plateau — placed a bit below the nominal level with small waves so
