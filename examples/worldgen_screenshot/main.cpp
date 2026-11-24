@@ -269,7 +269,7 @@ int main(int argc, char** argv) {
         p.waterLevel = 0.30f;     // lake
         p.treeCount = 130;
         p.bushCount = 180;
-        p.grassBlades = 4000;
+        p.grassBlades = 0; // grass instancing stays available via params; not in this shot
         p.treeMinDist = 6.f;
         const procedural::GeneratedWorld world = procedural::generateWorld(p);
         std::fprintf(stderr, "worldgen_screenshot: landscape seed %u: grid %d, %zu trees, %zu bushes\n",
@@ -284,7 +284,7 @@ int main(int argc, char** argv) {
         scene::TerrainComponent& tc = tn.attach<scene::TerrainComponent>();
         tc.levels = 4;
         tc.fovYDeg = 55.f;
-        tc.albedo = {0.34f, 0.38f, 0.26f};
+        tc.albedo = {0.30f, 0.28f, 0.24f};
         tc.customDistances = {70.f, 170.f, 340.f};
         if (!tc.create(world.gridW, world.gridH, world.sizeX, world.sizeZ, world.heightScale)) {
             std::fprintf(stderr, "worldgen_screenshot: terrain create failed\n");
@@ -321,8 +321,9 @@ int main(int argc, char** argv) {
             water->surface.shallowColor = {0.06f, 0.30f, 0.38f};
         }
 
-        // instanced grass snapped onto the terrain (hidden under water)
-        {
+        // instanced grass snapped onto the terrain (hidden under water) — skipped when
+        // grassBlades == 0 (kept available via WorldGenParams::grassBlades)
+        if (p.grassBlades > 0) {
             fuhgl::render::Mesh blade;
             fuhgl::render::shapes::box(blade, {0.015f, 0.22f, 0.015f}, {0.25f, 0.45f, 0.18f});
             scene::Node& grass = scene.root().createChild("grass");
@@ -359,11 +360,11 @@ int main(int argc, char** argv) {
         };
         addPlant("tree", world.trees, 30);
         addPlant("bush", world.bushes, 31);
-        // sun in the south (behind the camera) so the camera-facing slopes are lit
-        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.35f, 0.55f, -0.65f}));
+        // warm low sun in the north (in front of the camera), G24-style
+        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.30f, 0.35f, -0.90f}));
 
-        // ground-level view from the south shore: lake + meadow in the foreground,
-        // the highest peak in the background, sky above — camera derived from the heightmap
+        // G24-style composition: elevated camera on the south shore, looking across the lake
+        // toward the highest peak — camera derived from the heightmap
         float peakH = 0.f, peakX = 0.f, peakZ = 0.f;
         for (int j = 0; j < world.gridH; ++j)
             for (int i = 0; i < world.gridW; ++i) {
@@ -374,10 +375,9 @@ int main(int argc, char** argv) {
                     peakZ = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
                 }
             }
-        const float camX = peakX * 0.3f, camZ = world.sizeZ * 0.475f;
-        const float groundY = world.heightAt(camX, camZ);
-        cam.position = {camX, std::max(groundY + 2.5f, world.waterLevelWorld + 2.f), camZ};
-        aimAt(cam, {peakX, peakH * world.heightScale * 0.6f, peakZ});
+        const float camX = peakX * 0.3f - 20.f, camZ = world.sizeZ * 0.425f;
+        cam.position = {camX, std::max(tc.heightAt(camX, camZ), world.waterLevelWorld) + 9.f, camZ};
+        aimAt(cam, {peakX + 20.f, world.waterLevelWorld + 5.f, peakZ - 40.f});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
                          water ? &water->surface : nullptr)) {
