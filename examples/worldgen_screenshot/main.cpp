@@ -69,7 +69,7 @@ bool renderToPng(fuhglgraphics::scene::Scene& scn, fuhgl::FirstPersonCamera& cam
         scn.fillFrame(frame, &cam, width, height);
         frame.effects.applyTo(renderer);
         frame.view.fogColor = {0.80f, 0.83f, 0.90f};
-        frame.view.fogDensity = 0.0012f;
+        frame.view.fogDensity = 0.0007f;
         if (water) water->update(1.f / 60.f);
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
                         frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
@@ -333,7 +333,7 @@ int main(int argc, char** argv) {
             scene::Node& wn = scene.root().createChild("lake");
             wn.translation = {0.f, world.waterLevelWorld, 0.f};
             water = &wn.attach<scene::WaterComponent>();
-            if (!water->surface.create(160, p.worldSize * 1.1f)) {
+            if (!water->surface.create(160, p.worldSize * 0.7f)) {
                 std::fprintf(stderr, "worldgen_screenshot: water create failed\n");
                 return 1;
             }
@@ -356,7 +356,7 @@ int main(int argc, char** argv) {
             grass.instancing.enabled = true;
             grass.instancing.count = p.grassBlades;
             grass.instancing.layout = scene::InstanceLayout::Random;
-            grass.instancing.extent = {p.worldSize - 8.f, 4.f, p.worldSize - 8.f};
+            grass.instancing.extent = {p.worldSize * 0.75f, 4.f, p.worldSize * 0.75f};
             grass.instancing.seed = 7u;
             grass.instancing.heightFn = [&world](float x, float z) {
                 const float h = world.heightAt(x, z);
@@ -388,9 +388,9 @@ int main(int argc, char** argv) {
         addPlant("bush", world.bushes, 31);
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.35f, 0.5f, 0.6f}));
 
-        // oblique overview: mountains, lake, forest and meadows against the sky
-        cam.position = {0.f, 42.f, 120.f};
-        aimAt(cam, {0.f, 8.f, 0.f});
+        // oblique shoreline view: mountains behind, lake + meadow + forest in front, sky above
+        cam.position = {55.f, 26.f, 105.f};
+        aimAt(cam, {-5.f, 10.f, -15.f});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
                          water ? &water->surface : nullptr)) {
