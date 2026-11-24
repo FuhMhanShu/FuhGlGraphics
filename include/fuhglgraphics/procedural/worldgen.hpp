@@ -41,6 +41,7 @@ struct WorldGenParams {
     float heightExponent = 0.8f;  ///< contrast shaping of the height field (pow(h, exponent); <1 raises peaks)
     float waterLevel = 0.f;       ///< normalized [0,1] water level; >0 carves a lake basin below it
     float lakeCarve = 0.18f;      ///< basin depth factor for samples below waterLevel
+    float lakeRadius = 0.f;       ///< >0: carve a round lake basin of this radius (world units) around the center
     int treeCount = 120;          ///< scattered L-system trees (0 = off)
     int bushCount = 160;          ///< scattered L-system bushes (0 = off)
     int grassBlades = 4000;       ///< hint for the app: instanced grass blades over the terrain (scene-side)

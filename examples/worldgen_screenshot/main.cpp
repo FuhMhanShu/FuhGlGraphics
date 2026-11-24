@@ -264,9 +264,10 @@ int main(int argc, char** argv) {
         p.worldSize = 200.f;
         p.terrainGrid = 129;
         p.terrainHeight = 34.f;   // pronounced mountains
-        p.warpStrength = 1.2f;
-        p.heightExponent = 0.7f;
+        p.warpStrength = 0.6f;
+        p.heightExponent = 0.85f;
         p.waterLevel = 0.30f;     // lake
+        p.lakeRadius = 55.f;      // central lake basin
         p.treeCount = 130;
         p.bushCount = 180;
         p.grassBlades = 0; // grass instancing stays available via params; not in this shot
@@ -375,9 +376,9 @@ int main(int argc, char** argv) {
                     peakZ = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
                 }
             }
-        // high south-shore camera looking straight across the lake toward the peak behind it
-        const float camX = 0.f, camZ = world.sizeZ * 0.45f;
-        cam.position = {camX, world.waterLevelWorld + 16.f, camZ};
+        // south-shore camera looking straight across the central lake toward the mountains
+        const float camX = 0.f, camZ = p.lakeRadius + 25.f;
+        cam.position = {camX, std::max(tc.heightAt(camX, camZ), world.waterLevelWorld) + 8.f, camZ};
         aimAt(cam, {peakX * 0.4f, world.waterLevelWorld, peakZ * 0.4f});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,

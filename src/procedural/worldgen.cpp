@@ -170,6 +170,11 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
             }
             float h = noise.ridged2(nx, nz, p.octaves, Noise::Base::Simplex);
             h = std::pow(h, expo);                                                 // sharper peaks
+            if (p.lakeRadius > 0.f) { // explicit round lake basin around the center
+                const float wx = (u - 0.5f) * p.worldSize, wz = (v - 0.5f) * p.worldSize;
+                const float d = std::hypot(wx, wz);
+                h *= smoothstep(p.lakeRadius * 0.55f, p.lakeRadius, d); // 0 inside the basin
+            }
             const float edge = std::max(std::fabs(u - 0.5f), std::fabs(v - 0.5f)) * 2.f; // [0,1] to border
             const float fall = 1.f - smoothstep(0.82f, 1.f, edge);                 // island falloff
             if (p.waterLevel > 0.f)
