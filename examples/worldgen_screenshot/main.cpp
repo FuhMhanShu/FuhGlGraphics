@@ -345,7 +345,7 @@ int main(int argc, char** argv) {
     fuhgl::FirstPersonCamera cam;
     const bool doLandscape = args.mode == "both" || args.mode == "landscape";
     const bool doCity = args.mode == "both" || args.mode == "city";
-    const bool doPipeline = args.mode == "both" || args.mode == "pipeline";
+    const bool doPipeline = args.mode == "pipeline";
 
     // --- landscape: generateWorld(Landscape) -> terrain + water + grass + trees + bushes ---
     if (doLandscape) {
@@ -462,23 +462,36 @@ int main(int argc, char** argv) {
         // warm sun in the south (behind the shore camera) so the seen slopes are lit
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.30f, 0.50f, 0.85f}));
 
-        // G24-style composition: elevated camera on the south shore, looking across the lake
-        // toward the highest peak — camera derived from the heightmap
-        float peakH = 0.f, peakX = 0.f, peakZ = 0.f;
+        // composition derived from the heightmap: camera on the south rim of the lake,
+        // looking across the water toward the far shore with the mountains behind —
+        // this guarantees the lake is always in frame
+        float lakeCx = 0.f, lakeCz = 0.f, lakeSouthZ = -1e9f;
+        int lakeN = 0;
+        // only the central basin counts as "lake" (the island falloff puts the whole
+        // border ring below the water level — that is the outer sea, not the lake)
+        const float lakeSearchR =
+            p.lakeRadius > 0.f ? p.lakeRadius * 1.25f : p.worldSize * 0.38f;
         for (int j = 0; j < world.gridH; ++j)
             for (int i = 0; i < world.gridW; ++i) {
-                const float h = world.heightmap[static_cast<std::size_t>(i) + world.gridW * j];
-                if (h > peakH) {
-                    peakH = h;
-                    peakX = (static_cast<float>(i) / (world.gridW - 1) - 0.5f) * world.sizeX;
-                    peakZ = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
+                if (world.heightmap[static_cast<std::size_t>(i) + world.gridW * j] < p.waterLevel) {
+                    const float x = (static_cast<float>(i) / (world.gridW - 1) - 0.5f) * world.sizeX;
+                    const float z = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
+                    if (std::hypot(x, z) > lakeSearchR) continue;
+                    lakeCx += x;
+                    lakeCz += z;
+                    ++lakeN;
+                    lakeSouthZ = std::max(lakeSouthZ, z);
                 }
             }
-        // G24-style composition: elevated camera on the south shore looking across the lake
-        // toward the mountains, sky in the upper frame
-        cam.position = {-20.f, world.heightAt(-20.f, 85.f) + 10.f, 85.f};
-        aimAt(cam, {25.f, world.waterLevelWorld + 5.f, -35.f});
-        (void)peakH; (void)peakX; (void)peakZ;
+        if (lakeN > 0) {
+            lakeCx /= lakeN;
+            lakeCz /= lakeN;
+        } else {
+            lakeSouthZ = world.sizeZ * 0.25f;
+        }
+        const float camX = lakeCx + 12.f, camZ = lakeSouthZ + 16.f;
+        cam.position = {camX, world.heightAt(camX, camZ) + 8.f, camZ};
+        aimAt(cam, {lakeCx - 12.f, world.waterLevelWorld + 3.f, lakeCz - 28.f});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
                          water ? &water->surface : nullptr, &env)) {
@@ -681,9 +694,10 @@ int main(int argc, char** argv) {
         }
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.3f, 0.55f, 0.6f}));
 
-        // overview across the plateau toward the lake/mountains
-        cam.position = {0.f, 90.f, 150.f};
-        aimAt(cam, {0.f, world.waterLevelWorld, 0.f});
+        // overview across the plateau toward the lake/mountains (close enough that the
+        // road grid + houses stay readable through the fog)
+        cam.position = {0.f, 55.f, 110.f};
+        aimAt(cam, {0.f, world.waterLevelWorld * 1.05f, -5.f});
         const std::string ovPath = args.prefix + "_pipeline.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, ovPath,
                          &wc.surface, &env)) {
@@ -692,11 +706,23 @@ int main(int argc, char** argv) {
         }
         std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", ovPath.c_str());
 
-        // street-level view from the first road node
+        // street-level view from the road node nearest the city center, looking toward
+        // the center; camera height follows the terrain so it is never underground
         if (!world.roads.nodes.empty()) {
-            const auto& nd = world.roads.nodes.front();
-            cam.position = {nd.x, world.waterLevelWorld * 1.05f + 2.2f, nd.y + 14.f};
-            aimAt(cam, {nd.x, world.waterLevelWorld * 1.05f + 1.8f, nd.y - 8.f});
+            int best = 0;
+            float bestD = 1e18f;
+            for (int i = 0; i < static_cast<int>(world.roads.nodes.size()); ++i) {
+                const float d = world.roads.nodes[i].x * world.roads.nodes[i].x +
+                                world.roads.nodes[i].y * world.roads.nodes[i].y;
+                if (d < bestD) {
+                    bestD = d;
+                    best = i;
+                }
+            }
+            const auto& nd = world.roads.nodes[best];
+            const float gy = world.heightAt(nd.x, nd.y);
+            cam.position = {nd.x, gy + 2.4f, nd.y + 7.f};
+            aimAt(cam, {0.f, world.heightAt(0.f, 0.f) + 1.8f, 0.f});
             const std::string stPath = args.prefix + "_pipeline_street.png";
             if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, stPath, &wc.surface, &env)) {
                 std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", stPath.c_str());
