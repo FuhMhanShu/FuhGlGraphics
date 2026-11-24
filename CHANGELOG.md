@@ -33,6 +33,15 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   Tutorial: `docs/en/tutorials/g13_water.md` + German translation. Requirement entry G13
   in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
+### Changed
+
+- **G13 water tuning**: sharper surface reflection — the water shader now adds a crisp
+  sky-cubemap mirror term (sampled by the reflected ray, plus the sun disk, weighted by the
+  fresnel) on top of the half-res planar reflection, and the reflection distortion defaults
+  dropped (`distortion` 0.12 → 0.05, `refractionDistortion` 0.06 → 0.035). Less foam:
+  `foamCrestStart` 0.72 → 0.80, `foamCrestSoftness` 0.18 → 0.10, `shoreFoamWidth` 1.2 → 0.8,
+  `foamStrength` 1.0 → 0.85. Reference images `docs/images/g13_water_*.png` re-rendered.
+
 ### Planned
 
 - **G12 — asset creator Qt tool** — design agreed, implementation in phases after review:

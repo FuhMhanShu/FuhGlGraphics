@@ -830,6 +830,9 @@ void DeferredRenderer::drawWater(fuhgl::render::RenderGraph::PassContext& ctx) {
     const water::WaterSurface& w = *curWater_;
     fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + 2);
     f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, im.reflColor.id());
+    // sky cubemap for the sharp sky-mirror term in the water shader (unit kTextureUnitSkyCube)
+    fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + kTextureUnitSkyCube);
+    f.glBindTexture(fuhgl::gl::GL_TEXTURE_CUBE_MAP, skyCube_ ? skyCube_->id() : im.dummyCube.id());
     fuhgl::gl::disable(fuhgl::gl::Cap::DepthTest);
     fuhgl::gl::disable(fuhgl::gl::Cap::Blend);
     fuhgl::gl::enable(fuhgl::gl::Cap::CullFace);
@@ -840,6 +843,11 @@ void DeferredRenderer::drawWater(fuhgl::render::RenderGraph::PassContext& ctx) {
     p.setUniform(p.uniformLocation("uSceneHdr"), 0);
     p.setUniform(p.uniformLocation("uGDepth"), 1);
     p.setUniform(p.uniformLocation("uReflTex"), 2);
+    p.setUniform(p.uniformLocation("uSkyCube"), kTextureUnitSkyCube);
+    p.setUniform(p.uniformLocation("uUseSkyCube"), skyCube_ ? 1 : 0);
+    p.setUniform("uSkyTop", skyTop);
+    p.setUniform("uSkyBottom", skyBottom);
+    p.setUniform("uSunCos", s.sunCos);
     p.setUniform("uModel", waterModel_);
     // one uViewProj for VS (position) and FS (depth test): the G-buffer was rendered with
     // the same jittered viewProj, so the depth comparison uses the same quantization
