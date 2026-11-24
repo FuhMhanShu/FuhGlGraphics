@@ -926,7 +926,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
 
 // G5 particles post pass: copy hdr -> hdrP, then draw each system's instanced billboards
 // (blended, depth-tested against the G-buffer depth) into hdrP.
-// G13 water post pass: hdr -> hdrW. Always starts from the lighting result; with an active
+// G13 water post pass: hdrS -> hdrW. Always starts from the lighting/SSR result; with an active
 // water surface the mesh is shaded on top (Gerstner waves + planar reflection + refraction +
 // foam). The post FBO has no depth attachment, so the fragment shader does the occlusion
 // test manually against the G-buffer depth (uGDepth).
