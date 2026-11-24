@@ -737,8 +737,10 @@ int main(int argc, char** argv) {
         cam.position = {0.f, 80.f, 100.f};
         aimAt(cam, {0.f, 0.f, 0.f});
         const std::string ovPath = args.prefix + "_pipeline.png";
+        // overview without the water pass (the lake around the plateau is flaky under
+        // headless llvmpipe and can wash out the whole frame); street shot keeps water
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, ovPath,
-                         &wc.surface, &env)) {
+                         nullptr, &env)) {
             std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", ovPath.c_str());
             return 1;
         }
