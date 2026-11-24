@@ -1,9 +1,11 @@
 // World generator helper: generateWorld(params) builds either a landscape (G24 seeded noise
-// heightmap with island falloff + optional lake basin, scattered G26 L-system trees placed via
-// rejection sampling on the height field) or a city (G27 WFC layout from makeCityTiles() over a
-// ground plate, street slabs merged into one MeshData, one box per "block" cell, optional G28
-// voronoi district plates). Pure CPU, deterministic per seed — the app attaches the result to a
-// scene::Scene (Mesh::setMeshData + node transforms).
+// heightmap with contrast shaping, island falloff, optional lake basin; scattered G26 L-system
+// trees + bushes placed via rejection sampling on the height field) or a city (G27 WFC layout
+// from makeCityTiles() over a ground plate; street cells get a sidewalk underlay + dark asphalt
+// slab, block cells a concrete lot + a procedural house (walls/door/windows + gabled roof as a
+// separate mesh part), plaza cells a lawn + park bushes; optional G28 voronoi district plates).
+// Pure CPU, deterministic per seed — the app attaches the result to a scene::Scene
+// (Mesh::setMeshData + node transforms).
 
 #include <fuhglgraphics/procedural/worldgen.hpp>
 
@@ -58,8 +60,92 @@ void shiftY(fuhgl::render::MeshData& md, float dy) {
     for (std::size_t i = 0; i < md.vertexCount(); ++i) md.vertices[i * 11 + 1] += dy;
 }
 
-/// @brief Landscape: noise heightmap (ridged fBm, optional domain warp + island falloff +
-/// lake basin) + scattered L-system trees that avoid water and keep a min distance.
+/// @brief Appends one box (half extents `half`, centered at `pos`) with a flat color to `dst`.
+void appendBox(fuhgl::render::MeshData& dst, const fuhgl::math::Vec3& half,
+               const fuhgl::math::Vec3& pos, const fuhgl::math::Vec3& color) {
+    fuhgl::render::MeshData b = fuhgl::render::shapes::boxData(half, color);
+    shiftY(b, pos.y);
+    appendTransformed(dst, b, fuhgl::math::translate({pos.x, 0.f, pos.z}));
+}
+
+// --- procedural house ---------------------------------------------------------------
+
+void pushVertex(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& p, const fuhgl::math::Vec3& n,
+                const fuhgl::math::Vec3& c, float u, float v) {
+    md.vertices.push_back(p.x); md.vertices.push_back(p.y); md.vertices.push_back(p.z);
+    md.vertices.push_back(n.x); md.vertices.push_back(n.y); md.vertices.push_back(n.z);
+    md.vertices.push_back(c.x); md.vertices.push_back(c.y); md.vertices.push_back(c.z);
+    md.vertices.push_back(u); md.vertices.push_back(v);
+}
+
+void addQuad(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& a, const fuhgl::math::Vec3& b,
+             const fuhgl::math::Vec3& c, const fuhgl::math::Vec3& d, const fuhgl::math::Vec3& n,
+             const fuhgl::math::Vec3& col) {
+    const std::uint32_t base = static_cast<std::uint32_t>(md.vertexCount());
+    pushVertex(md, a, n, col, 0.f, 0.f);
+    pushVertex(md, b, n, col, 1.f, 0.f);
+    pushVertex(md, c, n, col, 1.f, 1.f);
+    pushVertex(md, d, n, col, 0.f, 1.f);
+    md.indices.push_back(base); md.indices.push_back(base + 1); md.indices.push_back(base + 2);
+    md.indices.push_back(base); md.indices.push_back(base + 2); md.indices.push_back(base + 3);
+}
+
+void addTri(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& a, const fuhgl::math::Vec3& b,
+            const fuhgl::math::Vec3& c, const fuhgl::math::Vec3& n, const fuhgl::math::Vec3& col) {
+    const std::uint32_t base = static_cast<std::uint32_t>(md.vertexCount());
+    pushVertex(md, a, n, col, 0.f, 0.f);
+    pushVertex(md, b, n, col, 1.f, 0.f);
+    pushVertex(md, c, n, col, 0.5f, 1.f);
+    md.indices.push_back(base); md.indices.push_back(base + 1); md.indices.push_back(base + 2);
+}
+
+/// @brief Gabled roof prism (ridge along x) as its own MeshData: two slopes + two gable
+/// triangles, with an eave overhang. Base sits at y = 0 (the caller places it at wallH).
+fuhgl::render::MeshData makeRoofMesh(float w, float d, float roofH, const fuhgl::math::Vec3& color) {
+    const float hw = w * 0.5f + 0.14f, hd = d * 0.5f + 0.14f; // overhang
+    fuhgl::render::MeshData md;
+    const fuhgl::math::Vec3 ns = fuhgl::math::normalize({0.f, roofH, hd});  // south slope
+    const fuhgl::math::Vec3 nn = fuhgl::math::normalize({0.f, roofH, -hd}); // north slope
+    addQuad(md, {-hw, 0.f, hd}, {hw, 0.f, hd}, {hw, roofH, 0.f}, {-hw, roofH, 0.f}, ns, color);
+    addQuad(md, {hw, 0.f, -hd}, {-hw, 0.f, -hd}, {-hw, roofH, 0.f}, {hw, roofH, 0.f}, nn, color);
+    addTri(md, {hw, 0.f, -hd}, {hw, 0.f, hd}, {hw, roofH, 0.f}, {1.f, 0.f, 0.f}, color);
+    addTri(md, {-hw, 0.f, hd}, {-hw, 0.f, -hd}, {-hw, roofH, 0.f}, {-1.f, 0.f, 0.f}, color);
+    return md;
+}
+
+/// @brief One procedural house: walls box + door + windows + chimney merged into `body`,
+/// gabled roof into `roof`. Local space, base at y = 0, front door faces +z. `wallTint` picks
+/// one of a few palettes; uv 0..1 per box face so a brick texture tiles on the walls.
+void makeHouse(float w, float d, float wallH, float roofH, float wallTint,
+               fuhgl::render::MeshData& body, fuhgl::render::MeshData& roof) {
+    static const fuhgl::math::Vec3 wallPalettes[4] = {
+        {0.82f, 0.78f, 0.70f}, {0.72f, 0.45f, 0.36f}, {0.78f, 0.74f, 0.66f}, {0.62f, 0.66f, 0.70f}};
+    static const fuhgl::math::Vec3 roofPalettes[4] = {
+        {0.45f, 0.16f, 0.12f}, {0.30f, 0.22f, 0.18f}, {0.50f, 0.24f, 0.14f}, {0.28f, 0.28f, 0.32f}};
+    const int pal = static_cast<int>(wallTint * 4.f) % 4;
+    const fuhgl::math::Vec3 wall = wallPalettes[pal];
+    const fuhgl::math::Vec3 roofCol = roofPalettes[pal];
+
+    body = fuhgl::render::shapes::boxData({w * 0.5f, wallH * 0.5f, d * 0.5f}, wall);
+    shiftY(body, wallH * 0.5f); // walls
+    appendBox(body, {0.09f, 0.8f, 0.035f}, {0.f, 0.8f, d * 0.5f + 0.02f}, {0.24f, 0.14f, 0.08f}); // door
+    const fuhgl::math::Vec3 winCol{0.65f, 0.78f, 0.88f};
+    for (int s = -1; s <= 1; s += 2) { // windows front + back
+        appendBox(body, {0.28f, 0.38f, 0.03f}, {s * w * 0.25f, wallH * 0.62f, d * 0.5f + 0.015f}, winCol);
+        appendBox(body, {0.28f, 0.38f, 0.03f}, {s * w * 0.25f, wallH * 0.62f, -d * 0.5f - 0.015f}, winCol);
+    }
+    if (w > 2.5f) // side windows on wider houses
+        for (int s = -1; s <= 1; s += 2)
+            appendBox(body, {0.03f, 0.38f, 0.28f}, {s * w * 0.5f + (s > 0 ? 0.015f : -0.015f), wallH * 0.62f, 0.f}, winCol);
+    appendBox(body, {0.16f, roofH * 0.7f, 0.16f}, {w * 0.28f, wallH + roofH * 0.45f, -d * 0.22f},
+              {0.55f, 0.53f, 0.50f}); // chimney
+    roof = makeRoofMesh(w, d, roofH, roofCol);
+    shiftY(roof, wallH); // eaves sit on top of the walls
+}
+
+/// @brief Landscape: noise heightmap (ridged fBm, contrast shaping, optional domain warp +
+/// island falloff + lake basin) + scattered L-system trees and bushes that avoid water and
+/// keep a min distance.
 void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
     Noise noise(p.seed);
     const int g = std::max(2, p.terrainGrid);
@@ -70,6 +156,7 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
     w.heightScale = p.terrainHeight;
     w.waterLevelWorld = p.waterLevel > 0.f ? p.waterLevel * p.terrainHeight : 0.f;
     w.heightmap.resize(static_cast<std::size_t>(g) * g);
+    const float expo = std::max(0.05f, p.heightExponent);
     for (int j = 0; j < g; ++j)
         for (int i = 0; i < g; ++i) {
             const float u = static_cast<float>(i) / static_cast<float>(g - 1);
@@ -82,37 +169,55 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
                 nz = wp.y;
             }
             float h = noise.ridged2(nx, nz, p.octaves, Noise::Base::Simplex);
+            h = std::pow(h, expo);                                                 // sharper peaks
             const float edge = std::max(std::fabs(u - 0.5f), std::fabs(v - 0.5f)) * 2.f; // [0,1] to border
-            h *= 1.f - smoothstep(0.82f, 1.f, edge);                                      // island falloff
-            if (p.waterLevel > 0.f && h < p.waterLevel) h *= 0.25f;                       // lake basin
+            h *= 1.f - smoothstep(0.82f, 1.f, edge);                               // island falloff
+            if (p.waterLevel > 0.f && h < p.waterLevel) h *= p.lakeCarve;           // lake basin
             w.heightmap[static_cast<std::size_t>(i) + g * j] = h;
         }
 
     Rng rng(p.seed ^ 0x7EE5u);
     const float half = p.worldSize * 0.5f;
+    auto freeSpot = [&](float x, float z, float minDist) {
+        if (w.waterLevelWorld > 0.f && w.heightAt(x, z) < w.waterLevelWorld + 0.4f) return false; // not in the lake
+        for (const auto& other : w.trees) {
+            const float dx = other.position.x - x, dz = other.position.z - z;
+            if (dx * dx + dz * dz < minDist * minDist) return false;
+        }
+        for (const auto& other : w.bushes) {
+            const float dx = other.position.x - x, dz = other.position.z - z;
+            if (dx * dx + dz * dz < minDist * minDist) return false;
+        }
+        return true;
+    };
     for (int t = 0; t < p.treeCount; ++t) {
         const float x = (rng.nextf() - 0.5f) * 2.f * half;
         const float z = (rng.nextf() - 0.5f) * 2.f * half;
-        const float h = w.heightAt(x, z);
-        if (w.waterLevelWorld > 0.f && h < w.waterLevelWorld + 0.5f) continue; // not in the lake
-        bool tooClose = false;
-        for (const auto& other : w.trees) {
-            const float dx = other.position.x - x, dz = other.position.z - z;
-            if (dx * dx + dz * dz < p.treeMinDist * p.treeMinDist) { tooClose = true; break; }
-        }
-        if (tooClose) continue;
+        if (!freeSpot(x, z, p.treeMinDist)) continue;
         LSystem tree = LSystem::makeTree(static_cast<int>(rng.next() % 3u), p.seed);
         PlacedMesh pm;
         pm.mesh = tree.generate();
-        pm.position = {x, h, z};
+        pm.position = {x, w.heightAt(x, z), z};
         pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
-        pm.scale = 0.8f + 0.8f * rng.nextf();
+        pm.scale = 0.45f + 0.5f * rng.nextf(); // modest trees
         w.trees.push_back(std::move(pm));
+    }
+    for (int t = 0; t < p.bushCount; ++t) {
+        const float x = (rng.nextf() - 0.5f) * 2.f * half;
+        const float z = (rng.nextf() - 0.5f) * 2.f * half;
+        if (!freeSpot(x, z, p.treeMinDist * 0.5f)) continue;
+        PlacedMesh pm;
+        pm.mesh = LSystem::makeBush().generate();
+        pm.position = {x, w.heightAt(x, z), z};
+        pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
+        pm.scale = 0.5f + 0.7f * rng.nextf();
+        w.bushes.push_back(std::move(pm));
     }
 }
 
-/// @brief City: WFC layout over a ground plate; street/plaza cells become merged road slabs,
-/// "block" cells become jittered building boxes, optional voronoi district plates underneath.
+/// @brief City: WFC layout over a ground plate; street cells get a sidewalk underlay + dark
+/// asphalt slab, block cells a concrete lot + a procedural house, plaza cells a lawn + park
+/// bushes; optional voronoi district plates underneath.
 void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
     const int gw = std::max(2, p.cityGrid);
     Wfc wfc(gw, gw, "s"); // border tag "s": the ring closes with blocks/sidewalk edges
@@ -128,6 +233,7 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
     shiftY(w.cityGround, -0.1f); // plate top at y = 0
 
     Noise noise(p.seed ^ 0xC17u);
+    Rng rng(p.seed ^ 0xB05u);
     for (int z = 0; z < gw; ++z)
         for (int x = 0; x < gw; ++x) {
             const WfcCell& c = w.cells[static_cast<std::size_t>(x) + gw * z];
@@ -135,26 +241,52 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
             const float wz = (z - (gw - 1) * 0.5f) * p.cellSize;
             if (c.tile < 0) continue; // unsolved cell stays plain ground
             const std::string& name = w.tiles[c.tile].name;
+            const fuhgl::math::Mat4 place = fuhgl::math::translate({wx, 0.f, wz});
             if (name == "block") {
+                // concrete lot
+                fuhgl::render::MeshData lot =
+                    fuhgl::render::shapes::boxData({p.cellSize * 0.47f, 0.025f, p.cellSize * 0.47f},
+                                                   {0.48f, 0.47f, 0.44f});
+                shiftY(lot, 0.025f);
+                appendTransformed(w.roads, lot, place);
+                // procedural house on the lot
                 const float n = noise.value2(wx * 0.05f + 13.1f, wz * 0.05f + 7.7f); // per-block jitter
-                const float h = p.buildingHeight * (0.5f + 0.9f * n);
+                const float wallH = p.buildingHeight * (0.5f + 0.9f * n);
+                const float fw = p.cellSize * p.houseFootprint * (0.8f + 0.4f * n);
+                const float fd = p.cellSize * p.houseFootprint * (0.8f + 0.4f * noise.value2(wz * 0.07f, wx * 0.07f));
                 PlacedMesh pm;
-                pm.mesh = fuhgl::render::shapes::boxData({p.cellSize * 0.36f, h * 0.5f, p.cellSize * 0.36f},
-                                                         {0.55f + 0.25f * n, 0.52f + 0.2f * n, 0.48f + 0.2f * n});
-                shiftY(pm.mesh, h * 0.5f); // base at y = 0
-                pm.position = {wx, 0.f, wz};
+                makeHouse(fw, fd, wallH, std::max(1.2f, wallH * 0.45f), n, pm.mesh, pm.roofMesh);
+                pm.position = {wx, 0.05f, wz};
                 pm.rotY = -c.rot * fuhgl::math::kPi * 0.5f;
-                pm.tint = {1.f, 1.f, 1.f};
                 w.buildings.push_back(std::move(pm));
+            } else if (name == "plaza") {
+                // park: lawn slab + scattered bushes
+                fuhgl::render::MeshData lawn =
+                    fuhgl::render::shapes::boxData({p.cellSize * 0.46f, 0.02f, p.cellSize * 0.46f},
+                                                   {0.16f, 0.42f, 0.16f});
+                shiftY(lawn, 0.04f);
+                appendTransformed(w.roads, lawn, place);
+                for (int b = 0; b < p.parkBushesPerPlaza; ++b) {
+                    PlacedMesh pm;
+                    pm.mesh = LSystem::makeBush().generate();
+                    pm.position = {wx + (rng.nextf() - 0.5f) * p.cellSize * 0.6f, 0.06f,
+                                   wz + (rng.nextf() - 0.5f) * p.cellSize * 0.6f};
+                    pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
+                    pm.scale = 0.5f + 0.5f * rng.nextf();
+                    w.bushes.push_back(std::move(pm));
+                }
             } else {
-                // street / crossing / T / end / plaza: flat slab slightly above the ground
-                const bool plaza = name == "plaza";
-                fuhgl::render::MeshData slab =
-                    fuhgl::render::shapes::boxData({p.cellSize * 0.5f, 0.03f, p.cellSize * 0.5f},
-                                                   plaza ? fuhgl::math::Vec3{0.45f, 0.45f, 0.42f}
-                                                         : fuhgl::math::Vec3{0.16f, 0.16f, 0.17f});
-                shiftY(slab, 0.03f);
-                appendTransformed(w.roads, slab, fuhgl::math::translate({wx, 0.f, wz}));
+                // street / crossing / T / end: light sidewalk underlay + dark asphalt slab
+                fuhgl::render::MeshData walk =
+                    fuhgl::render::shapes::boxData({p.cellSize * 0.5f, 0.02f, p.cellSize * 0.5f},
+                                                   {0.55f, 0.55f, 0.52f});
+                shiftY(walk, 0.02f);
+                appendTransformed(w.roads, walk, place);
+                fuhgl::render::MeshData asphalt =
+                    fuhgl::render::shapes::boxData({p.cellSize * 0.44f, 0.015f, p.cellSize * 0.44f},
+                                                   {0.09f, 0.09f, 0.10f});
+                shiftY(asphalt, 0.045f);
+                appendTransformed(w.roads, asphalt, place);
             }
         }
 
@@ -188,7 +320,7 @@ std::vector<WfcTile> makeCityTiles() {
     // edge tags in cyclic dir order (E, S, W, N); rotations are handled by the WFC solver
     return {
         {"block", 4.f, {"s", "s", "s", "s"}},   // building lot (fills the border ring too)
-        {"plaza", 0.6f, {"p", "p", "p", "p"}},   // open square, only next to plazas
+        {"plaza", 0.6f, {"p", "p", "p", "p"}},   // park square, only next to plazas
         {"streetH", 1.f, {"r", "s", "r", "s"}}, // road along E-W
         {"streetV", 1.f, {"s", "r", "s", "r"}}, // road along N-S (rotation of streetH)
         {"cross", 0.4f, {"r", "r", "r", "r"}},   // 4-way crossing

@@ -33,14 +33,20 @@ p.terrainGrid = 129;        // heightmap resolution
 p.terrainHeight = 14.f;     // height scale (heightmap itself is stored in [0,1])
 p.noiseScale = 0.045f;      // noise-space scale per world unit
 p.warpStrength = 0.8f;      // optional domain warp (0 = off)
+p.heightExponent = 0.8f;    // contrast shaping pow(h, exponent); <1 -> more pronounced peaks
 p.waterLevel = 0.30f;       // >0: carve a lake basin below this normalized level
+p.lakeCarve = 0.18f;         // basin depth factor below the water level
 p.treeCount = 140;          // scattered L-system trees
+p.bushCount = 160;          // scattered L-system bushes
+p.grassBlades = 4000;       // hint for the app: instanced grass via Instancing::heightFn
 p.treeMinDist = 6.f;
 
 const auto w = generateWorld(p);
 w.heightmap;                // gridW*gridH floats, row-major (x + gridW*z), [0,1]
 w.heightAt(x, z);           // world-space bilinear height (sample * heightScale, clamped)
+w.waterLevelWorld;          // water level in world units (place a WaterComponent here)
 w.trees;                    // PlacedMesh: mesh (L-system tree) + position/rotY/scale/tint
+w.bushes;                   // PlacedMesh: bushes, same placement rules
 ```
 
 The height field is G24 ridged fBm (Simplex base) with an island falloff at the border and an
@@ -74,15 +80,20 @@ p.seed = 777;
 p.cityGrid = 12;            // WFC cells per side
 p.cellSize = 8.f;           // world size of one cell
 p.buildingHeight = 7.f;     // base wall height (jittered per block)
+p.houseFootprint = 0.62f;   // house footprint as a fraction of the cell
 p.blocksPerDistrict = 28;   // >0: voronoi district plates under the city
+p.parkBushesPerPlaza = 3;   // bushes per plaza (park) cell
 
 const auto w = generateWorld(p);
 w.cells;                    // cityW*cityH WfcCell {tile, rot}, row-major
 w.tiles;                    // tile set (w.cells[].tile indexes into it)
 w.cityGround;               // MeshData base plate (top at y = 0)
-w.roads;                    // merged street/plaza slabs
+w.roads;                    // merged slabs: sidewalk + dark asphalt (streets), concrete lots, park lawns
 w.districts;                // voronoi plates (empty when blocksPerDistrict == 0)
-w.buildings;                // one jittered box per "block" cell (PlacedMesh)
+w.buildings;                // one procedural house per "block" cell: mesh = walls+door+windows+chimney,
+                            // roofMesh = gabled roof (separate MeshEntry, e.g. shingle texture);
+                            // attach the brick POM set (albedo/normal/heightMap + parallaxScale) to the walls
+w.bushes;                   // park greenery on plaza cells
 ```
 
 The layout is a G27 WFC solve over `makeCityTiles()` — edge tags `"r"` (road), `"s"`

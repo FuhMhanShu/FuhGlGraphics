@@ -38,15 +38,21 @@ struct WorldGenParams {
     int octaves = 6;              ///< fBm octaves of the height field
     float noiseScale = 0.045f;    ///< noise-space scale per world unit
     float warpStrength = 0.f;     ///< domain-warp strength (0 = off)
+    float heightExponent = 0.8f;  ///< contrast shaping of the height field (pow(h, exponent); <1 raises peaks)
     float waterLevel = 0.f;       ///< normalized [0,1] water level; >0 carves a lake basin below it
+    float lakeCarve = 0.18f;      ///< basin depth factor for samples below waterLevel
     int treeCount = 120;          ///< scattered L-system trees (0 = off)
+    int bushCount = 160;          ///< scattered L-system bushes (0 = off)
+    int grassBlades = 4000;       ///< hint for the app: instanced grass blades over the terrain (scene-side)
     float treeMinDist = 6.f;      ///< min distance between trees (rejection sampling)
 
     // --- city (mode == City) ---
     int cityGrid = 12;            ///< WFC cells per side
     float cellSize = 8.f;         ///< world size of one city cell
-    float buildingHeight = 6.f;   ///< base wall height of placed buildings (jittered per block)
+    float buildingHeight = 6.f;   ///< base wall height of placed houses (jittered per block)
+    float houseFootprint = 0.62f; ///< house footprint as a fraction of the cell
     int blocksPerDistrict = 0;    ///< >0: extrude this many voronoi district plates under the city
+    int parkBushesPerPlaza = 3;   ///< bushes scattered on each plaza (park) cell
     int maxBacktracks = 20000;    ///< WFC solver backtrack budget
 };
 
@@ -54,6 +60,7 @@ struct WorldGenParams {
 /// + a tint. Attach as a scene node (translation/rotation/scale) with the mesh uploaded.
 struct PlacedMesh {
     fuhgl::render::MeshData mesh;          ///< local-space triangle data (11 floats/vertex)
+    fuhgl::render::MeshData roofMesh;      ///< optional second part (city houses: gabled roof) — own MeshEntry, e.g. shingle texture
     fuhgl::math::Vec3 position{0.f, 0.f, 0.f}; ///< world position
     float rotY = 0.f;                      ///< rotation around +Y in radians
     float scale = 1.f;
@@ -82,12 +89,13 @@ struct GeneratedWorld {
     int cityW = 0, cityH = 0;              ///< WFC grid size
     float cityCellSize = 0.f;              ///< world size of one cell
     fuhgl::render::MeshData cityGround;    ///< base plate under the whole city (top at y = 0)
-    fuhgl::render::MeshData roads;         ///< merged street/plaza slabs (slightly above y = 0)
+    fuhgl::render::MeshData roads;         ///< merged slabs: sidewalk underlay + asphalt road + park lawn (plaza cells)
     fuhgl::render::MeshData districts;     ///< voronoi district plates (empty when blocksPerDistrict == 0)
 
     // --- placed objects ---
     std::vector<PlacedMesh> trees;         ///< landscape: scattered L-system trees
-    std::vector<PlacedMesh> buildings;     ///< city: one box per "block" cell
+    std::vector<PlacedMesh> bushes;        ///< landscape: bushes; city: park greenery on plaza cells
+    std::vector<PlacedMesh> buildings;     ///< city: one procedural house per "block" cell (mesh = walls+door+windows, roofMesh = gabled roof)
 };
 
 /// @brief City tile set for the WFC solver: edge tags "r" = road, "s" = lot/sidewalk edge

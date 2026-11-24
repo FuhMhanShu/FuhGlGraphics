@@ -33,14 +33,20 @@ p.terrainGrid = 129;        // Auflösung der Heightmap
 p.terrainHeight = 14.f;     // Höhenskalierung (Heightmap selbst ist in [0,1])
 p.noiseScale = 0.045f;      // Noise-Skalierung pro Welt-Einheit
 p.warpStrength = 0.8f;      // optionaler Domain-Warp (0 = aus)
+p.heightExponent = 0.8f;    // Kontrast-Shaping pow(h, exponent); <1 -> ausgeprägtere Gipfel
 p.waterLevel = 0.30f;       // >0: Seebecken unterhalb dieses normalisierten Pegels
+p.lakeCarve = 0.18f;         // Beckentiefe unterhalb des Pegels
 p.treeCount = 140;          // verstreute L-System-Bäume
+p.bushCount = 160;          // verstreute L-System-Büsche
+p.grassBlades = 4000;       // Hinweis fürs App: instanziertes Gras via Instancing::heightFn
 p.treeMinDist = 6.f;
 
 const auto w = generateWorld(p);
 w.heightmap;                // gridW*gridH floats, zeilenweise (x + gridW*z), [0,1]
 w.heightAt(x, z);           // bilineare Welt-Höhe (Sample * heightScale, geclampt)
+w.waterLevelWorld;          // Pegel in Welt-Einheiten (hier WaterComponent platzieren)
 w.trees;                    // PlacedMesh: Mesh (L-System-Baum) + position/rotY/scale/tint
+w.bushes;                   // PlacedMesh: Büsche, gleiche Platzierungsregeln
 ```
 
 Das Höhenfeld ist G24 ridged fBm (Simplex-Basis) mit Island-Falloff am Rand und optionalem
@@ -74,15 +80,21 @@ p.seed = 777;
 p.cityGrid = 12;            // WFC-Zellen pro Seite
 p.cellSize = 8.f;           // Welt-Größe einer Zelle
 p.buildingHeight = 7.f;     // Basis-Wandhöhe (pro Block gejittert)
+p.houseFootprint = 0.62f;   // Haus-Grundfläche als Anteil der Zelle
 p.blocksPerDistrict = 28;   // >0: Voronoi-Stadtteilplatten unter der Stadt
+p.parkBushesPerPlaza = 3;   // Büsche pro Plaza (Park)
+```
 
 const auto w = generateWorld(p);
 w.cells;                    // cityW*cityH WfcCell {tile, rot}, zeilenweise
 w.tiles;                    // Tile-Set (w.cells[].tile indexiert hinein)
 w.cityGround;               // MeshData-Basisplatte (Oberkante bei y = 0)
-w.roads;                    // gemergte Straßen-/Plaza-Platten
+w.roads;                    // gemergte Platten: Bürgersteig + dunkler Asphalt (Straßen), Beton-Lots, Park-Rasen
 w.districts;                // Voronoi-Platten (leer bei blocksPerDistrict == 0)
-w.buildings;                // eine gejitterte Box pro "block"-Zelle (PlacedMesh)
+w.buildings;                // ein prozedurales Haus pro "block"-Zelle: mesh = Wände+Tür+Fenster+Kamin,
+                            // roofMesh = Satteldach (separater MeshEntry, z.B. Schindel-Textur);
+                            // an die Wände kommt der Brick-POM-Satz (albedo/normal/heightMap + parallaxScale)
+w.bushes;                   // Park-Grün auf Plaza-Zellen
 ```
 
 Das Layout ist ein G27-WFC-Solve über `makeCityTiles()` — Edge-Tags `"r"` (Straße), `"s"`

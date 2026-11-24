@@ -1,7 +1,9 @@
 // G31 world-generator screenshot tool: builds a LANDSCAPE and a CITY with
 // procedural::generateWorld() (WorldGenParams) and attaches the result to a scene::Scene
-// (heightmap terrain mesh + L-system tree nodes; city ground/roads/districts + building
-// boxes), rendered headless (surfaceless EGL) to PNG for docs/images/.
+// (heightmap terrain + water surface + instanced grass + L-system trees/bushes; city ground,
+// sidewalk/asphalt roads, voronoi district plates, procedural houses with POM brick walls +
+// shingle roofs, park lawns with bushes), rendered headless (surfaceless EGL) to PNG for
+// docs/images/.
 //
 // Usage: fuhglgraphics_worldgen_screenshot --prefix g31_worldgen [--width 1280] [--height 720]
 //          [--frames 16] [--seed 777] [--mode both|landscape|city]
@@ -25,6 +27,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -59,7 +62,7 @@ void aimAt(fuhgl::FirstPersonCamera& cam, const fuhgl::math::Vec3& target) {
 
 bool renderToPng(fuhglgraphics::scene::Scene& scn, fuhgl::FirstPersonCamera& cam,
                  fuhglgraphics::render::DeferredRenderer& renderer, int frames, int width, int height,
-                 const std::string& outPath) {
+                 const std::string& outPath, fuhglgraphics::water::WaterSurface* water = nullptr) {
     using namespace fuhglgraphics;
     for (int i = 0; i < frames; ++i) {
         scene::FrameData frame;
@@ -67,6 +70,7 @@ bool renderToPng(fuhglgraphics::scene::Scene& scn, fuhgl::FirstPersonCamera& cam
         frame.effects.applyTo(renderer);
         frame.view.fogColor = {0.80f, 0.83f, 0.90f};
         frame.view.fogDensity = 0.0012f;
+        if (water) water->update(1.f / 60.f);
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
                         frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
     }
@@ -148,6 +152,98 @@ void addMeshNode(fuhglgraphics::scene::Scene& scene, MeshArena& arena, const std
     e.castShadow = castShadow;
 }
 
+// --- procedural textures for the houses (POM brick walls, shingle roofs) ----------------
+
+std::uint32_t hashPx(int x, int y, std::uint32_t seed) {
+    std::uint32_t h = static_cast<std::uint32_t>(x) * 0x8DA6B343u ^ static_cast<std::uint32_t>(y) * 0xD8163841u ^ seed;
+    h ^= h >> 13; h *= 0x9E3779B1u; h ^= h >> 16;
+    return h;
+}
+
+fuhgl::Texture makeTex(int size, std::uint32_t seed, const std::function<void(int, int, float, unsigned char*)>& px) {
+    std::vector<unsigned char> data(static_cast<std::size_t>(size) * size * 4, 0);
+    for (int y = 0; y < size; ++y)
+        for (int x = 0; x < size; ++x)
+            px(x, y, (hashPx(x, y, seed) & 0xffu) / 255.f, &data[(static_cast<std::size_t>(y) * size + x) * 4]);
+    fuhgl::Texture t(fuhgl::Texture::Target::Tex2D);
+    t.bind();
+    t.setImage2D(0, fuhgl::gl::GL_RGBA8, size, size, fuhgl::gl::GL_RGBA, fuhgl::gl::GL_UNSIGNED_BYTE,
+                 data.data());
+    t.generateMipmap();
+    t.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_LINEAR_MIPMAP_LINEAR);
+    t.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_LINEAR);
+    t.setParameteri(fuhgl::gl::GL_TEXTURE_WRAP_S, fuhgl::gl::GL_REPEAT);
+    t.setParameteri(fuhgl::gl::GL_TEXTURE_WRAP_T, fuhgl::gl::GL_REPEAT);
+    return t;
+}
+
+// brick pattern: running bond, mortar grooves; returns height in [0,1] (bricks high, mortar low)
+float brickInfo(int x, int y, int size, float& rowH) {
+    const float bx = static_cast<float>(x) / size * 8.f;   // 8 bricks per tile
+    const float by = static_cast<float>(y) / size * 4.f;   // 4 rows per tile
+    const int row = static_cast<int>(by);
+    const float fy = by - row;
+    const float offset = (row % 2) * 0.5f;
+    const float fx = bx - offset - std::floor(bx - offset);
+    const float mortar = 0.06f;
+    rowH = (fx < mortar || fy < mortar) ? 0.f : 1.f;
+    return rowH;
+}
+
+fuhgl::Texture makeBrickAlbedo(int size) {
+    return makeTex(size, 11u, [&](int x, int y, float n, unsigned char* o) {
+        float h;
+        brickInfo(x, y, size, h);
+        const float brickTone = 0.55f + 0.25f * n;
+        if (h < 0.5f) { o[0] = 168; o[1] = 160; o[2] = 152; } // mortar
+        else { o[0] = static_cast<unsigned char>(150 * brickTone + 60); o[1] = static_cast<unsigned char>(70 * brickTone + 30); o[2] = static_cast<unsigned char>(55 * brickTone + 25); }
+        o[3] = 255;
+    });
+}
+
+fuhgl::Texture makeBrickHeight(int size) {
+    return makeTex(size, 23u, [&](int x, int y, float, unsigned char* o) {
+        float h;
+        brickInfo(x, y, size, h);
+        const unsigned char hv = static_cast<unsigned char>(h * 255.f);
+        o[0] = hv; o[1] = hv; o[2] = hv; o[3] = 255;
+    });
+}
+
+fuhgl::Texture makeBrickNormal(int size) {
+    std::vector<float> h(static_cast<std::size_t>(size) * size);
+    for (int y = 0; y < size; ++y)
+        for (int x = 0; x < size; ++x)
+            brickInfo(x, y, size, h[static_cast<std::size_t>(y) * size + x]);
+    return makeTex(size, 37u, [&](int x, int y, float, unsigned char* o) {
+        const auto at = [&](int xx, int yy) {
+            return h[static_cast<std::size_t>((yy + size) % size) * size + ((xx + size) % size)];
+        };
+        const float dx = (at(x + 1, y) - at(x - 1, y)) * 2.2f;
+        const float dy = (at(x, y + 1) - at(x, y - 1)) * 2.2f;
+        const fuhgl::math::Vec3 n = fuhgl::math::normalize({-dx, -dy, 1.f});
+        o[0] = static_cast<unsigned char>((n.x * 0.5f + 0.5f) * 255.f);
+        o[1] = static_cast<unsigned char>((n.y * 0.5f + 0.5f) * 255.f);
+        o[2] = static_cast<unsigned char>((n.z * 0.5f + 0.5f) * 255.f);
+        o[3] = 255;
+    });
+}
+
+fuhgl::Texture makeShingleTex(int size) {
+    return makeTex(size, 53u, [&](int x, int y, float n, unsigned char* o) {
+        const float sx = static_cast<float>(x) / size * 12.f;
+        const float sy = static_cast<float>(y) / size * 8.f;
+        const int row = static_cast<int>(sy);
+        const float fx = sx - (row % 2) * 0.5f - std::floor(sx - (row % 2) * 0.5f);
+        const float fy = sy - row;
+        const bool gap = fx < 0.08f || fy < 0.18f;
+        const float tone = 0.5f + 0.3f * n;
+        if (gap) { o[0] = 40; o[1] = 22; o[2] = 18; }
+        else { o[0] = static_cast<unsigned char>(110 * tone); o[1] = static_cast<unsigned char>(38 * tone); o[2] = static_cast<unsigned char>(30 * tone); }
+        o[3] = 255;
+    });
+}
+
 void addSunAndSky(fuhglgraphics::scene::Scene& scene, fuhgl::FirstPersonCamera& cam,
                   const fuhgl::math::Vec3& sunDir) {
     using namespace fuhglgraphics;
@@ -199,65 +295,123 @@ int main(int argc, char** argv) {
     renderer.skyTop = skyTop;
     renderer.skyBottom = skyHorizon;
 
+    const fuhgl::Texture brickAlbedo = makeBrickAlbedo(256);
+    const fuhgl::Texture brickNormal = makeBrickNormal(256);
+    const fuhgl::Texture brickHeight = makeBrickHeight(256);
+    const fuhgl::Texture shingle = makeShingleTex(256);
+
     fuhgl::FirstPersonCamera cam;
     const bool doLandscape = args.mode == "both" || args.mode == "landscape";
     const bool doCity = args.mode == "both" || args.mode == "city";
 
-    // --- landscape: generateWorld(Landscape) -> terrain mesh + L-system trees ---
+    // --- landscape: generateWorld(Landscape) -> terrain + water + grass + trees + bushes ---
     if (doLandscape) {
         procedural::WorldGenParams p;
         p.mode = procedural::WorldGenParams::Mode::Landscape;
         p.seed = args.seed;
         p.worldSize = 200.f;
         p.terrainGrid = 129;
-        p.terrainHeight = 14.f;
-        p.waterLevel = 0.30f;
-        p.treeCount = 140;
+        p.terrainHeight = 26.f;   // pronounced mountains
+        p.warpStrength = 1.2f;
+        p.heightExponent = 0.75f;
+        p.waterLevel = 0.30f;     // lake
+        p.treeCount = 130;
+        p.bushCount = 180;
+        p.grassBlades = 4000;
         p.treeMinDist = 6.f;
         const procedural::GeneratedWorld world = procedural::generateWorld(p);
-        std::fprintf(stderr, "worldgen_screenshot: landscape seed %u: grid %d, %zu trees\n",
-                     args.seed, world.gridW, world.trees.size());
+        std::fprintf(stderr, "worldgen_screenshot: landscape seed %u: grid %d, %zu trees, %zu bushes\n",
+                     args.seed, world.gridW, world.trees.size(), world.bushes.size());
 
         scene::Scene scene;
         MeshArena arena;
         addMeshNode(scene, arena, "terrain", heightmapMesh(world), {1.f, 1.f, 1.f}, 0.95f, 1, false);
-        for (std::size_t i = 0; i < world.trees.size(); ++i) {
-            const auto& t = world.trees[i];
-            scene::Node& n = scene.root().createChild("tree" + std::to_string(i));
-            n.translation = t.position;
-            n.rotation = fuhgl::math::fromAxisAngle(t.rotY, {0.f, 1.f, 0.f});
-            n.scale = {t.scale, t.scale, t.scale};
-            scene::MeshEntry& e = n.attach<scene::MeshComponent>().addMesh(arena.add(t.mesh));
-            e.albedo = t.tint;
-            e.roughness = 0.9f;
-            e.castShadow = true;
-            e.materialId = 30;
-        }
-        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.35f, 0.55f, 0.6f}));
 
-        // oblique overview: hills, lake basin and the forest against the sky
-        cam.position = {0.f, 55.f, 150.f};
-        aimAt(cam, {0.f, 5.f, 0.f});
+        // lake water surface at the water level
+        scene::WaterComponent* water = nullptr;
+        if (world.waterLevelWorld > 0.f) {
+            scene::Node& wn = scene.root().createChild("lake");
+            wn.translation = {0.f, world.waterLevelWorld, 0.f};
+            water = &wn.attach<scene::WaterComponent>();
+            if (!water->surface.create(160, p.worldSize * 1.1f)) {
+                std::fprintf(stderr, "worldgen_screenshot: water create failed\n");
+                return 1;
+            }
+            water->surface.waves = {
+                {{1.f, 0.15f}, 0.32f, 16.f, 2.0f, 0.65f},
+                {{0.7f, 0.7f}, 0.20f, 8.f, 1.4f, 0.55f},
+                {{-0.5f, 0.86f}, 0.11f, 4.5f, 1.0f, 0.45f},
+            };
+            water->surface.reflectionStrength = 0.8f;
+            water->surface.foamStrength = 1.f;
+            water->surface.deepColor = {0.004f, 0.05f, 0.11f};
+            water->surface.shallowColor = {0.06f, 0.30f, 0.38f};
+        }
+
+        // instanced grass snapped onto the terrain (hidden under water)
+        {
+            fuhgl::render::Mesh blade;
+            fuhgl::render::shapes::box(blade, {0.015f, 0.22f, 0.015f}, {0.25f, 0.45f, 0.18f});
+            scene::Node& grass = scene.root().createChild("grass");
+            grass.instancing.enabled = true;
+            grass.instancing.count = p.grassBlades;
+            grass.instancing.layout = scene::InstanceLayout::Random;
+            grass.instancing.extent = {p.worldSize - 8.f, 4.f, p.worldSize - 8.f};
+            grass.instancing.seed = 7u;
+            grass.instancing.heightFn = [&world](float x, float z) {
+                const float h = world.heightAt(x, z);
+                return h < world.waterLevelWorld + 0.15f ? -1000.f : h + 0.22f;
+            };
+            scene::MeshEntry& ge = grass.attach<scene::MeshComponent>().addMesh(&blade);
+            ge.albedo = {0.55f, 0.75f, 0.35f};
+            ge.roughness = 1.f;
+            ge.castShadow = false;
+            ge.materialId = 2;
+        }
+
+        auto addPlant = [&](const std::string& prefix, const std::vector<procedural::PlacedMesh>& plants,
+                            std::uint32_t materialId) {
+            for (std::size_t i = 0; i < plants.size(); ++i) {
+                const auto& t = plants[i];
+                scene::Node& n = scene.root().createChild(prefix + std::to_string(i));
+                n.translation = t.position;
+                n.rotation = fuhgl::math::fromAxisAngle(t.rotY, {0.f, 1.f, 0.f});
+                n.scale = {t.scale, t.scale, t.scale};
+                scene::MeshEntry& e = n.attach<scene::MeshComponent>().addMesh(arena.add(t.mesh));
+                e.albedo = t.tint;
+                e.roughness = 0.9f;
+                e.castShadow = true;
+                e.materialId = materialId;
+            }
+        };
+        addPlant("tree", world.trees, 30);
+        addPlant("bush", world.bushes, 31);
+        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.35f, 0.5f, 0.6f}));
+
+        // oblique overview: mountains, lake, forest and meadows against the sky
+        cam.position = {0.f, 42.f, 120.f};
+        aimAt(cam, {0.f, 8.f, 0.f});
         const std::string path = args.prefix + "_landscape.png";
-        if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path)) {
+        if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
+                         water ? &water->surface : nullptr)) {
             std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", path.c_str());
             return 1;
         }
         std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", path.c_str());
     }
 
-    // --- city: generateWorld(City) -> WFC layout, ground/roads/districts + buildings ---
+    // --- city: generateWorld(City) -> WFC layout, roads, district plates, houses, parks ---
     if (doCity) {
         procedural::WorldGenParams p;
         p.mode = procedural::WorldGenParams::Mode::City;
         p.seed = args.seed;
         p.cityGrid = 12;
         p.cellSize = 8.f;
-        p.buildingHeight = 7.f;
+        p.buildingHeight = 8.f;
         p.blocksPerDistrict = 28;
         const procedural::GeneratedWorld world = procedural::generateWorld(p);
-        std::fprintf(stderr, "worldgen_screenshot: city seed %u: %dx%d cells, %zu buildings\n",
-                     args.seed, world.cityW, world.cityH, world.buildings.size());
+        std::fprintf(stderr, "worldgen_screenshot: city seed %u: %dx%d cells, %zu houses, %zu park bushes\n",
+                     args.seed, world.cityW, world.cityH, world.buildings.size(), world.bushes.size());
 
         scene::Scene scene;
         MeshArena arena;
@@ -265,6 +419,7 @@ int main(int argc, char** argv) {
         addMeshNode(scene, arena, "roads", world.roads, {1.f, 1.f, 1.f}, 0.9f, 3, false);
         if (world.districts.vertexCount() > 0)
             addMeshNode(scene, arena, "districts", world.districts, {1.f, 1.f, 1.f}, 1.f, 4, false);
+
         fuhgl::math::Vec3 streetSpot{0.f, 0.f, 0.f};
         bool haveStreet = false;
         for (int z = 0; z < world.cityH && !haveStreet; ++z)
@@ -276,22 +431,51 @@ int main(int argc, char** argv) {
                     haveStreet = true;
                 }
             }
+
+        // houses: walls entry with POM brick material, roof entry with shingle texture
         for (std::size_t i = 0; i < world.buildings.size(); ++i) {
             const auto& b = world.buildings[i];
-            scene::Node& n = scene.root().createChild("building" + std::to_string(i));
+            scene::Node& n = scene.root().createChild("house" + std::to_string(i));
+            n.translation = b.position;
+            n.rotation = fuhgl::math::fromAxisAngle(b.rotY, {0.f, 1.f, 0.f});
+            n.scale = {b.scale, b.scale, b.scale};
+            scene::MeshComponent& mc = n.attach<scene::MeshComponent>();
+            scene::MeshEntry& walls = mc.addMesh(arena.add(b.mesh));
+            walls.albedo = {1.f, 1.f, 1.f};
+            walls.albedoTexture = &brickAlbedo;
+            walls.normalMap = &brickNormal;
+            walls.heightMap = &brickHeight; // POM parallax on the facade
+            walls.parallaxScale = 0.05f;
+            walls.parallaxLayers = 24;
+            walls.roughness = 0.85f;
+            walls.castShadow = true;
+            walls.materialId = 5;
+            if (b.roofMesh.vertexCount() > 0) {
+                scene::MeshEntry& roof = mc.addMesh(arena.add(b.roofMesh)); // built on top of the walls
+                roof.albedoTexture = &shingle;
+                roof.albedo = {1.6f, 1.6f, 1.6f}; // counter the dark vertex color
+                roof.roughness = 0.7f;
+                roof.castShadow = true;
+                roof.materialId = 6;
+            }
+        }
+        // park bushes
+        for (std::size_t i = 0; i < world.bushes.size(); ++i) {
+            const auto& b = world.bushes[i];
+            scene::Node& n = scene.root().createChild("parkbush" + std::to_string(i));
             n.translation = b.position;
             n.rotation = fuhgl::math::fromAxisAngle(b.rotY, {0.f, 1.f, 0.f});
             n.scale = {b.scale, b.scale, b.scale};
             scene::MeshEntry& e = n.attach<scene::MeshComponent>().addMesh(arena.add(b.mesh));
-            e.albedo = b.tint;
-            e.roughness = 0.7f;
+            e.albedo = {0.8f, 1.f, 0.8f};
+            e.roughness = 0.9f;
             e.castShadow = true;
-            e.materialId = 5;
+            e.materialId = 7;
         }
-        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.4f, 0.7f, 0.5f}));
+        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.4f, 0.65f, 0.5f}));
 
         // oblique overview of the whole WFC layout
-        cam.position = {0.f, 75.f, 95.f};
+        cam.position = {0.f, 80.f, 100.f};
         aimAt(cam, {0.f, 0.f, 0.f});
         const std::string ovPath = args.prefix + "_city.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, ovPath)) {
@@ -301,8 +485,8 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", ovPath.c_str());
 
         // street-level view from the first street cell toward the city center
-        cam.position = {streetSpot.x, 2.5f, streetSpot.z + world.cityCellSize * 2.2f};
-        aimAt(cam, {streetSpot.x * 0.3f, 2.0f, streetSpot.z * 0.3f});
+        cam.position = {streetSpot.x, 2.4f, streetSpot.z + world.cityCellSize * 2.2f};
+        aimAt(cam, {streetSpot.x * 0.3f, 2.2f, streetSpot.z * 0.3f});
         const std::string stPath = args.prefix + "_city_street.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, stPath)) {
             std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", stPath.c_str());
