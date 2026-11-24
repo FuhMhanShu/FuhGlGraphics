@@ -630,7 +630,7 @@ int main(int argc, char** argv) {
         scene::TerrainComponent& tc = tn.attach<scene::TerrainComponent>();
         tc.levels = 4;
         tc.fovYDeg = 55.f;
-        tc.albedo = {0.36f, 0.38f, 0.28f};
+        tc.albedo = {0.20f, 0.28f, 0.14f}; // grass green: roads/houses stay readable on it
         tc.customDistances = {80.f, 200.f, 400.f};
         if (!tc.create(world.gridW, world.gridH, world.sizeX, world.sizeZ, world.heightScale)) {
             std::fprintf(stderr, "worldgen_screenshot: terrain create failed\n");
@@ -696,10 +696,9 @@ int main(int argc, char** argv) {
         }
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.3f, 0.55f, 0.6f}));
 
-        // overview across the plateau toward the lake/mountains (close enough that the
-        // road grid + houses stay readable through the fog)
-        cam.position = {0.f, 55.f, 110.f};
-        aimAt(cam, {0.f, world.waterLevelWorld * 1.05f, -5.f});
+        // overview close over the plateau: road grid + houses fill the frame, sky at top
+        cam.position = {0.f, 40.f, 75.f};
+        aimAt(cam, {0.f, world.waterLevelWorld * 1.05f, 0.f});
         const std::string ovPath = args.prefix + "_pipeline.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, ovPath,
                          &wc.surface, &env)) {
