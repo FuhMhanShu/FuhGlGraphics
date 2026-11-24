@@ -377,7 +377,8 @@ int main(int argc, char** argv) {
             }
         const float camX = peakX * 0.3f - 20.f, camZ = world.sizeZ * 0.425f;
         cam.position = {camX, std::max(tc.heightAt(camX, camZ), world.waterLevelWorld) + 9.f, camZ};
-        aimAt(cam, {peakX + 20.f, world.waterLevelWorld + 5.f, peakZ - 40.f});
+        // aim between the lake (near the center) and the peak so both are in frame
+        aimAt(cam, {peakX * 0.5f, world.waterLevelWorld + 4.f, peakZ * 0.5f});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
                          water ? &water->surface : nullptr)) {
