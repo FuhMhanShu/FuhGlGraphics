@@ -732,10 +732,10 @@ int main(int argc, char** argv) {
         }
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.3f, 0.55f, 0.6f}));
 
-        // overview steeply down onto the plateau (like the WFC city shot): road grid +
-        // houses fill the lower frame, sky/mountains above
-        cam.position = {0.f, 70.f, 90.f};
-        aimAt(cam, {0.f, world.waterLevelWorld, 0.f});
+        // overview steeply down onto the plateau, same camera as the (stable) WFC city
+        // overview: road grid + houses fill the lower frame, sky above
+        cam.position = {0.f, 80.f, 100.f};
+        aimAt(cam, {0.f, 0.f, 0.f});
         const std::string ovPath = args.prefix + "_pipeline.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, ovPath,
                          &wc.surface, &env)) {
