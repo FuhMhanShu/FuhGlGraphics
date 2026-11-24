@@ -61,6 +61,35 @@ void shiftY(fuhgl::render::MeshData& md, float dy) {
     for (std::size_t i = 0; i < md.vertexCount(); ++i) md.vertices[i * 11 + 1] += dy;
 }
 
+/// @brief UV sphere as MeshData (pos/normal/color/uv per vertex, outward CCW winding) —
+/// used for the scattered rocks; keeps worldgen free of GL-side Mesh objects.
+fuhgl::render::MeshData uvSphereData(float radius, int seg, const fuhgl::math::Vec3& color) {
+    fuhgl::render::MeshData md;
+    const int rings = std::max(3, seg);
+    md.vertices.reserve(static_cast<std::size_t>(rings + 1) * (seg + 1) * 11);
+    for (int r = 0; r <= rings; ++r) {
+        const float phi = fuhgl::math::kPi * static_cast<float>(r) / rings; // 0..pi, top to bottom
+        const float y = std::cos(phi) * radius;
+        const float rr = std::sin(phi) * radius;
+        for (int s = 0; s <= seg; ++s) {
+            const float theta = 2.f * fuhgl::math::kPi * static_cast<float>(s) / seg;
+            const float x = rr * std::cos(theta), z = rr * std::sin(theta);
+            const fuhgl::math::Vec3 n = fuhgl::math::normalize({x, y, z});
+            const float vert[11] = {x,  y,  z,  n.x, n.y, n.z, color.x, color.y, color.z,
+                                    static_cast<float>(s) / seg, static_cast<float>(r) / rings};
+            md.vertices.insert(md.vertices.end(), vert, vert + 11);
+        }
+    }
+    for (int r = 0; r < rings; ++r)
+        for (int s = 0; s < seg; ++s) {
+            const std::uint32_t a = static_cast<std::uint32_t>(r * (seg + 1) + s);
+            const std::uint32_t b = a + seg + 1;
+            md.indices.push_back(a); md.indices.push_back(a + 1); md.indices.push_back(b);
+            md.indices.push_back(a + 1); md.indices.push_back(b + 1); md.indices.push_back(b);
+        }
+    return md;
+}
+
 // --- landscape pipeline -------------------------------------------------------------------
 // 1. macro relief: domain-warped coords + continentalness mask (low-freq simplex decides
 //    plains vs. mountains) combining plain fBm (plains) with ridged multifractal (mountains)
@@ -73,7 +102,7 @@ float cellWorld(const WorldGenParams& p, int g) { return p.worldSize / static_ca
 /// @brief Hydraulic erosion: droplet particle simulation on the normalized heightmap.
 /// Each droplet flows downhill, erodes sediment where fast/steep and deposits it in the flats;
 /// the traveled water amount accumulates into `flow` (riverbeds).
-void hydraulicErode(std::vector<float>& h, int g, float cell, int droplets, Rng& rng,
+void hydraulicErode(std::vector<float>& h, int g, int droplets, Rng& rng,
                     std::vector<float>& flow) {
     const std::size_t n = static_cast<std::size_t>(g) * g;
     flow.assign(n, 0.f);
@@ -123,7 +152,6 @@ void hydraulicErode(std::vector<float>& h, int g, float cell, int droplets, Rng&
     for (const float f : flow) maxFlow = std::max(maxFlow, f);
     if (maxFlow > 0.f)
         for (float& f : flow) f /= maxFlow;
-    (void)cell;
 }
 
 /// @brief Thermal erosion: material slides down where the slope exceeds the talus threshold.
@@ -235,7 +263,7 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
     //    thermal passes relax slopes above the talus angle into debris fans
     Rng rng(p.seed ^ 0x7EE5u);
     if (p.erosionDroplets > 0)
-        hydraulicErode(w.heightmap, g, cellWorld(p, g), p.erosionDroplets, rng, w.flowmap);
+        hydraulicErode(w.heightmap, g, p.erosionDroplets, rng, w.flowmap);
     else
         w.flowmap.assign(w.heightmap.size(), 0.f);
     if (p.thermalPasses > 0) thermalErode(w.heightmap, g, p.talus, p.thermalPasses);
@@ -315,8 +343,7 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
     }
     for (const auto& s : poissonScatter(half, p.treeMinDist * 0.8f, p.rockCount, rockWeight, rng)) {
         PlacedMesh pm;
-        pm.mesh = fuhgl::render::makeSphere(1.f)->buildMesh(7, {0.45f, 0.44f, 0.42f},
-                                                            fuhgl::render::SolidUv::Spherical);
+        pm.mesh = uvSphereData(1.f, 7, {0.45f, 0.44f, 0.42f});
         pm.position = {s.x, w.heightAt(s.x, s.y) + 0.1f, s.y};
         pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
         pm.scale = 0.4f + 1.2f * rng.nextf();
