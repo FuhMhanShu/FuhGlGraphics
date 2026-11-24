@@ -69,7 +69,7 @@ bool renderToPng(fuhglgraphics::scene::Scene& scn, fuhgl::FirstPersonCamera& cam
         scn.fillFrame(frame, &cam, width, height);
         frame.effects.applyTo(renderer);
         frame.view.fogColor = {0.80f, 0.83f, 0.90f};
-        frame.view.fogDensity = 0.0012f;
+        frame.view.fogDensity = 0.0009f;
         if (water) water->update(1.f / 60.f);
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
                         frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
@@ -311,9 +311,9 @@ int main(int argc, char** argv) {
         p.seed = args.seed;
         p.worldSize = 200.f;
         p.terrainGrid = 129;
-        p.terrainHeight = 26.f;   // pronounced mountains
+        p.terrainHeight = 34.f;   // pronounced mountains
         p.warpStrength = 1.2f;
-        p.heightExponent = 0.75f;
+        p.heightExponent = 0.7f;
         p.waterLevel = 0.30f;     // lake
         p.treeCount = 130;
         p.bushCount = 180;
@@ -388,9 +388,9 @@ int main(int argc, char** argv) {
         addPlant("bush", world.bushes, 31);
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.35f, 0.5f, 0.6f}));
 
-        // high oblique overview: mountains behind, lake + meadow + forest in front, sky above
-        cam.position = {0.f, 70.f, 160.f};
-        aimAt(cam, {0.f, 6.f, 0.f});
+        // 3/4 view: mountains behind, lake + meadow + forest in the midground, sky above
+        cam.position = {0.f, 38.f, 135.f};
+        aimAt(cam, {0.f, 10.f, -5.f});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
                          water ? &water->surface : nullptr)) {
