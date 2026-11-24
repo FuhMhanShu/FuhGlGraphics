@@ -126,6 +126,37 @@ Varianten: Dachformen Satteldach, Schleppdach, Walmdach, Flachdach; Features Erk
 Anbau, Vordach, Kamin, Fachwerk; der Stil Highrise ergänzt Fensterraster + Rücksprung + Flachdach.
 Deterministisch pro Seed; Unit-Tests in `tests/test_procedural_house.cpp`.
 
+## Pipeline-Stadtgenerator (Terrain -> Straßen -> Grundstücke -> Häuser)
+
+`procedural::generateCityWorld(CityGenParams)` in `procedural/citygen.hpp` implementiert die
+ volle Pipeline als getrennte, unit-testbare Stufen:
+
+1. **Terrain & Zonen**: fBm-Höhenkarte mit abgeflachtem Stadt-Plateau und See unterhalb von
+   `waterLevel`; Zonen-Gitter `density` (Zentrum -> Hochhäuser, Rand -> Dorf) und `wealth`
+   aus unabhängigen Noise-Layern (`CityWorld::heightAt/densityAt/wealthAt`).
+2. **Straßennetz**: noise-gewarptes Straßengitter als planarer Graph (`RoadGraph`: Knoten =
+   Kreuzungen, Kanten = Abschnitte); Knoten im Wasser werden verworfen. Als Bürgersteig-+
+   Asphalt-Quads in `CityWorld::roadMesh` gerendert.
+3. **Parzellierung**: jede überlebende Gitterzelle ist ein Block-Polygon, rekursiv per OBB
+   gesplittet (Half-Plane-Split entlang der längsten PCA-Achse, eigenes `clipHalfPlane`/
+   `computeObb`); `earClip` trianguliert die Grundstücks-Platten (`lotMesh`). Rand-nahe Lots
+   bekommen Straßenzugang, innenliegende werden Parks.
+4. **Gebäude**: pro zugänglichem Lot ein `HouseGenerator`-Haus, Stil aus der Dichte-Zone
+   (Village/Town/Highrise); Park-Lots bekommen Büsche.
+
+Keine externe Polygon-Bibliothek nötig (Ear-Clipping, Half-Plane-Clip und OBB/PCA sind in
+`citygen.cpp` selbst implementiert). Performance-Hinweise app-seitig: statische Stadt-Geometrie
+in wenige Meshes mergen (wie die Demo), Fassaden-POM nur auf den Wänden, für wiederholte Module
+LOD/Instancing nutzen. Unit-Tests: `tests/test_procedural_citygen.cpp`.
+
+```cpp
+procedural::CityGenParams p;
+p.seed = 777;
+const auto city = procedural::generateCityWorld(p);
+// city.heightmap -> TerrainComponent, city.roadMesh/city.lotMesh -> Nodes,
+// city.houses -> PlacedMesh-Liste (Wände POM + Details + Dach)
+```
+
 ## Screenshot-Demo
 
 `examples/worldgen_screenshot` rendert beide Modi headless zu PNG (CI rendert

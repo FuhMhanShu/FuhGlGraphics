@@ -125,6 +125,37 @@ features bay window (Erker), dormers (Dachgauben), side annex (Anbau), porch can
 chimney, timber framing (Fachwerk); highrise style adds a facade window grid + setback + flat
 roof. Deterministic per seed; unit tests in `tests/test_procedural_house.cpp`.
 
+## Pipeline city generator (terrain -> roads -> lots -> houses)
+
+`procedural::generateCityWorld(CityGenParams)` in `procedural/citygen.hpp` implements the full
+pipeline as separate, unit-testable stages:
+
+1. **Terrain & zones**: fBm heightmap with a flattened city plateau and a lake below
+   `waterLevel`; zone grids `density` (city center -> highrises, rim -> village) and `wealth`
+   from independent noise layers (`CityWorld::heightAt/densityAt/wealthAt`).
+2. **Road network**: a noise-warped street grid stored as a planar graph (`RoadGraph`: nodes =
+   intersections, edges = segments); nodes under water are dropped. Rendered as
+   sidewalk+asphalt quads into `CityWorld::roadMesh`.
+3. **Lot subdivision**: each surviving grid cell is a block polygon, recursively OBB-split
+   (half-plane split along the longest PCA axis, self-contained `clipHalfPlane`/`computeObb`)
+   into lots; `earClip` triangulates the lot slabs (`lotMesh`). Boundary-touching lots get road
+   access, interior lots become parks.
+4. **Buildings**: per accessible lot a `HouseGenerator` house whose style comes from the
+   density zone (Village/Town/Highrise); park lots get bushes.
+
+No external polygon library is used (ear clipping, half-plane clip and OBB/PCA are implemented
+in `citygen.cpp`). Performance notes for the app side: merge static city geometry into few
+meshes (as the demo does), keep facade POM on the walls only, and use LOD/instancing for
+repeated modules. Unit tests: `tests/test_procedural_citygen.cpp`.
+
+```cpp
+procedural::CityGenParams p;
+p.seed = 777;
+const auto city = procedural::generateCityWorld(p);
+// city.heightmap -> TerrainComponent, city.roadMesh/city.lotMesh -> nodes,
+// city.houses -> PlacedMesh list (walls POM + details + roof)
+```
+
 ## Screenshot demo
 
 `examples/worldgen_screenshot` renders both modes headless to PNG (CI renders

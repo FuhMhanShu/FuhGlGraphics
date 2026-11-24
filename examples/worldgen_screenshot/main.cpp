@@ -264,6 +264,7 @@ int main(int argc, char** argv) {
     fuhgl::FirstPersonCamera cam;
     const bool doLandscape = args.mode == "both" || args.mode == "landscape";
     const bool doCity = args.mode == "both" || args.mode == "city";
+    const bool doPipeline = args.mode == "both" || args.mode == "pipeline";
 
     // --- landscape: generateWorld(Landscape) -> terrain + water + grass + trees + bushes ---
     if (doLandscape) {
@@ -504,6 +505,117 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "worldgen_screenshot: wrote %s (GL %d.%d %s)\n", stPath.c_str(),
                      fuhgl::gl::version().major, fuhgl::gl::version().minor,
                      fuhgl::gl::queryDeviceInfo().renderer.c_str());
+    }
+
+    // --- pipeline city: generateCityWorld (terrain+zones -> road graph -> lots -> houses) ---
+    if (doPipeline) {
+        procedural::CityGenParams p;
+        p.seed = args.seed;
+        p.worldSize = 240.f;
+        p.cityRadius = 95.f;
+        p.roadGrid = 9;
+        const procedural::CityWorld world = procedural::generateCityWorld(p);
+        std::fprintf(stderr,
+                     "worldgen_screenshot: pipeline seed %u: %zu road nodes, %zu edges, %zu lots, %zu houses\n",
+                     args.seed, world.roads.nodes.size(), world.roads.edges.size(), world.lots.size(),
+                     world.houses.size());
+
+        scene::Scene scene;
+        MeshArena arena;
+        // terrain from the pipeline heightmap
+        scene::Node& tn = scene.root().createChild("terrain");
+        scene::TerrainComponent& tc = tn.attach<scene::TerrainComponent>();
+        tc.levels = 4;
+        tc.fovYDeg = 55.f;
+        tc.albedo = {0.36f, 0.38f, 0.28f};
+        tc.customDistances = {80.f, 200.f, 400.f};
+        if (!tc.create(world.gridW, world.gridH, world.sizeX, world.sizeZ, world.heightScale)) {
+            std::fprintf(stderr, "worldgen_screenshot: terrain create failed\n");
+            return 1;
+        }
+        for (int j = 0; j < world.gridH; ++j)
+            for (int i = 0; i < world.gridW; ++i)
+                tc.heights[static_cast<std::size_t>(j) * tc.gridW + i] =
+                    world.heightmap[static_cast<std::size_t>(i) + world.gridW * j];
+        if (!tc.rebuildLod()) {
+            std::fprintf(stderr, "worldgen_screenshot: terrain rebuildLod failed\n");
+            return 1;
+        }
+        scene.root().effects.enable(render::Effect::Water);
+        // lake around the plateau
+        scene::Node& wn = scene.root().createChild("lake");
+        wn.translation = {0.f, world.waterLevelWorld, 0.f};
+        scene::WaterComponent& wc = wn.attach<scene::WaterComponent>();
+        if (!wc.surface.create(160, p.worldSize * 1.1f)) {
+            std::fprintf(stderr, "worldgen_screenshot: water create failed\n");
+            return 1;
+        }
+        wc.surface.waves = {
+            {{1.f, 0.15f}, 0.30f, 16.f, 2.0f, 0.65f},
+            {{0.7f, 0.7f}, 0.18f, 8.f, 1.4f, 0.55f},
+        };
+        wc.surface.reflectionStrength = 0.8f;
+        wc.surface.foamStrength = 1.f;
+        wc.surface.deepColor = {0.004f, 0.05f, 0.11f};
+        wc.surface.shallowColor = {0.06f, 0.30f, 0.38f};
+
+        addMeshNode(scene, arena, "roads", world.roadMesh, {1.f, 1.f, 1.f}, 0.9f, 3, false);
+        addMeshNode(scene, arena, "lots", world.lotMesh, {1.f, 1.f, 1.f}, 1.f, 4, false);
+        // houses: walls with brick POM, details plain, roof shingle
+        for (std::size_t i = 0; i < world.houses.size(); ++i) {
+            const auto& b = world.houses[i];
+            scene::Node& n = scene.root().createChild("b" + std::to_string(i));
+            n.translation = b.position;
+            n.rotation = fuhgl::math::fromAxisAngle(b.rotY, {0.f, 1.f, 0.f});
+            n.scale = {b.scale, b.scale, b.scale};
+            scene::MeshComponent& mc = n.attach<scene::MeshComponent>();
+            scene::MeshEntry& walls = mc.addMesh(arena.add(b.mesh));
+            walls.albedoTexture = &brickAlbedo;
+            walls.normalMap = &brickNormal;
+            walls.heightMap = &brickHeight;
+            walls.parallaxScale = 0.05f;
+            walls.parallaxLayers = 24;
+            walls.roughness = 0.85f;
+            walls.materialId = 5;
+            if (b.detailMesh.vertexCount() > 0) {
+                scene::MeshEntry& det = mc.addMesh(arena.add(b.detailMesh));
+                det.albedo = {1.4f, 1.4f, 1.4f};
+                det.roughness = 0.4f;
+                det.materialId = 8;
+            }
+            if (b.roofMesh.vertexCount() > 0) {
+                scene::MeshEntry& roof = mc.addMesh(arena.add(b.roofMesh));
+                roof.albedoTexture = &shingle;
+                roof.albedo = {1.6f, 1.6f, 1.6f};
+                roof.roughness = 0.7f;
+                roof.materialId = 6;
+            }
+        }
+        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.3f, 0.55f, 0.6f}));
+
+        // overview across the plateau toward the lake/mountains
+        cam.position = {0.f, 90.f, 150.f};
+        aimAt(cam, {0.f, world.waterLevelWorld, 0.f});
+        const std::string ovPath = args.prefix + "_pipeline.png";
+        if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, ovPath,
+                         &wc.surface, &env)) {
+            std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", ovPath.c_str());
+            return 1;
+        }
+        std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", ovPath.c_str());
+
+        // street-level view from the first road node
+        if (!world.roads.nodes.empty()) {
+            const auto& nd = world.roads.nodes.front();
+            cam.position = {nd.x, world.waterLevelWorld * 1.05f + 2.2f, nd.y + 14.f};
+            aimAt(cam, {nd.x, world.waterLevelWorld * 1.05f + 1.8f, nd.y - 8.f});
+            const std::string stPath = args.prefix + "_pipeline_street.png";
+            if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, stPath, &wc.surface, &env)) {
+                std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", stPath.c_str());
+                return 1;
+            }
+            std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", stPath.c_str());
+        }
     }
     return 0;
 }
