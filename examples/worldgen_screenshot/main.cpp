@@ -665,15 +665,41 @@ int main(int argc, char** argv) {
 
         addMeshNode(scene, arena, "roads", world.roadMesh, {1.f, 1.f, 1.f}, 0.9f, 3, false);
         addMeshNode(scene, arena, "lots", world.lotMesh, {1.f, 1.f, 1.f}, 1.f, 4, false);
-        // houses: walls with brick POM, details plain, roof shingle
-        for (std::size_t i = 0; i < world.houses.size(); ++i) {
-            const auto& b = world.houses[i];
-            scene::Node& n = scene.root().createChild("b" + std::to_string(i));
-            n.translation = b.position;
-            n.rotation = fuhgl::math::fromAxisAngle(b.rotY, {0.f, 1.f, 0.f});
-            n.scale = {b.scale, b.scale, b.scale};
-            scene::MeshComponent& mc = n.attach<scene::MeshComponent>();
-            scene::MeshEntry& walls = mc.addMesh(arena.add(b.mesh));
+        // houses: bake every house's transform into three merged static meshes (walls with
+        // brick POM, details plain, roofs shingle) — one draw item each instead of ~3 per
+        // house (~6500 houses here); merging static geometry is the recommended app-side
+        // performance pattern and keeps the headless render deterministic
+        fuhgl::render::MeshData wallsAll, detAll, roofAll;
+        auto appendT = [](fuhgl::render::MeshData& dst, const fuhgl::render::MeshData& src,
+                          const fuhgl::math::Mat4& m) {
+            const fuhgl::math::Mat3 m3(m);
+            const std::uint32_t base = static_cast<std::uint32_t>(dst.vertexCount());
+            for (std::size_t i = 0; i < src.vertexCount(); ++i) {
+                const float* v = &src.vertices[i * 11];
+                const fuhgl::math::Vec4 p = m * fuhgl::math::Vec4{v[0], v[1], v[2], 1.f};
+                const fuhgl::math::Vec3 n =
+                    fuhgl::math::normalize(m3 * fuhgl::math::Vec3{v[3], v[4], v[5]});
+                dst.vertices.push_back(p.x);
+                dst.vertices.push_back(p.y);
+                dst.vertices.push_back(p.z);
+                dst.vertices.push_back(n.x);
+                dst.vertices.push_back(n.y);
+                dst.vertices.push_back(n.z);
+                for (int k = 6; k < 11; ++k) dst.vertices.push_back(v[k]);
+            }
+            for (const std::uint32_t idx : src.indices) dst.indices.push_back(base + idx);
+        };
+        for (const auto& b : world.houses) {
+            const fuhgl::math::Mat4 m = fuhgl::math::translate(b.position) *
+                                        fuhgl::math::fromAxisAngle(b.rotY, {0.f, 1.f, 0.f}) *
+                                        fuhgl::math::scale({b.scale, b.scale, b.scale});
+            appendT(wallsAll, b.mesh, m);
+            if (b.detailMesh.vertexCount() > 0) appendT(detAll, b.detailMesh, m);
+            if (b.roofMesh.vertexCount() > 0) appendT(roofAll, b.roofMesh, m);
+        }
+        {
+            scene::Node& n = scene.root().createChild("houseWalls");
+            scene::MeshEntry& walls = n.attach<scene::MeshComponent>().addMesh(arena.add(wallsAll));
             walls.albedoTexture = &brickAlbedo;
             walls.normalMap = &brickNormal;
             walls.heightMap = &brickHeight;
@@ -681,19 +707,23 @@ int main(int argc, char** argv) {
             walls.parallaxLayers = 24;
             walls.roughness = 0.85f;
             walls.materialId = 5;
-            if (b.detailMesh.vertexCount() > 0) {
-                scene::MeshEntry& det = mc.addMesh(arena.add(b.detailMesh));
-                det.albedo = {1.4f, 1.4f, 1.4f};
-                det.roughness = 0.4f;
-                det.materialId = 8;
-            }
-            if (b.roofMesh.vertexCount() > 0) {
-                scene::MeshEntry& roof = mc.addMesh(arena.add(b.roofMesh));
-                roof.albedoTexture = &shingle;
-                roof.albedo = {1.6f, 1.6f, 1.6f};
-                roof.roughness = 0.7f;
-                roof.materialId = 6;
-            }
+            walls.castShadow = true;
+        }
+        if (detAll.vertexCount() > 0) {
+            scene::Node& n = scene.root().createChild("houseDetails");
+            scene::MeshEntry& det = n.attach<scene::MeshComponent>().addMesh(arena.add(detAll));
+            det.albedo = {1.4f, 1.4f, 1.4f};
+            det.roughness = 0.4f;
+            det.materialId = 8;
+        }
+        if (roofAll.vertexCount() > 0) {
+            scene::Node& n = scene.root().createChild("houseRoofs");
+            scene::MeshEntry& roof = n.attach<scene::MeshComponent>().addMesh(arena.add(roofAll));
+            roof.albedoTexture = &shingle;
+            roof.albedo = {1.6f, 1.6f, 1.6f};
+            roof.roughness = 0.7f;
+            roof.materialId = 6;
+            roof.castShadow = true;
         }
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.3f, 0.55f, 0.6f}));
 
