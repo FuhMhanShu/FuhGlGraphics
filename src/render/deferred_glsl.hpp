@@ -1572,7 +1572,7 @@ void main() {
     vec3 skyRefl = (uUseSkyCube == 1) ? texture(uSkyCube, R).rgb
                                       : mix(uSkyBottom, uSkyTop, clamp(R.y, 0.0, 1.0));
     skyRefl += uSunColor * smoothstep(uSunCos, 1.0, dot(R, uSunDir));
-    refl += skyRefl * clamp(fres, 0.0, 1.0) * 0.9;
+    refl += skyRefl * clamp(fres, 0.0, 1.0);
     // refraction: scene HDR distorted by the normal, absorbed with depth, tinted by the body color
     vec2 refrUV = clamp(uv + N.xz * uRefractionDistortion, vec2(0.001), vec2(0.999));
     vec3 refr = texture(uSceneHdr, refrUV).rgb;

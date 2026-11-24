@@ -49,8 +49,8 @@ wc.surface.create(160, 220.f);                        // GL context required
 wc.surface.setDefaultWaves();                         // 4 Gerstner waves; or tune wc.surface.waves
 wc.surface.deepColor    = {0.01f, 0.08f, 0.13f};
 wc.surface.shallowColor = {0.08f, 0.35f, 0.40f};
-wc.surface.foamCrestStart = 0.88f;                    // crest foam ("Gicht") only above 88% of the max wave height
-wc.surface.shoreFoamWidth = 0.5f;                     // world units of water depth (thin shore band)
+wc.surface.foamCrestStart = 0.95f;                    // crest foam ("Gicht") only above 95% of the max wave height
+wc.surface.shoreFoamWidth = 0.3f;                     // world units of water depth (very thin shore band)
 
 scene.root().effects.enable(fuhglgraphics::render::Effect::Water);
 // per frame:
