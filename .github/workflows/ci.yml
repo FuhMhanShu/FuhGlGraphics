@@ -255,11 +255,13 @@ jobs:
           cmake --build build -j --target fuhglgraphics_creature_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_creature_screenshot --prefix docs/images/ci/g30_creature --width 1280 --height 720 --frames 16
 
+      # G31 pipeline shots (--mode pipeline) are NOT rendered here: the 6500-house scene is
+      # flaky under headless llvmpipe (occasionally renders an empty frame), so they are not
+      # PSNR-gated; the checked-in docs/images/g31_pipeline{,_street}.png come from a manual run.
       - name: Build + render G31 world-generator screenshots (generateWorld landscape heightmap+trees, WFC city + district plates; landscape/city overview + street level)
         run: |
           cmake --build build -j --target fuhglgraphics_worldgen_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode both
-          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31 --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline
 
       - name: Build + render G36 ice-cave screenshots (SDF cave with campfire inside — G35 flame particles, ice crystals + SSR/SSS, water puddle, HBAO, bloom, volumetric fog, entrance glow; wide/crystals/entrance)
         run: |

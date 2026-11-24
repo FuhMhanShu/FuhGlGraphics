@@ -193,17 +193,18 @@ const auto city = procedural::generateCityWorld(p);
 
 ## Screenshot-Demo
 
-`examples/worldgen_screenshot` rendert alle Modi headless zu PNG (CI rendert
-`docs/images/ci/g31_worldgen_{landscape,city,city_street}.png` und
-`docs/images/ci/g31_pipeline{,_street}.png`, per optipng komprimiert; eingecheckte Referenzen in
-[docs/images/](../../images/g31_worldgen_city.png)):
+`examples/worldgen_screenshot` rendert alle Modi headless zu PNG. Die CI rendert und
+PSNR-gated `docs/images/ci/g31_worldgen_{landscape,city,city_street}.png` (per optipng
+komprimiert; eingecheckte Referenzen in [docs/images/](../../images/g31_worldgen_city.png)).
+Die Pipeline-Shots (`--mode pipeline`, ~6500 Häuser) sind unter headless llvmpipe flaky, werden
+also manuell gerendert und nur als Referenzen eingecheckt, nicht CI-gated:
 
 ```bash
 cmake --build build --target fuhglgraphics_worldgen_screenshot
 FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
     --prefix g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode both
 FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
-    --prefix g31_pipeline --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline
+    --prefix g31 --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline
 # schreibt g31_worldgen_{landscape,city,city_street}.png und g31_pipeline{,_street}.png
 ```
 
