@@ -42,6 +42,17 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G31 — world generator helper** (`include/fuhglgraphics/procedural/worldgen.hpp`,
+  `src/procedural/worldgen.cpp`): `procedural::generateWorld(WorldGenParams)` builds either a
+  landscape (G24 seeded noise heightmap with island falloff + optional lake basin, `heightAt()`
+  world-space sampling, scattered G26 L-system trees via rejection sampling) or a city (G27 WFC
+  layout from `makeCityTiles()`, merged road slabs, one per-block jittered building box,
+  optional G28 voronoi district plates). Pure CPU, deterministic per seed; result
+  `GeneratedWorld` attaches to a `scene::Scene` via `Mesh::setMeshData` + node transforms.
+  Unit tests `tests/test_procedural_worldgen.cpp`, demo `examples/worldgen_screenshot`
+  (landscape/city/city-street headless PNGs), CI docs-screenshots step + lossless optipng
+  compression, references `docs/images/g31_worldgen_{landscape,city,city_street}.png`,
+  tutorials en/de. Requirement entry G31 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 - **G30 — procedural creatures** (`include/fuhglgraphics/procedural/creature.hpp`,
   `src/procedural/creature.cpp`): `Skeleton` graph (nodes with position/radius/`BodyPart`,
   `finalize()` bakes world-space ellipsoid + tapered-capsule prims with broadphase AABBs, linear

@@ -11,9 +11,10 @@
 //   anim/     G6   keyframe AnimationPlayer + skeletal skinning (CPU palette) (implemented)
 //   probes/   G7   SH L2 light-probe grid, CPU bake + 3D-texture sampling (implemented)
 //   water/    G13  realistic water: Gerstner waves + planar reflection + foam (implemented)
-//   procedural/ G24-G30  procedural generation: seeded CPU noise (G24), marching cubes (G25),
+//   procedural/ G24-G31  procedural generation: seeded CPU noise (G24), marching cubes (G25),
 //                   L-systems (G26), wave function collapse (G27), voronoi (G28),
-//                   SDF/3D fractals (G29), procedural creatures (G30)
+//                   SDF/3D fractals (G29), procedural creatures (G30), world generator
+//                   helper generateWorld (G31: landscape or city from one params struct)
 //   editor/   G2+G11  Qt6 editor code (only built with FUHGLGRAPHICS_WITH_QT=1):
 //                   gl_viewport_widget.hpp = GL viewport widget (fps limiter, frame stats)
 // Additionally planned: G10 quick upgrades, G11 engine infrastructure.
@@ -63,6 +64,7 @@
 #include <fuhglgraphics/procedural/voronoi.hpp>
 #include <fuhglgraphics/procedural/sdf.hpp>
 #include <fuhglgraphics/procedural/creature.hpp>
+#include <fuhglgraphics/procedural/worldgen.hpp>
 
 // NOTE: editor/gl_viewport_widget.hpp (WITH_QT only) is deliberately NOT included here:
 // its Qt/GL headers would leak GL macros (e.g. GL_UNSIGNED_INT) into every core TU and
