@@ -388,9 +388,21 @@ int main(int argc, char** argv) {
         addPlant("bush", world.bushes, 31);
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.35f, 0.5f, 0.6f}));
 
-        // 3/4 view: mountains behind, lake + meadow + forest in the midground, sky above
-        cam.position = {0.f, 38.f, 135.f};
-        aimAt(cam, {0.f, 10.f, -5.f});
+        // ground-level view from the south shore: lake + meadow in the foreground,
+        // the highest peak in the background, sky above — camera derived from the heightmap
+        float peakH = 0.f, peakX = 0.f, peakZ = 0.f;
+        for (int j = 0; j < world.gridH; ++j)
+            for (int i = 0; i < world.gridW; ++i) {
+                const float h = world.heightmap[static_cast<std::size_t>(i) + world.gridW * j];
+                if (h > peakH) {
+                    peakH = h;
+                    peakX = (static_cast<float>(i) / (world.gridW - 1) - 0.5f) * world.sizeX;
+                    peakZ = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
+                }
+            }
+        const float camX = peakX * 0.3f, camZ = world.sizeZ * 0.475f;
+        cam.position = {camX, world.heightAt(camX, camZ) + 2.5f, camZ};
+        aimAt(cam, {peakX, peakH * world.heightScale * 0.6f, peakZ});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
                          water ? &water->surface : nullptr)) {
