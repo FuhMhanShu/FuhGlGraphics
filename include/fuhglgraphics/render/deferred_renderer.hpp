@@ -240,7 +240,7 @@ public:
 
     /// @brief G13: resolution scale of the planar-reflection target relative to the
     /// internal render size (0, 1]; applied on the next create()/resize()/setWaterReflectionScale().
-    float waterReflectionScale = 0.5f;
+    float waterReflectionScale = 0.75f;
     /// @brief Recreates the reflection target at the new scale.
     void setWaterReflectionScale(float scale);
 

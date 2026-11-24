@@ -7,7 +7,7 @@
 //
 // Usage: fuhglgraphics_water_screenshot --out file.png [--width 1280] [--height 720]
 //          [--frames 16] [--scale 1.0] [--msaa 0] [--time 4.0] [--cam 0|1|2]
-//          [--refl-scale 0.5] [--no-ibl] [--no-shadows] [--no-fog]
+//          [--refl-scale 0.75] [--no-ibl] [--no-shadows] [--no-fog]
 //          [--no-reflection] [--no-foam] [--water-off]
 //
 // Exit code 2 when no headless GL context is available.
@@ -33,7 +33,7 @@ namespace {
 struct Args {
     std::string out = "water.png";
     int width = 1280, height = 720, frames = 16, msaa = 0;
-    float scale = 1.f, time = 4.f, reflScale = 0.5f;
+    float scale = 1.f, time = 4.f, reflScale = 0.75f;
     int cam = 0;
     bool ibl = true, shadows = true, fog = true, reflection = true, foam = true, water = true;
 };
@@ -226,8 +226,8 @@ int main(int argc, char** argv) {
         {{0.2f, -1.f}, 0.07f, 2.8f, 0.8f, 0.35f},
     };
     wc.surface.time = 0.f;
-    wc.surface.reflectionStrength = args.reflection ? 0.9f : 0.f;
-    wc.surface.foamStrength = args.foam ? 1.f : 0.f;
+    wc.surface.reflectionStrength = args.reflection ? 1.f : 0.f;
+    if (!args.foam) wc.surface.foamStrength = 0.f; // otherwise keep the tuned default
     wc.surface.deepColor = {0.004f, 0.05f, 0.11f};
     wc.surface.shallowColor = {0.06f, 0.30f, 0.38f};
 

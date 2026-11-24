@@ -89,12 +89,12 @@ public:
     fuhgl::math::Vec3 foamColor{0.92f, 0.96f, 1.0f};         ///< crest/shore foam ("Gicht")
     float fresnelF0 = 0.02f;          ///< dielectric fresnel reflectance at normal incidence
     float reflectionStrength = 1.f;   ///< planar-reflection intensity (0 = off)
-    float distortion = 0.05f;         ///< reflection UV offset per unit of normal xz (lower = sharper mirror)
+    float distortion = 0.03f;         ///< reflection UV offset per unit of normal xz (lower = sharper mirror)
     float refractionDistortion = 0.035f; ///< refraction UV offset per unit of normal xz
-    float foamCrestStart = 0.80f;     ///< crest foam starts at this fraction of maxWaveHeight
-    float foamCrestSoftness = 0.10f;  ///< smooth width of the crest-foam ramp
-    float shoreFoamWidth = 0.8f;      ///< water depth (world units) over which shore foam fades in
-    float foamStrength = 0.85f;       ///< overall foam intensity (0 = off)
+    float foamCrestStart = 0.88f;     ///< crest foam starts at this fraction of maxWaveHeight
+    float foamCrestSoftness = 0.06f;  ///< smooth width of the crest-foam ramp
+    float shoreFoamWidth = 0.5f;      ///< water depth (world units) over which shore foam fades in
+    float foamStrength = 0.55f;       ///< overall foam intensity (0 = off)
     float glintPower = 512.f;         ///< sun-glint specular exponent
     float detailNormalScale = 2.2f;   ///< strength of the procedural ripple detail normal
 

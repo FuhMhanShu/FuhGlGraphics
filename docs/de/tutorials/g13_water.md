@@ -51,8 +51,8 @@ wc.surface.create(160, 220.f);                        // GL-Kontext nötig
 wc.surface.setDefaultWaves();                         // 4 Gerstner-Wellen; oder wc.surface.waves tunen
 wc.surface.deepColor    = {0.01f, 0.08f, 0.13f};
 wc.surface.shallowColor = {0.08f, 0.35f, 0.40f};
-wc.surface.foamCrestStart = 0.80f;                    // Kamm-Schaum („Gicht") nur oberhalb 80% der max. Wellenhöhe
-wc.surface.shoreFoamWidth = 0.8f;                     // Wassertiefe in Welt-Einheiten (schmaler Ufersaum)
+wc.surface.foamCrestStart = 0.88f;                    // Kamm-Schaum („Gicht") nur oberhalb 88% der max. Wellenhöhe
+wc.surface.shoreFoamWidth = 0.5f;                     // Wassertiefe in Welt-Einheiten (schmaler Ufersaum)
 
 scene.root().effects.enable(fuhglgraphics::render::Effect::Water);
 // pro Frame:
