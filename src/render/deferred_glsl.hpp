@@ -1498,6 +1498,11 @@ in vec2 vLocalXZ;
 uniform sampler2D uSceneHdr; // unit 0: lighting output without the water (refraction)
 uniform sampler2D uGDepth;   // unit 1: G-buffer depth (occlusion + shore foam)
 uniform sampler2D uReflTex;  // unit 2: planar reflection target
+uniform samplerCube uSkyCube; // unit kTextureUnitSkyCube (16): sharp sky mirror on top
+uniform int uUseSkyCube;
+uniform vec3 uSkyTop;
+uniform vec3 uSkyBottom;
+uniform float uSunCos;
 uniform mat4 uInvViewProj;
 uniform mat4 uViewProj;      // camera viewProj (un-jittered): water fragment -> depth value
 uniform vec3 uCamPos;
@@ -1557,9 +1562,17 @@ void main() {
     float foam = clamp(max(shoreFoam, crestFoam) * uFoamStrength, 0.0, 1.0);
     // fresnel (dielectric)
     float fres = uFresnelF0 + (1.0 - uFresnelF0) * pow(1.0 - max(dot(N, V), 0.0), 5.0);
-    // planar reflection: the mirrored camera shares the projection, so screen uv maps 1:1
+    vec3 R = reflect(-V, N);
+    // surface reflection: planar reflection (mirrored camera shares the projection, so the
+    // screen uv maps 1:1, only distorted by the wave normal) ...
     vec2 reflUV = clamp(uv + N.xz * uDistortion, vec2(0.001), vec2(0.999));
     vec3 refl = texture(uReflTex, reflUV).rgb * uReflectionStrength;
+    // ... plus a sharp sky mirror sampled by the reflected ray (the planar target is
+    // half-res and distorted, the cubemap gives the crisp sky/sun reflection on top)
+    vec3 skyRefl = (uUseSkyCube == 1) ? texture(uSkyCube, R).rgb
+                                      : mix(uSkyBottom, uSkyTop, clamp(R.y, 0.0, 1.0));
+    skyRefl += uSunColor * smoothstep(uSunCos, 1.0, dot(R, uSunDir));
+    refl += skyRefl * clamp(fres, 0.0, 1.0) * 0.5;
     // refraction: scene HDR distorted by the normal, absorbed with depth, tinted by the body color
     vec2 refrUV = clamp(uv + N.xz * uRefractionDistortion, vec2(0.001), vec2(0.999));
     vec3 refr = texture(uSceneHdr, refrUV).rgb;
@@ -1568,7 +1581,6 @@ void main() {
     vec3 refrCol = refr * absorb + body * (1.0 - absorb) * 0.8;
     vec3 col = mix(refrCol, refl, clamp(fres, 0.0, 1.0));
     // sun glint on the wave normals
-    vec3 R = reflect(-V, N);
     col += uSunColor * pow(max(dot(R, uSunDir), 0.0), uGlintPower) * 2.0;
     // foam on top ("Gicht" at the crests + shore foam)
     col = mix(col, uFoamColor, foam);

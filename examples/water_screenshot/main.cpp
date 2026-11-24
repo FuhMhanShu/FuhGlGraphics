@@ -228,8 +228,6 @@ int main(int argc, char** argv) {
     wc.surface.time = 0.f;
     wc.surface.reflectionStrength = args.reflection ? 0.9f : 0.f;
     wc.surface.foamStrength = args.foam ? 1.f : 0.f;
-    wc.surface.shoreFoamWidth = 1.2f;
-    wc.surface.foamCrestStart = 0.55f;
     wc.surface.deepColor = {0.004f, 0.05f, 0.11f};
     wc.surface.shallowColor = {0.06f, 0.30f, 0.38f};
 
