@@ -308,6 +308,7 @@ jobs:
           optipng -o7 -quiet docs/images/ci/*.png
 
       - name: Upload screenshots
+        if: always() # keep the artifact even when the PSNR diff fails (needed to update references)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: g3-screenshots
