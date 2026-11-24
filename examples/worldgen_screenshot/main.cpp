@@ -152,7 +152,7 @@ fuhgl::Texture makeTexFromRGBA(int w, int h, const std::vector<unsigned char>& r
 // blend the GeneratedWorld splatmap weights (R grass / G rock / B sand / A snow) into an RGB
 // albedo texture with fixed biome base colors — a production terrain shader would instead
 // mix 4 material textures with these weights (triplanar on steep slopes)
-fuhgl::Texture makeSplatAlbedoTex(const procedural::GeneratedWorld& world) {
+fuhgl::Texture makeSplatAlbedoTex(const fuhglgraphics::procedural::GeneratedWorld& world) {
     const int g = world.gridW;
     const fuhgl::math::Vec3 grass{0.24f, 0.42f, 0.15f}, rock{0.42f, 0.40f, 0.38f},
         sand{0.72f, 0.64f, 0.46f}, snow{0.92f, 0.94f, 0.98f};
@@ -179,7 +179,7 @@ fuhgl::Texture makeSplatAlbedoTex(const procedural::GeneratedWorld& world) {
 // static grid mesh built from a GeneratedWorld heightmap (pos3/normal3/color3/uv2 per vertex,
 // uv = grid uv so the splatmap texture maps 1:1 onto the cells). In a production scene the
 // terrain comes from scene::TerrainComponent (LodMesh LOD over the same heightmap).
-fuhgl::render::MeshData terrainMeshData(const procedural::GeneratedWorld& world) {
+fuhgl::render::MeshData terrainMeshData(const fuhglgraphics::procedural::GeneratedWorld& world) {
     const int gw = world.gridW, gh = world.gridH;
     fuhgl::render::MeshData md;
     md.vertices.reserve(static_cast<std::size_t>(gw) * gh * fuhgl::render::MeshData::kFloatsPerVertex);
