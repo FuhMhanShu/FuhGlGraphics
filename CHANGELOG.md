@@ -74,8 +74,8 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   are split from pavements/sidewalks (`GeneratedWorld::roads`/`pavements`,
   `CityWorld::roadMesh`/`sidewalkMesh`) so the app can texture only the streets (cobble with POM);
   `PlacedMesh` carries `glassMesh` + `facade`; the demo wires per-facade POM walls, a reflective
-  glass entry, the selectable road surface (`--surface`, cobble POM default) and wet reflective
-  streets (`--wet`, SSR + roughness 0.12/metallic 0.4). Unit tests
+  glass entry, the selectable road surface (`--surface`, asphalt default; CI also renders a gated
+  cobble+wet showcase) and wet reflective streets (`--wet`, SSR + roughness 0.12/metallic 0.4). Unit tests
   `tests/test_procedural_{worldgen,house,citygen,plant}.cpp`.
 - **G30 — procedural creatures** (`include/fuhglgraphics/procedural/creature.hpp`,
   `src/procedural/creature.cpp`): `Skeleton` graph (nodes with position/radius/`BodyPart`,

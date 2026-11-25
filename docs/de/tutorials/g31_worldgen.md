@@ -250,10 +250,13 @@ const auto city = procedural::generateCityWorld(p);
 ## Screenshot-Demo
 
 `examples/worldgen_screenshot` rendert alle Modi headless zu PNG. Die CI rendert und
-PSNR-gated `docs/images/ci/g31_worldgen_{landscape,city,city_street}.png` (per optipng
-komprimiert; eingecheckte Referenzen in [docs/images/](../../images/g31_worldgen_city.png)).
-Die Pipeline-Shots (`--mode pipeline`, ~6500 Häuser) sind unter headless llvmpipe flaky, werden
-also manuell gerendert und nur als Referenzen eingecheckt, nicht CI-gated:
+PSNR-gated `docs/images/ci/g31_worldgen_{landscape,city,city_street}.png` sowie das
+Kopfsteinpflaster+Nass-Straßen-Showcase `g31_cobble_{city,city_street}.png` (`--mode city
+--surface cobble --wet`; per optipng komprimiert; eingecheckte Referenzen in
+[docs/images/](../../images/g31_worldgen_city.png)). Die Pipeline-Shots (`--mode pipeline`,
+~6500 Häuser) sind unter headless llvmpipe flaky, daher rendert die CI sie in ein nicht gatedes
+`manual/`-Unterverzeichnis des Artefakts und gute Runs werden von Hand nach
+`docs/images/g31_pipeline{,_street}.png` kopiert:
 
 ```bash
 cmake --build build --target fuhglgraphics_worldgen_screenshot
@@ -262,7 +265,7 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
 FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
     --prefix g31 --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline
 # schreibt g31_worldgen_{landscape,city,city_street}.png und g31_pipeline{,_street}.png
-# Straßenbelag + nasse Straßen für die Stadt-Modi:
+# Straßenbelag + nasse Straßen für die Stadt-Modi (Default: asphalt, trocken):
 #   --surface asphalt|cobble|paving|dirt   (cobble/paving rendern mit POM-Parallax)
 #   --wet                                  (dunkle reflektierende Straßen: SSR + roughness 0.12)
 ```
@@ -270,6 +273,8 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
 ![G31 Landschaft](../../images/g31_worldgen_landscape.png)
 ![G31 Stadt Übersicht](../../images/g31_worldgen_city.png)
 ![G31 Stadt Straßenebene](../../images/g31_worldgen_city_street.png)
+![G31 Kopfsteinpflaster + nasse Straßen Übersicht](../../images/g31_cobble_city.png)
+![G31 Kopfsteinpflaster + nasse Straßen Straßenebene](../../images/g31_cobble_city_street.png)
 ![G31 Pipeline-Stadt Übersicht](../../images/g31_pipeline.png)
 ![G31 Pipeline Straßenebene](../../images/g31_pipeline_street.png)
 

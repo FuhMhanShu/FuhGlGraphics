@@ -48,7 +48,7 @@ struct Args {
     unsigned seed = 777u;
     std::string mode = "both"; // both | landscape | city | pipeline
     std::string style = "town"; // village | town | highrise (city house style)
-    std::string surface = "cobble"; // asphalt | cobble | paving | dirt (city road surface)
+    std::string surface = "asphalt"; // asphalt | cobble | paving | dirt (city road surface)
     bool wet = false; // wet roads: dark + reflective
 };
 

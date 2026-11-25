@@ -255,13 +255,18 @@ jobs:
           cmake --build build -j --target fuhglgraphics_creature_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_creature_screenshot --prefix docs/images/ci/g30_creature --width 1280 --height 720 --frames 16
 
-      # G31 pipeline shots (--mode pipeline) are NOT rendered here: the 6500-house scene is
-      # flaky under headless llvmpipe (occasionally renders an empty frame), so they are not
-      # PSNR-gated; the checked-in docs/images/g31_pipeline{,_street}.png come from a manual run.
+      # G31 pipeline shots (--mode pipeline, ~6500 houses) are flaky under headless llvmpipe
+      # (occasionally an empty frame), so they are rendered into the manual/ subdir: uploaded
+      # with the artifact but NOT PSNR-gated (screenshot_diff only lists the top level of
+      # docs/images/ci); good runs are copied into docs/images/g31_pipeline{,_street}.png by hand.
       - name: Build + render G31 world-generator screenshots (generateWorld landscape heightmap+trees, WFC city + district plates; landscape/city overview + street level)
         run: |
           cmake --build build -j --target fuhglgraphics_worldgen_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode both
+          # cobblestone + wet streets showcase (POM parallax, reflective) as extra gated refs
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_cobble --width 1280 --height 720 --frames 16 --seed 777 --mode city --surface cobble --wet
+          mkdir -p docs/images/ci/manual
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/manual/g31 --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline || true
 
       - name: Build + render G36 ice-cave screenshots (SDF cave with campfire inside — G35 flame particles, ice crystals + SSR/SSS, water puddle, HBAO, bloom, volumetric fog, entrance glow; wide/crystals/entrance)
         run: |
