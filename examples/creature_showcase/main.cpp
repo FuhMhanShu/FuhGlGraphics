@@ -284,7 +284,8 @@ int main(int argc, char** argv) {
     CreatureActor serp = buildG32Creature(ecoSerp, 99u, palSerp, 72, 192, 6.f); // stripes
 
     CreatureActor* actors[3] = {&herb, &carn, &serp};
-    const float yaws[3] = {fuhgl::math::radians(-18.f), 0.f, fuhgl::math::radians(22.f)};
+    const float yaws[3] = {fuhgl::math::radians(-18.f), fuhgl::math::radians(38.f),
+                           fuhgl::math::radians(22.f)}; // profile view for all three
     for (int i = 0; i < 3; ++i) {
         scene::Node& n = scene.root().createChild("creature" + std::to_string(i));
         n.translation = {columnX[i], kColumnTop + 0.02f, 0.f};
@@ -305,9 +306,9 @@ int main(int argc, char** argv) {
         Vec3 pos{0.f, 0.f, 0.f};
     };
     std::vector<Torch> torches;
-    const Vec3 torchPos[3] = {{-2.3f, 0.f, 2.6f}, {2.3f, 0.f, 2.6f}, {0.f, 0.f, -2.9f}};
+    const Vec3 torchPos[3] = {{-2.3f, 0.f, 2.2f}, {2.3f, 0.f, 2.2f}, {0.f, 0.f, -2.9f}};
     const Vec3 torchColor{1.0f, 0.52f, 0.22f};
-    const float torchIntensity = 9.f, torchRange = 18.f;
+    const float torchIntensity = 12.f, torchRange = 20.f;
     for (int i = 0; i < 3; ++i) {
         const Vec3& tp = torchPos[i];
         // iron pole + bowl
@@ -362,7 +363,7 @@ int main(int argc, char** argv) {
     }
     // faint cool moonlight so the silhouettes read in the dark (no shadows from it)
     scene.root().createChild("moon").attach<scene::LightComponent>().light =
-        fuhgl::render::Light::directional({0.2f, -1.f, 0.3f}, {0.10f, 0.13f, 0.20f}, 0.18f);
+        fuhgl::render::Light::directional({0.2f, -1.f, 0.3f}, {0.10f, 0.13f, 0.20f}, 0.25f);
 
     // pre-simulate the flames so the first frame already shows developed fire
     for (const Torch& t : torches)
@@ -383,7 +384,7 @@ int main(int argc, char** argv) {
     scene.root().effects.enable(render::Effect::Bloom);
     scene.root().effects.enable(render::Effect::Particles);
     scene.root().effects.enable(render::Effect::VolumetricFog);
-    scene.root().effects.params.exposure = 1.25f;
+    scene.root().effects.params.exposure = 1.35f;
     scene.root().effects.params.taaBlend = 0.08f;
     scene.root().effects.params.ssaoRadius = 0.8f;
     scene.root().effects.params.ssaoIntensity = 1.2f;
@@ -434,9 +435,10 @@ int main(int argc, char** argv) {
     aimAt(cam, {0.f, kColumnTop + 0.7f, 0.f});
     if (!renderShot(args.prefix + "_wide.png")) return 1;
 
-    // shot 2: closeup of the middle (carnivore) creature — Turing spots + countershading in torchlight
-    cam.position = {2.1f, kColumnTop + 1.8f, 3.8f};
-    aimAt(cam, {0.f, kColumnTop + 1.0f, 0.f});
+    // shot 2: closeup of the middle (carnivore) creature in profile — Turing spots +
+    // countershading in torchlight
+    cam.position = {2.8f, kColumnTop + 2.1f, 5.6f};
+    aimAt(cam, {0.f, kColumnTop + 0.8f, 0.f});
     if (!renderShot(args.prefix + "_closeup.png")) return 1;
 
     std::fprintf(stderr, "creature_showcase: done (GL %d.%d %s)\n", fuhgl::gl::version().major,
