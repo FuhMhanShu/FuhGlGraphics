@@ -994,8 +994,7 @@ int main(int argc, char** argv) {
             roof.castShadow = true;
         }
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.3f, 0.55f, 0.6f}));
-        // no SSR here: the ~6500-house scene with SSR washes out under headless llvmpipe
-        // (the WFC city scene above keeps SSR and renders fine)
+        scene.root().effects.enable(render::Effect::Ssr); // reflections on wet roads / glass
 
         // overview steeply down onto the plateau, same camera as the (stable) WFC city
         // overview: road grid + houses fill the lower frame, sky above
