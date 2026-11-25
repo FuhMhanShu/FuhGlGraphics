@@ -48,6 +48,11 @@ add_library(fuhglgraphics STATIC
     src/scene/serialize.cpp
     src/io/json.cpp
     src/io/gltf.cpp
+    src/io/asset_cache.cpp
+    src/mcp/jsonrpc.cpp
+    src/mcp/tool_catalog.cpp
+    src/mcp/tool_catalog_procedural.cpp
+    src/mcp/mcp_server.cpp
     src/particles/particle_system.cpp
     src/anim/animation.cpp
     src/anim/gpu_skinner.cpp
@@ -154,6 +159,12 @@ install(FILES
     ${CMAKE_CURRENT_BINARY_DIR}/FuhGlGraphicsConfigVersion.cmake
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/FuhGlGraphics
 )
+
+# --- tools (G12 asset creator Qt tool + Qt-free MCP server; G11 cache is in the core) --
+option(FUHGLGRAPHICS_BUILD_TOOLS "Build the tools/ executables (asset creator needs WITH_QT; the MCP server is Qt-free)" ON)
+if(FUHGLGRAPHICS_BUILD_TOOLS)
+    add_subdirectory(tools)
+endif()
 
 # --- tests --------------------------------------------------------------------------
 if(FUHGLGRAPHICS_BUILD_TESTS)

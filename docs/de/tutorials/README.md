@@ -35,10 +35,11 @@ Eine Zeile pro Anforderung, mit Tutorial und Hero-Screenshot (alle Screenshots i
 | G29 | [SDF / 3D-Fraktale (Mandelbulb)](g29_mandelbulb.md) — `procedural::sdf` + `meshFromSdf` (SDF via Marching Cubes meshen), emissive Fraktal-Skulptur mit Bloom | [g29_mandelbulb_wide.png](../../images/g29_mandelbulb_wide.png) |
 | G30 | [Prozedurale Kreaturen](g30_creature.md) — `Skeleton`-Graph + `creatureSdf` (smooth-min Kapseln/Ellipsoide + Simplex-Detail) + `meshCreature` (Marching Cubes, Gradienten-Normalen, Krümmung im Vertex-Color, zylindrische UVs) + `bakeCreatureMaps` (Objektraum-Noise für Albedo/Normal); Vierbeiner + Reptil | [g30_creature_wide.png](../../images/g30_creature_wide.png) |
 | G31 | [World-Generator-Hilfsfunktion (Landschaft oder Stadt)](g31_worldgen.md) — `procedural::generateWorld(WorldGenParams)`: ein Aufruf baut eine Landschaft (Spline-gemappte Continentalness/Erosion/Peaks&Valleys, Terracing, Flüsse, Whittaker-Biome, PlantGenerator-Bäume) oder eine WFC-Stadt (prozedurale Häuser, wählbare/nasse Straßen); deterministisch pro Seed, reine CPU | [g31_worldgen_city.png](../../images/g31_worldgen_city.png) |
+| G12 | [Asset-Creator-Qt-Tool + MCP](g12_asset_creator.md) — `tools/asset_creator/` (`fuhglgraphics_asset_creator`): Szenenbaum + Inspektor + Asset-Browser, G3-Viewport, LLM-Chat über MCP; der MCP-Katalog (`mcp/`) macht auch die prozeduralen Funktionen G24–G31, die Deferred-Render-Einstellungen und die G13-Wasser-Parameter zugreifbar; Qt-freier stdio-Server `fuhglgraphics_mcp_server` (`tools/mcp_server/`) | — |
 
-Als Nächstes: **G11** (Engine-Infrastruktur) / **G2** (Qt-Editor) — siehe
-[REQUIREMENTS.md](../../REQUIREMENTS.md); **G12** (Asset-Creator) ist in Ausarbeitung:
-[ASSET_CREATOR.md](../../ASSET_CREATOR.md).
+Nächste: **G12 P5 Polish** (3D-Gizmo, Thumbnails) — siehe
+[REQUIREMENTS.md](../../REQUIREMENTS.md); **G11** (Asset-Cache + JSON-Config) ist teilweise
+umgesetzt (`io::AssetCache`, `scene::effectsToJson`).
 
 Voraussetzung für alle: Bibliothek bauen und `FuhGlGraphics::fuhglgraphics` linken
 (siehe [DEVELOPMENT.md](../../DEVELOPMENT.md#build-options)).

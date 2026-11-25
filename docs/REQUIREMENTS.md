@@ -200,7 +200,10 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   `docs/images/`). kEffectCount = 14. See `tests/gl_smoke_g10.cpp`,
   `examples/dof_screenshot`, `docs/images/g10_*.png` and the
   [G10 tutorial](en/tutorials/g10_upgrades.md).
-- G2, G11 — planned.
+- **G2/G11 — in progress:** `editor::GlViewportWidget` (G2 building block) is implemented;
+  G11 got the on-disk asset cache (`io::AssetCache`, content-hash keyed) and the JSON
+  render/effect config (`scene::effectsToJson`/`effectsFromJson`/`setEffectParam` in
+  `scene/serialize.hpp`). Still open: full minimal Qt editor beyond the asset creator.
 - **G13 — water rendering** (`fuhglgraphics::water`, `include/fuhglgraphics/water/`, `src/water/`, G3 renderer extension in `src/render/`): implemented — see `tests/test_water.cpp`, `tests/gl_smoke_water.cpp`, `examples/water_screenshot`, `docs/images/g13_water_*.png` and the [G13 tutorial](en/tutorials/g13_water.md).
 - **G14 — GPU skinning** (`fuhglgraphics::anim::GpuSkinner`, `include/fuhglgraphics/anim/gpu_skinner.hpp`,
   `src/anim/gpu_skinner.cpp`): implemented — see `tests/gl_smoke_gpu_skin.cpp`,
@@ -259,10 +262,31 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   bloom threshold adjustable via `bloomThreshold` since G17): implemented — see
   `tests/test_tonemap.cpp`, `tests/gl_smoke_tonemap.cpp`, `examples/tonemap_screenshot`,
   `docs/images/g23_tonemap_*.png` and the [G23 tutorial](en/tutorials/g23_tonemap.md).
-- G2, G11 — planned.
-- **G12 — asset creator Qt tool** — planned; design agreed in
-  [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON
-  project files, MCP stdio chat). Implementation in phases P1–P5 after review.
+- **G12 — asset creator Qt tool + MCP** — implemented (phases P1, P2, P4; P5 polish open):
+  `tools/asset_creator/` executable `fuhglgraphics_asset_creator` (built with
+  `FUHGLGRAPHICS_WITH_QT=ON` + `FUHGLGRAPHICS_BUILD_TOOLS=ON`): MVC tool with scene tree +
+  inspector + asset browser (left dock), a G3 `DeferredRenderer` viewport with orbit camera
+  + `scene::pick` selection (center), and an LLM chat over MCP (right dock) — external stdio
+  server command (settings dialog, keys from the env only) or the **builtin in-repo
+  catalog**. `.fasset` JSON project files (`scene::serialize` + `io::writeJson`), imported
+  assets cached by content hash in `<project>/.cache` (G11 `io::AssetCache`), UI
+  multilingual (English default, German first translation). The Qt-free MCP layer in the
+  library (`include/fuhglgraphics/mcp/`, `src/mcp/`): `mcp::jsonrpc` (JSON-RPC 2.0
+  line-delimited build/parse), `mcp::tool_catalog` (`tools/list`/`tools/call`) and
+  `mcp::mcp_server` (stdio server), plus the standalone Qt-free executable
+  `tools/mcp_server` → `fuhglgraphics_mcp_server`. The catalog makes the **procedural
+  functions G24–G31** (`procedural_noise`, `procedural_marching_cubes`, `procedural_lsystem`,
+  `procedural_wfc`, `procedural_voronoi`, `procedural_sdf`, `procedural_creature`,
+  `procedural_worldgen`), the **deferred-render settings** (`render_list_effects`,
+  `render_set_effect`, `render_get_settings`, `render_set_param(s)` over `render::Effect` +
+  `scene::EffectParams`) and the **G13 water parameters** (`water_add_to_scene`,
+  `water_get_params`, `water_set_params`) accessible over MCP; generated meshes attach as
+  scene nodes when the host binds GL resolvers (`attach: true`). Tool results carrying an
+  `assetAction` are applied as undoable commands (LLM → editor bridge). See
+  `tests/test_mcp.cpp`, `tools/mcp_server/main.cpp`, CI MCP smoke (stdio tools/list +
+  tools/call) and `xvfb-run ... --version`, `docs/images/` n/a (no screenshot),
+  [G12 tutorial](en/tutorials/g12_asset_creator.md) and
+  [docs/ASSET_CREATOR.md](ASSET_CREATOR.md). Open: P5 (3D gizmo, thumbnails).
 - **G24 — procedural noise module (CPU)** — implemented: `procedural::Noise` in
   `include/fuhglgraphics/procedural/noise.hpp` (header-only value type, deterministic per
   seed): value noise 2D/3D, Perlin 2D/3D (delegates to `fuhgl::math::Noise`), Simplex

@@ -15,9 +15,14 @@
 //                   L-systems (G26), wave function collapse (G27), voronoi (G28),
 //                   SDF/3D fractals (G29), procedural creatures (G30), world generator
 //                   helper generateWorld (G31: landscape or city from one params struct)
+//   mcp/      G12  MCP layer (Qt-free): JSON-RPC 2.0 helpers (jsonrpc.hpp), the tool
+//                   catalog with procedural (G24-G31) + deferred-render + G13 water tools
+//                   (tool_catalog.hpp) and the stdio MCP server (mcp_server.hpp)
+//   io/asset_cache.hpp  G11 on-disk asset cache keyed by content hash
 //   editor/   G2+G11  Qt6 editor code (only built with FUHGLGRAPHICS_WITH_QT=1):
 //                   gl_viewport_widget.hpp = GL viewport widget (fps limiter, frame stats)
-// Additionally planned: G10 quick upgrades, G11 engine infrastructure.
+//   tools/    G12  fuhglgraphics_mcp_server (Qt-free stdio MCP server) +
+//                   fuhglgraphics_asset_creator (Qt6, WITH_QT + BUILD_TOOLS only)
 //
 // The library core stays Qt-free; build with -DFUHGLGRAPHICS_WITH_QT=OFF for
 // headless use.
@@ -47,6 +52,11 @@
 
 #include <fuhglgraphics/io/json.hpp>
 #include <fuhglgraphics/io/gltf.hpp>
+#include <fuhglgraphics/io/asset_cache.hpp>
+
+#include <fuhglgraphics/mcp/jsonrpc.hpp>
+#include <fuhglgraphics/mcp/tool_catalog.hpp>
+#include <fuhglgraphics/mcp/mcp_server.hpp>
 
 #include <fuhglgraphics/particles/particle_system.hpp>
 

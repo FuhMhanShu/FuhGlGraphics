@@ -32,6 +32,27 @@ using MeshResolver = std::function<std::unique_ptr<fuhgl::render::Mesh>(const io
 /// needs a current GL context. Unknown specs -> nullptr.
 std::unique_ptr<fuhgl::render::Mesh> defaultShapeResolver(const io::Json& meshSpec);
 
+/// @brief Serializes a node's Effects (list + params) to JSON — layout {"list":[names],
+/// "params":{...}}. Public because the G12 MCP render tools and the G11 JSON config use it.
+io::Json effectsToJson(const Effects& fx);
+
+/// @brief Inverse of effectsToJson(): rebuilds list + params. Unknown effect names fail
+/// with err (bool + log convention); unknown param names are ignored.
+bool effectsFromJson(const io::Json& j, Effects& fx, std::string* err = nullptr);
+
+/// @brief Sets one EffectParams field by name (e.g. "bloomThreshold"; vec3 fields take a
+/// [x,y,z] array; "tonemapOperator" also accepts "aces"/"reinhard"/"uncharted2"/"linear").
+/// Returns false + err on an unknown name or wrong value type. Used by the MCP tool
+/// `render_set_param` and by the G11 JSON renderer config.
+bool setEffectParam(EffectParams& p, const std::string& name, const io::Json& value,
+                    std::string* err = nullptr);
+
+/// @brief Serializes one EffectParams field by name (Null when the name is unknown).
+io::Json effectParamToJson(const EffectParams& p, const std::string& name);
+
+/// @brief All settable EffectParams field names (for `render_get_settings` / tool schemas).
+std::vector<std::string> effectParamNames();
+
 /// @brief Serializes the scene graph to JSON (see file header for the layout).
 io::Json sceneToJson(const Scene& scene);
 
