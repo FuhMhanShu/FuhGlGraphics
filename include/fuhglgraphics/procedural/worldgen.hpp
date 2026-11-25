@@ -57,6 +57,29 @@ struct WorldGenParams {
     int grassBlades = 4000;       ///< hint for the app: instanced grass blades over the terrain (scene-side)
     float treeMinDist = 6.f;      ///< min distance between scatter points (poisson disk)
 
+    // --- landscape shape shaping: spline-mapped noise layers + terracing ---
+    float contOcean = 0.40f;      ///< continentalness spline knot: below = deep ocean (h -> 0)
+    float contCoast = 0.45f;      ///< knot: coast band up to here (low h)
+    float contPlains = 0.70f;     ///< knot: plains up to here, above rises steeply to mountains
+    float erosionScale = 0.011f;  ///< noise scale of the erosion map (high value = smooth: meadows/lakes)
+    float pvScale = 0.06f;        ///< noise scale of the peaks&valleys detail layer
+    float pvWeight = 0.16f;       ///< weight of the peaks&valleys layer (normalized height)
+    int terraceSteps = 0;         ///< >0: terrace (quantize) high terrain into steps (0 = off)
+    float terraceStrength = 0.65f; ///< terracing blend strength on high terrain
+
+    // --- hydrology: rivers carved by gradient descent from mountain sources ---
+    int riverCount = 10;          ///< number of rivers (0 = off); sources at h >= riverSourceMinH
+    float riverSourceMinH = 0.55f; ///< min normalized height of a river source cell
+    float riverDepth = 0.05f;     ///< riverbed carve depth (normalized) at the channel center
+    float riverWidth = 1.6f;      ///< riverbed half-width in grid cells
+
+    // --- climate / biomes (Whittaker lookup over temperature + humidity) ---
+    bool climateMaps = true;      ///< compute temperature/humidity/biome maps (landscape)
+    float tempNoiseScale = 0.008f;    ///< noise scale of the temperature variation layer
+    float humidityNoiseScale = 0.013f; ///< noise scale of the humidity layer
+    float lapseRate = 0.5f;       ///< temperature drop per normalized altitude (mountains are cold)
+    float humidityRiverBoost = 0.5f;  ///< humidity boost along flow channels (rivers)
+
     // --- city (mode == City) ---
     int cityGrid = 12;            ///< WFC cells per side
     float cellSize = 8.f;         ///< world size of one city cell
@@ -75,6 +98,12 @@ struct WorldGenParams {
                                   ///< outside the largest connected component become blocks, so
                                   ///< paths/parks never interrupt the streets; true: any valid WFC
                                   ///< solve is accepted (plaza tiles allowed, roads may fragment)
+};
+
+/// @brief Landscape biome from the Whittaker-style 2D lookup over (temperature, humidity)
+/// with shore / slope / altitude overrides. Stored per cell in GeneratedWorld::biome.
+enum class Biome : unsigned char {
+    Ocean = 0, Shore, Desert, Grassland, Forest, Jungle, Taiga, Tundra, Rock, Snow
 };
 
 /// @brief One placed mesh: local-space MeshData + a world placement (position / rotY / scale)
@@ -134,8 +163,21 @@ struct GeneratedWorld {
     /// steepest slope in the terrain), B = sand (shore + flow channels from the hydraulic
     /// erosion), A = snow (altitude). Upload as a texture and use as the terrain albedo/splat map.
     std::vector<unsigned char> splatmap;
-    /// @brief Flow accumulation of the hydraulic erosion (normalized [0,1]) — riverbeds/wet areas.
+    /// @brief Flow accumulation of the hydraulic erosion + carved rivers (normalized [0,1]) —
+    /// riverbeds/wet areas.
     std::vector<float> flowmap;
+    /// @brief gridW*gridH temperature in [0,1]: latitude (equator at the center) + low-freq
+    /// noise - altitude * WorldGenParams::lapseRate. Landscape only.
+    std::vector<float> temperature;
+    /// @brief gridW*gridH humidity in [0,1]: low-freq noise + boost near water + along rivers.
+    /// Landscape only.
+    std::vector<float> humidity;
+    /// @brief gridW*gridH Biome cast per cell (Whittaker lookup over temperature/humidity with
+    /// shore/slope/altitude overrides). Landscape only.
+    std::vector<unsigned char> biome;
+    /// @brief gridW*gridH pond mask: 1 = mountain-lake cell (a river sink filled to its spill
+    /// point). Render as wet mud / place small water discs app-side. Landscape only.
+    std::vector<unsigned char> pondMask;
 };
 
 /// @brief City tile set for the WFC solver: edge tags "r" = road, "s" = lot/sidewalk edge

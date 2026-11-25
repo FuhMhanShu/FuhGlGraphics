@@ -46,13 +46,33 @@ p.bushCount = 180;          // verstreute Büsche
 p.rockCount = 60;           // verstreute Felsen (Splatmap-Felsmaske)
 p.grassBlades = 6000;       // Hinweis fürs App: instanziertes Gras via Instancing::heightFn
 p.treeMinDist = 6.f;        // Poisson-Disk-Mindestabstand
+// Form-Shaping (Spline-gemappte Noise-Layer + Terracing):
+p.contOcean = 0.40f;        // Continentalness-Spline-Knoten: darunter = tiefer Ozean
+p.contCoast = 0.45f;        // Küstenband bis hierher
+p.contPlains = 0.70f;       // Ebenen bis hierher, darüber steil zu Bergen
+p.erosionScale = 0.011f;    // Noise-Skala der Erosionskarte (hoch = glatt)
+p.pvScale = 0.06f;          // Peaks&Valleys-Detail-Noise-Skala
+p.pvWeight = 0.16f;         // Peaks&Valleys-Gewicht
+p.terraceSteps = 0;         // >0: hohes Gelände in Stufen terassieren (0 = aus)
+p.terraceStrength = 0.65f; // Terracing-Blend-Stärke
+// Hydrologie (Flüsse) + Klima/Biome:
+p.riverCount = 10;          // Flüsse: Gradientenabstieg von Bergquellen (0 = aus)
+p.riverSourceMinH = 0.55f;  // Mindesthöhe einer Quellzelle
+p.riverDepth = 0.05f;       // Flussbett-Eintiefe (normalisiert)
+p.riverWidth = 1.6f;        // Flussbett-Halbebreite in Zellen
+p.climateMaps = true;       // Temperatur-/Feuchte-/Biom-Karten (Whittaker)
+p.lapseRate = 0.5f;         // Temperaturabfall pro normalisierter Höhe
 
 const auto w = generateWorld(p);
 w.heightmap;                // gridW*gridH floats, zeilenweise (x + gridW*z), [0,1]
 w.heightAt(x, z);           // bilineare Welt-Höhe (Sample * heightScale, geclampt)
 w.waterLevelWorld;          // Pegel in Welt-Einheiten (hier WaterComponent platzieren)
-w.splatmap;                 // gridW*gridH RGBA-Gewichte: R Gras, G Fels, B Sand, A Schnee
-w.flowmap;                  // gridW*gridH float [0,1]: hydraulische Flussakkumulation (Flussbetten)
+w.splatmap;                 // gridW*gridH RGBA-Gewichte: R Vegetation, G Fels, B Sand, A Schnee
+w.flowmap;                  // gridW*gridH float [0,1]: Flussakkumulation (Erosion + Flüsse)
+w.temperature;              // gridW*gridH float [0,1]: Breite + Noise - Höhe (Lapse-Rate)
+w.humidity;                 // gridW*gridH float [0,1]: Noise + Nahe-Wasser + Fluss-Boost
+w.biome;                    // gridW*gridH Biome-Cast (Whittaker-Lookup + Küste/Fels/Schnee)
+w.pondMask;                 // gridW*gridH: 1 = Bergsee-Zelle (Senke bis zum Überlaufpunkt gefüllt)
 w.trees;                    // PlacedMesh: Mesh (L-System-Baum) + position/rotY/scale/tint
 w.bushes;                   // PlacedMesh: Büsche, gleiche Platzierungsregeln
 w.rocks;                    // PlacedMesh: Kugel-Felsen auf steilen/Fels-Splatmap-Bereichen
@@ -60,24 +80,41 @@ w.rocks;                    // PlacedMesh: Kugel-Felsen auf steilen/Fels-Splatma
 
 ### Landschafts-Pipeline (was `generateLandscape` macht)
 
-1. **Makro-Relief** — eine Heightmap aus kombinierten Schichten: Domain-Warping des Noise-Inputs
-   (`warpStrength`), eine sehr niederfrequente *Continentalness*-Simplex-Maske, die Flachland
-   (fBm) vs. Gebirgszüge (*ridged* Multifraktal, scharfe Grate) wählt, Kontrast-Shaping
-   `pow(h, heightExponent)`, das runde `lakeRadius`-Becken und ein Island-Falloff am Rand.
-2. **Erosion** — `erosionDroplets` virtuelle Regentropfen laufen bergab über die Heightmap, nehmen
-   Sediment auf und lagern es ab (hydraulische Erosion frisst Täler/Flussbetten und füllt die
-   `flowmap`), danach relaxieren `thermalPasses` jeden Hang steiler als der `talus`-Winkel zu
-   Geröllhalden (thermische Erosion).
-3. **Splatmap** — pro Zelle: G Fels aus der Welt-Steigung (Band relativ zur steilsten vorhandenen
+1. **Makro-Relief** — Minecraft-artig drei Noise-Layer, zunächst domain-gewarpt
+   (`warpStrength`): (a) *Continentalness* (sehr niederfrequenter Simplex), über eine
+   `Spline1D`-Kurve mit Knoten `contOcean`/`contCoast`/`contPlains` gemappt — darunter tiefer
+   Ozean, Küstenband, weite Ebenen, darüber steiler Anstieg zu Bergen; (b) eine
+   *Erosionskarte* (niederfrequentes fBm), die pro Zelle glattes fBm (Wiesen/Seeflächen) mit
+   *ridged* Multifraktal (zerklüftete Grate) mischt; (c) eine höherfrequente
+   *Peaks&Valleys*-Ridged-Schicht, gewichtet mit der Continentalness-Basis, damit Ozeane neben
+   dramatischen Graten flach bleiben. Danach Kontrast-Shaping `pow(h, heightExponent)`, das
+   runde `lakeRadius`-Becken und ein Island-Falloff am Rand.
+2. **Erosion + Geologie + Hydrologie** — `erosionDroplets` virtuelle Regentropfen laufen bergab,
+   nehmen Sediment auf/ab (hydraulische Erosion frisst Täler und füllt die `flowmap`), danach
+   relaxieren `thermalPasses` Hänge steiler als `talus` zu Geröllhalden. `terraceSteps > 0`
+   quantisiert hohes Gelände in Stufen (Mesa/Canyon/Reisterrassen, geblendet mit
+   `terraceStrength`). `riverCount` Flüsse laufen per Gradientenabstieg von Berg-Quellzellen
+   (`riverSourceMinH`) bis zum Pegel und schneiden ein V-förmiges Bett (`riverDepth`/`riverWidth`)
+   in Heightmap und Flowmap; eine Senke über dem Pegel wird bis zum Überlaufpunkt als Bergsee
+   gefüllt (`pondMask`). Strata (Sedimentschichten in Klippen) sind ein Shading-Trick: den
+   Fels-Splat-Kanal nach Welt-Y + Noise einfärben (siehe Demo).
+3. **Klima & Biome** — `temperature` (geografische Breite + Variations-Noise − Höhe·`lapseRate`)
+   und `humidity` (Noise + Nahe-Wasser-Boost + Fluss-Boost) pro Zelle; die `biome`-Karte ist ein
+   Whittaker-2D-Lookup über (Feuchte, Temperatur) → Wüste/Wiese/Wald/Dschungel/Taiga/Tundra plus
+   Ocean/Shore/Rock/Snow-Overrides. Weil Temperatur/Feuchte kontinuierliche niederfrequente
+   Felder sind, weichen Biome-Grenzen weich aus (keine harten Kanten — die App mischt die
+   Biom-Farben mit denselben Gewichten). Der Scatter nutzt das Biom ebenfalls: Taiga/Tundra →
+   Tannen, Wüsten dünn, usw.
+4. **Splatmap** — pro Zelle: G Fels aus der Welt-Steigung (Band relativ zur steilsten vorhandenen
    Steigung, damit Klippen bei jeder heightScale/Auflösung Fels bekommen), A Schnee aus der Höhe
-   (`smoothstep(0.58, 0.8, h)`), B Sand nahe dem Pegel plus `flowmap`-Flussbetten, R Gras als Rest.
-   `splatmap` als RGBA-Textur hochladen und als Terrain-Splatmap verwenden.
-4. **Meshing & LOD** — Grid-`MeshData` aus `heightmap` bauen (uv = Grid-uv, damit die Splatmap 1:1
+   (`smoothstep(0.58, 0.8, h)`), B Sand nahe dem Pegel plus `flowmap`-Flussbetten, R Vegetation als
+   Rest. `splatmap` als RGBA-Textur hochladen und als Terrain-Splatmap verwenden.
+5. **Meshing & LOD** — Grid-`MeshData` aus `heightmap` bauen (uv = Grid-uv, damit die Splatmap 1:1
    auf die Zellen mappt). Für große Welten stattdessen `scene::TerrainComponent`: kapselt dieselbe
    Heightmap in einem `LodMesh` (F38/F41 quadtree-artiges LOD mit bildschirmraum-basierten
    Umschaltdistanzen) — `w.heightmap` in `TerrainComponent::heights` kopieren und `rebuildLod()`
    rufen; Triplanar-Mapping für steile Klippen liegt im Terrain-Shader (shader-seitig).
-5. **Scattering** — Poisson-Disk-Sampling (Dart-Throwing mit Spatial Hash, garantierter
+6. **Scattering** — Poisson-Disk-Sampling (Dart-Throwing mit Spatial Hash, garantierter
    `treeMinDist`), gewichtet mit der Splatmap: Bäume/Büsche auf Gras über dem Pegel, Felsen auf
    der Felsmaske. Gras selbst ist app-seitig GPU-Instancing (`Node::instancing`) mit einer
    `heightFn`, die Halme auf `heightAt` snappt und unter Wasser / auf Fels-Schnee-Sand-Texeln
@@ -282,7 +319,10 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
 
 - `tests/test_procedural_worldgen.cpp` (Unit): Heightmap-Größe/Wertebereich/Rand/See, `heightAt`
   Sampling + Clamping, Erosion (Tropfen senken die Gipfel, flowmap bleibt in [0,1]), Splatmap-Kanäle
-  (Gras/Fels/Sand/Schnee vorhanden und im Wertebereich), Poisson-Scatter (Mindestabstand, Felsen
+  (Vegetation/Fels/Sand/Schnee vorhanden und im Wertebereich), Spline1D (Knoten, Clamping,
+  Monotonie), Klimakarten (Wertebereiche, Lapse-Rate: niedrige Zellen wärmer als Gipfel,
+  Nahe-Wasser feuchter als Binnenland, Biom-IDs gültig), Flüsse (Flow-Kanäle, Schneiden senkt
+  das Terrainvolumen, Pond-Maske), Terracing (hohes Gelände auf Stufen quantisiert), Poisson-Scatter (Mindestabstand, Felsen
   auf der Felsmaske, Determinismus pro Seed), Baum-Platzierungsregeln (auf dem Terrain, nicht im
   See, Mindestabstand), WFC-Layout-Gültigkeit inkl. Rand-Tags, Block→Gebäude-Mapping, Modus-Wahl, Roads
 (per Default keine Plaza-Tiles + `wfcRoadsConnected`, Schlagloch-/Irregularitäts-/Oberflächen-/Nässe-Effekte

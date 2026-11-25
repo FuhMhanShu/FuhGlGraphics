@@ -166,21 +166,61 @@ fuhgl::Texture makeTexFromRGBA(int w, int h, const std::vector<unsigned char>& r
     return t;
 }
 
-// blend the GeneratedWorld splatmap weights (R grass / G rock / B sand / A snow) into an RGB
-// albedo texture with fixed biome base colors — a production terrain shader would instead
-// mix 4 material textures with these weights (triplanar on steep slopes)
+// blend the GeneratedWorld splatmap weights (R vegetation / G rock / B sand / A snow) into an
+// RGB albedo texture. The vegetation channel is colored by a soft Whittaker blend over the
+// world's temperature/humidity maps (desert/grassland/forest/jungle/taiga/tundra — smooth
+// transitions, no hard biome borders), rock gets sediment strata bands by world height, and
+// river-sink ponds (pondMask) render as dark wet mud. A production terrain shader would
+// instead mix 4 material textures with these weights (triplanar on steep slopes).
 fuhgl::Texture makeSplatAlbedoTex(const fuhglgraphics::procedural::GeneratedWorld& world) {
+    using fuhglgraphics::procedural::GeneratedWorld;
     const int g = world.gridW;
-    const fuhgl::math::Vec3 grass{0.24f, 0.42f, 0.15f}, rock{0.42f, 0.40f, 0.38f},
-        sand{0.72f, 0.64f, 0.46f}, snow{0.92f, 0.94f, 0.98f};
+    const fuhgl::math::Vec3 rock{0.42f, 0.40f, 0.38f}, sand{0.72f, 0.64f, 0.46f},
+        snow{0.92f, 0.94f, 0.98f}, mud{0.16f, 0.13f, 0.10f};
+    // Whittaker biome centers in (temperature, humidity) space + base colors
+    struct BiomeC { float t, h; fuhgl::math::Vec3 c; };
+    const BiomeC biomes[] = {
+        {0.90f, 0.15f, {0.76f, 0.66f, 0.42f}}, // Desert
+        {0.55f, 0.30f, {0.30f, 0.46f, 0.16f}}, // Grassland
+        {0.50f, 0.65f, {0.16f, 0.36f, 0.14f}}, // Forest
+        {0.85f, 0.80f, {0.10f, 0.30f, 0.12f}}, // Jungle
+        {0.20f, 0.60f, {0.14f, 0.28f, 0.18f}}, // Taiga
+        {0.10f, 0.25f, {0.45f, 0.44f, 0.40f}}, // Tundra
+    };
+    const bool hasClimate = world.temperature.size() == world.heightmap.size();
     std::vector<unsigned char> data(static_cast<std::size_t>(g) * g * 4, 0);
     for (int j = 0; j < g; ++j)
         for (int i = 0; i < g; ++i) {
             const std::size_t s = (static_cast<std::size_t>(i) + g * j) * 4;
             const float r = world.splatmap[s + 0] / 255.f, gr = world.splatmap[s + 1] / 255.f,
                         b = world.splatmap[s + 2] / 255.f, a = world.splatmap[s + 3] / 255.f;
+            // soft Whittaker vegetation color from temperature/humidity (falloff weights)
+            fuhgl::math::Vec3 veg{0.24f, 0.42f, 0.15f};
+            if (hasClimate) {
+                const float t = world.temperature[s / 4], h = world.humidity[s / 4];
+                float wsum = 0.f;
+                fuhgl::math::Vec3 acc{0.f, 0.f, 0.f};
+                for (const BiomeC& bc : biomes) {
+                    const float dt = t - bc.t, dh = h - bc.h;
+                    const float d2 = dt * dt + dh * dh;
+                    const float w = std::max(0.f, 1.f - d2 / 0.2f); // ~0.45 radius falloff
+                    acc = acc + bc.c * (w * w);
+                    wsum += w * w;
+                }
+                if (wsum > 1e-5f) veg = acc * (1.f / wsum);
+            }
+            // sediment strata in the rock channel: horizontal bands warped by noise, keyed on
+            // world height (like Grand Canyon layers in cliffs)
+            fuhgl::math::Vec3 rockC = rock;
+            if (gr > 0.01f) {
+                const float worldY = world.heightmap[s / 4] * world.heightScale;
+                const float n = (hashPx(i * 3, j * 3, 77u) & 0xffu) / 255.f;
+                const float band = 0.72f + 0.28f * std::sin(worldY * 1.8f + n * 6.2831f);
+                rockC = rock * band;
+            }
             const float sum = std::max(0.0001f, r + gr + b + a);
-            fuhgl::math::Vec3 c = (grass * r + rock * gr + sand * b + snow * a) * (1.f / sum);
+            fuhgl::math::Vec3 c = (veg * r + rockC * gr + sand * b + snow * a) * (1.f / sum);
+            if (!world.pondMask.empty() && world.pondMask[s / 4]) c = c * 0.3f + mud * 0.7f; // pond
             // slight per-texel variation so large flat areas do not look flat
             const std::uint32_t n = hashPx(i, j, 99u);
             c = c * (0.92f + 0.16f * ((n & 0xffu) / 255.f));
@@ -596,6 +636,9 @@ int main(int argc, char** argv) {
         p.rockCount = 60;
         p.grassBlades = 6000; // GPU-instanced grass blades, weighted by the splatmap below
         p.treeMinDist = 6.f;
+        p.riverCount = 14;        // rivers carved from mountain sources down to the lake
+        p.terraceSteps = 8;       // mild terracing on high ground (mesa/canyon steps)
+        p.terraceStrength = 0.5f;
         const procedural::GeneratedWorld world = procedural::generateWorld(p);
         std::fprintf(stderr,
                      "worldgen_screenshot: landscape seed %u: grid %d, %zu trees, %zu bushes, %zu rocks\n",

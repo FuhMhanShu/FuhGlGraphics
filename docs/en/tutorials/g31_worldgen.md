@@ -46,13 +46,33 @@ p.bushCount = 180;          // scattered bushes
 p.rockCount = 60;           // scattered rocks (splatmap rock mask)
 p.grassBlades = 6000;       // hint for the app: instanced grass via Instancing::heightFn
 p.treeMinDist = 6.f;        // poisson-disk min distance
+// shape shaping (spline-mapped noise layers + terracing):
+p.contOcean = 0.40f;        // continentalness spline knot: below = deep ocean
+p.contCoast = 0.45f;        // coast band up to here
+p.contPlains = 0.70f;       // plains up to here, above rises steeply to mountains
+p.erosionScale = 0.011f;    // erosion-map noise scale (high value = smooth terrain)
+p.pvScale = 0.06f;          // peaks&valleys detail noise scale
+p.pvWeight = 0.16f;         // peaks&valleys weight
+p.terraceSteps = 0;         // >0: terrace high terrain into steps (mesa/canyon, 0 = off)
+p.terraceStrength = 0.65f; // terracing blend strength
+// hydrology (rivers) + climate/biomes:
+p.riverCount = 10;          // rivers: gradient descent from mountain sources (0 = off)
+p.riverSourceMinH = 0.55f;  // min height of a river source
+p.riverDepth = 0.05f;       // riverbed carve depth (normalized)
+p.riverWidth = 1.6f;        // riverbed half-width in cells
+p.climateMaps = true;       // temperature/humidity/biome maps (Whittaker)
+p.lapseRate = 0.5f;         // temperature drop per normalized altitude
 
 const auto w = generateWorld(p);
 w.heightmap;                // gridW*gridH floats, row-major (x + gridW*z), [0,1]
 w.heightAt(x, z);           // world-space bilinear height (sample * heightScale, clamped)
 w.waterLevelWorld;          // water level in world units (place a WaterComponent here)
-w.splatmap;                 // gridW*gridH RGBA weights: R grass, G rock, B sand, A snow
-w.flowmap;                  // gridW*gridH float [0,1]: hydraulic flow accumulation (riverbeds)
+w.splatmap;                 // gridW*gridH RGBA weights: R vegetation, G rock, B sand, A snow
+w.flowmap;                  // gridW*gridH float [0,1]: flow accumulation (erosion + rivers)
+w.temperature;              // gridW*gridH float [0,1]: latitude + noise - altitude (lapse rate)
+w.humidity;                 // gridW*gridH float [0,1]: noise + near-water + river boost
+w.biome;                    // gridW*gridH cast of Biome (Whittaker lookup + shore/rock/snow)
+w.pondMask;                 // gridW*gridH: 1 = mountain-lake cell (river sink filled to spill)
 w.trees;                    // PlacedMesh: mesh (L-system tree) + position/rotY/scale/tint
 w.bushes;                   // PlacedMesh: bushes, same placement rules
 w.rocks;                    // PlacedMesh: sphere rocks on steep/rock splatmap areas
@@ -60,24 +80,42 @@ w.rocks;                    // PlacedMesh: sphere rocks on steep/rock splatmap a
 
 ### Landscape pipeline (what `generateLandscape` does)
 
-1. **Macro relief** — one heightmap from combined layers: domain warping of the noise input
-   (`warpStrength`), a very low-frequency *continentalness* simplex mask that selects plains
-   (fBm) vs. mountain ranges (*ridged* multifractal, sharp crests), `pow(h, heightExponent)`
-   contrast shaping, the round `lakeRadius` basin and an island falloff at the border.
-2. **Erosion** — `erosionDroplets` virtual droplets run downhill on the heightmap, picking up and
-   depositing sediment (hydraulic erosion carves valleys/riverbeds and fills `flowmap`), then
-   `thermalPasses` relax every slope steeper than the `talus` angle into debris fans (thermal
-   erosion).
-3. **Splatmap** — per cell: G rock from the world-space slope (band relative to the steepest
+1. **Macro relief** — Minecraft-style three noise layers, domain-warped first
+   (`warpStrength`): (a) *continentalness* (very low-frequency simplex) mapped through a
+   `Spline1D` curve with knots `contOcean`/`contCoast`/`contPlains` — below `contOcean` deep
+   ocean, coast band, wide plains, above `contPlains` a steep rise to mountains; (b) an
+   *erosion map* (low-frequency fBm) that blends smooth fBm (meadows/lake flats) with *ridged*
+   multifractal (rugged crests) per cell; (c) a higher-frequency *peaks&valleys* ridged layer
+   weighted by the continental base so oceans stay flat next to dramatic ridges.
+   `pow(h, heightExponent)` contrast shaping, the round `lakeRadius` basin and an island
+   falloff at the border follow.
+2. **Erosion + geology + hydrology** — `erosionDroplets` virtual droplets run downhill, picking
+   up/depositing sediment (hydraulic erosion carves valleys and fills `flowmap`), then
+   `thermalPasses` relax slopes steeper than `talus` into debris fans. `terraceSteps > 0`
+   quantizes high terrain into steps (mesa/canyon/rice terraces, blended by
+   `terraceStrength`). `riverCount` rivers run by gradient descent from mountain source cells
+   (`riverSourceMinH`) down to the water level, carving a V-shaped channel (`riverDepth` /
+   `riverWidth`) into the heightmap and the flow map; a sink above the water level is filled to
+   its spill point as a mountain lake (`pondMask`). Strata (sediment layers in cliffs) are a
+   shading trick: color the rock splat channel by world Y + noise (see the demo).
+3. **Climate & biomes** — `temperature` (latitude + variation noise − altitude·`lapseRate`)
+   and `humidity` (noise + near-water boost + river/flow boost) maps per cell; the `biome` map
+   is a Whittaker 2D lookup over (humidity, temperature) → Desert/Grassland/Forest/Jungle/
+   Taiga/Tundra plus Ocean/Shore/Rock/Snow overrides. Because temperature/humidity are
+   continuous low-frequency fields, biome borders blend softly (no hard edges — the app mixes
+   biome colors with the same weights). Scatter uses the biome too: taiga/tundra → firs,
+   deserts sparse, etc.
+4. **Splatmap** — per cell: G rock from the world-space slope (band relative to the steepest
    slope present, so cliffs get rock at any heightScale/grid combination), A snow from altitude
-   (`smoothstep(0.58, 0.8, h)`), B sand near the water level plus `flowmap` riverbeds, R grass as
-   the remainder. Upload `splatmap` as an RGBA texture and use it as the terrain splat map.
-4. **Meshing & LOD** — build a grid `MeshData` from `heightmap` (uv = grid uv, so the splatmap
+   (`smoothstep(0.58, 0.8, h)`), B sand near the water level plus `flowmap` riverbeds, R
+   vegetation as the remainder. Upload `splatmap` as an RGBA texture and use it as the terrain
+   splat map.
+5. **Meshing & LOD** — build a grid `MeshData` from `heightmap` (uv = grid uv, so the splatmap
    maps 1:1 onto the cells). For big worlds use `scene::TerrainComponent` instead: it wraps the
    same heightmap in a `LodMesh` (F38/F41 quadtree-style LOD with screen-space switch distances) —
    copy `w.heightmap` into `TerrainComponent::heights` and call `rebuildLod()`; triplanar mapping
    for steep cliffs lives in the terrain shader (shader-side).
-5. **Scattering** — poisson-disk sampling (dart throwing with a spatial hash, guaranteed
+6. **Scattering** — poisson-disk sampling (dart throwing with a spatial hash, guaranteed
    `treeMinDist`) weighted by the splatmap: trees/bushes on grass above the water line, rocks on
    the rock mask. Grass itself is app-side GPU instancing (`Node::instancing`) with a `heightFn`
    that snaps blades to `heightAt` and hides them under water / on rock-snow-sand texels
@@ -277,9 +315,12 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
 
 - `tests/test_procedural_worldgen.cpp` (unit): heightmap size/range/border/lake, `heightAt`
   sampling + clamping, erosion (droplets lower the peaks, flowmap stays in [0,1]), splatmap
-  channels (grass/rock/sand/snow present and in range), poisson scatter (min distance, rocks on
-  the rock mask, determinism per seed), tree placement rules (on terrain, out of the lake, min
-  distance), WFC layout validity incl. border tags, block→building mapping, mode dispatch, roads (no plaza tiles + `wfcRoadsConnected`
+  channels (vegetation/rock/sand/snow present and in range), Spline1D (knots, clamping,
+  monotonicity), climate maps (ranges, lapse rate: low cells warmer than peaks, near-water
+  wetter than inland, biome ids valid), rivers (flow channels, carving lowers terrain volume,
+  pond mask), terracing (high terrain quantized to the step grid), poisson scatter (min
+  distance, rocks on the rock mask, determinism per seed), tree placement rules (on terrain,
+  out of the lake, min distance), WFC layout validity incl. border tags, block→building mapping, mode dispatch, roads (no plaza tiles + `wfcRoadsConnected`
   by default, pothole/irregularity/surface/wet effects on the slab mesh), glass + facade
   plumbing; `tests/test_procedural_citygen.cpp`: road graph connectivity, no roads under water,
   `sidewalkMesh`, lot access (no path cuts by default), road damage/irregularity/surface/wet on

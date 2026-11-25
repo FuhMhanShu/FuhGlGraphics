@@ -11,8 +11,34 @@
 #include <fuhgl/math.hpp>
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace fuhglgraphics::procedural {
+
+/// @brief Piecewise 1D mapping curve over sorted control points (x, y) with smoothstep
+/// interpolation between knots and clamped ends. Maps a noise value (typically in [0,1])
+/// through user breakpoints — e.g. continentalness -> deep ocean / coast / plains /
+/// steep mountains (Minecraft-style continentalness curve).
+struct Spline1D {
+    std::vector<std::pair<float, float>> pts; ///< (x, y) knots, x ascending
+
+    /// @brief Evaluate the curve at `x` (clamped to the end knots outside the range).
+    float eval(float x) const {
+        if (pts.empty()) return x;
+        if (x <= pts.front().first) return pts.front().second;
+        for (std::size_t i = 1; i < pts.size(); ++i) {
+            if (x <= pts[i].first) {
+                const float x0 = pts[i - 1].first, y0 = pts[i - 1].second;
+                const float x1 = pts[i].first, y1 = pts[i].second;
+                const float t = x1 > x0 ? (x - x0) / (x1 - x0) : 0.f;
+                const float sm = t * t * (3.f - 2.f * t); // smoothstep between knots
+                return y0 + (y1 - y0) * sm;
+            }
+        }
+        return pts.back().second;
+    }
+};
 
 /// @brief Seeded noise source. Copyable value type (~1 KiB: two permutation tables).
 /// Perlin delegates to fuhgl::math::Noise (improved Perlin); value/simplex use their
