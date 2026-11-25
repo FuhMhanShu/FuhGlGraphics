@@ -83,7 +83,9 @@ struct PlacedMesh {
     fuhgl::render::MeshData mesh;          ///< local-space triangle data (11 floats/vertex)
     fuhgl::render::MeshData roofMesh;      ///< optional roof part (city houses) — own MeshEntry, e.g. shingle texture
     fuhgl::render::MeshData detailMesh;    ///< optional details (city houses: door/windows/chimney/bay) — own MeshEntry, plain vertex colors
+    fuhgl::render::MeshData glassMesh;     ///< optional window glass (city houses) — own MeshEntry with a reflective material
     int roofType = 0;                      ///< city houses: cast of procedural::RoofType (0 gable, 1 lean-to, 2 hipped, 3 flat)
+    int facade = 0;                        ///< city houses: cast of procedural::FacadeMaterial (0 brick, 1 plaster, 2 stone) — texture choice app-side
     fuhgl::math::Vec3 position{0.f, 0.f, 0.f}; ///< world position
     float rotY = 0.f;                      ///< rotation around +Y in radians
     float scale = 1.f;

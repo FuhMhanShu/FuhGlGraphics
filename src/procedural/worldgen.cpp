@@ -553,7 +553,9 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                 pm.mesh = hm.walls;
                 pm.detailMesh = hm.details;
                 pm.roofMesh = hm.roof;
+                pm.glassMesh = hm.glass;
                 pm.roofType = static_cast<int>(hm.spec.roofType);
+                pm.facade = static_cast<int>(hm.spec.facade);
                 pm.position = {wx, 0.05f, wz};
                 pm.rotY = -c.rot * fuhgl::math::kPi * 0.5f;
                 w.buildings.push_back(std::move(pm));

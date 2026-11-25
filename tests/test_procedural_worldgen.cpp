@@ -215,6 +215,7 @@ void testCityLayout() {
     CHECK(w.buildings.size() + static_cast<std::size_t>(w.parkCellCount) ==
           static_cast<std::size_t>(blocks));
     std::set<int> roofTypes;
+    int withGlass = 0, facades[3] = {0, 0, 0};
     for (const auto& b : w.buildings) {
         CHECK(b.mesh.vertexCount() >= 24);      // walls box (highrise may add a setback box)
         CHECK(b.detailMesh.vertexCount() > 0);  // door/windows/chimney
@@ -222,6 +223,9 @@ void testCityLayout() {
         CHECK(b.roofMesh.vertexCount() > 0);    // roof
         CHECK(b.roofType >= 0 && b.roofType <= 2);
         roofTypes.insert(b.roofType);
+        CHECK(b.facade >= 0 && b.facade <= 2);  // FacadeMaterial cast
+        ++facades[b.facade];
+        if (b.glassMesh.vertexCount() > 0) ++withGlass; // reflective window panes
         const float gx = (b.position.x / p.cellSize) + (p.cityGrid - 1) * 0.5f;
         const float gz = (b.position.z / p.cellSize) + (p.cityGrid - 1) * 0.5f;
         CHECK_NEAR(gx, std::round(gx), 1e-3f);
@@ -231,6 +235,8 @@ void testCityLayout() {
     CHECK(w.bushes.size() == static_cast<std::size_t>(w.parkCellCount) * p.parkBushesPerPlaza);
     CHECK(w.parkCellCount > 0); // parkFraction guarantees parks for interior blocks
     CHECK(!roofTypes.empty());
+    CHECK(withGlass > 0); // at least some houses carry window glass
+    CHECK(facades[0] + facades[1] + facades[2] == static_cast<int>(w.buildings.size()));
 }
 
 // average wall height (max y of the walls mesh) of the generated houses

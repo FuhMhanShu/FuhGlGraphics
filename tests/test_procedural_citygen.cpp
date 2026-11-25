@@ -116,11 +116,15 @@ void testLotsAndHouses() {
     CHECK(accessed > 0);
     CHECK(!w.houses.empty());
     // houses/park greenery stand on the plateau, meshes are complete
+    int withGlass = 0;
     for (const auto& h : w.houses) {
         CHECK(h.mesh.vertexCount() > 0);
         CHECK(h.position.y >= w.waterLevelWorld * 1.05f);
         CHECK(h.position.y <= w.waterLevelWorld * 1.05f + 0.1f);
+        CHECK(h.facade >= 0 && h.facade <= 2); // FacadeMaterial cast
+        if (h.glassMesh.vertexCount() > 0) ++withGlass;
     }
+    CHECK(withGlass > 0); // window glass panes for the reflective material app-side
     // determinism
     const CityWorld w2 = generateCityWorld(params());
     CHECK(w2.heightmap == w.heightmap);
