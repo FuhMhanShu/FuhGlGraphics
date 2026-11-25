@@ -9,6 +9,7 @@
 /// that the app attaches to a scene::Scene (upload via Mesh::setMeshData, place via node
 /// transforms — see examples/wfc_screenshot for the scene side).
 
+#include "house.hpp"
 #include "lsystem.hpp"
 #include "noise.hpp"
 #include "voronoi.hpp"
@@ -42,16 +43,21 @@ struct WorldGenParams {
     float waterLevel = 0.f;       ///< normalized [0,1] water level; >0 carves a lake basin below it
     float lakeCarve = 0.18f;      ///< basin depth factor for samples below waterLevel
     float lakeRadius = 0.f;       ///< >0: carve a round lake basin of this radius (world units) around the center
-    int treeCount = 120;          ///< scattered L-system trees (0 = off)
+    int erosionDroplets = 4000;   ///< hydraulic erosion droplets on the heightmap (0 = off)
+    int thermalPasses = 4;        ///< thermal erosion passes (talus-angle relaxation) (0 = off)
+    float talus = 0.09f;          ///< thermal talus threshold (normalized height drop per cell; ~35° world slope at default grid/height)
+    int treeCount = 120;          ///< scattered L-system trees, poisson-disk sampled (0 = off)
     int bushCount = 160;          ///< scattered L-system bushes (0 = off)
+    int rockCount = 40;           ///< scattered rocks on steep/rocky splatmask areas (0 = off)
     int grassBlades = 4000;       ///< hint for the app: instanced grass blades over the terrain (scene-side)
-    float treeMinDist = 6.f;      ///< min distance between trees (rejection sampling)
+    float treeMinDist = 6.f;      ///< min distance between scatter points (poisson disk)
 
     // --- city (mode == City) ---
     int cityGrid = 12;            ///< WFC cells per side
     float cellSize = 8.f;         ///< world size of one city cell
-    float buildingHeight = 6.f;   ///< base wall height of placed houses (jittered per block)
+    float buildingHeight = 6.f;   ///< base wall height of placed houses (scaled per houseStyle, jittered per block)
     float houseFootprint = 0.62f; ///< house footprint as a fraction of the cell
+    HouseStyle houseStyle = HouseStyle::Town; ///< architectural style of the houses
     int blocksPerDistrict = 0;    ///< >0: extrude this many voronoi district plates under the city
     float parkFraction = 0.12f;   ///< fraction of interior block cells turned into parks (lawn + bushes)
     int parkBushesPerPlaza = 3;   ///< bushes scattered on each park cell
@@ -62,7 +68,9 @@ struct WorldGenParams {
 /// + a tint. Attach as a scene node (translation/rotation/scale) with the mesh uploaded.
 struct PlacedMesh {
     fuhgl::render::MeshData mesh;          ///< local-space triangle data (11 floats/vertex)
-    fuhgl::render::MeshData roofMesh;      ///< optional second part (city houses: gabled roof) — own MeshEntry, e.g. shingle texture
+    fuhgl::render::MeshData roofMesh;      ///< optional roof part (city houses) — own MeshEntry, e.g. shingle texture
+    fuhgl::render::MeshData detailMesh;    ///< optional details (city houses: door/windows/chimney/bay) — own MeshEntry, plain vertex colors
+    int roofType = 0;                      ///< city houses: cast of procedural::RoofType (0 gable, 1 lean-to, 2 hipped, 3 flat)
     fuhgl::math::Vec3 position{0.f, 0.f, 0.f}; ///< world position
     float rotY = 0.f;                      ///< rotation around +Y in radians
     float scale = 1.f;
@@ -97,8 +105,17 @@ struct GeneratedWorld {
     // --- placed objects ---
     std::vector<PlacedMesh> trees;         ///< landscape: scattered L-system trees
     std::vector<PlacedMesh> bushes;        ///< landscape: bushes; city: park greenery
+    std::vector<PlacedMesh> rocks;         ///< landscape: scattered rocks (splatmap rock/slope)
     std::vector<PlacedMesh> buildings;     ///< city: one procedural house per non-park "block" cell (mesh = walls+door+windows, roofMesh = gabled roof)
     int parkCellCount = 0;                 ///< city: number of cells turned into parks (plaza + converted blocks)
+
+    // --- landscape splatmap (mode == Landscape) ---
+    /// @brief gridW*gridH RGBA weights per cell: R = grass, G = rock (slope band relative to the
+    /// steepest slope in the terrain), B = sand (shore + flow channels from the hydraulic
+    /// erosion), A = snow (altitude). Upload as a texture and use as the terrain albedo/splat map.
+    std::vector<unsigned char> splatmap;
+    /// @brief Flow accumulation of the hydraulic erosion (normalized [0,1]) — riverbeds/wet areas.
+    std::vector<float> flowmap;
 };
 
 /// @brief City tile set for the WFC solver: edge tags "r" = road, "s" = lot/sidewalk edge

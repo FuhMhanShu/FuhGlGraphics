@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 
 namespace fuhglgraphics::procedural {
 
@@ -60,92 +61,159 @@ void shiftY(fuhgl::render::MeshData& md, float dy) {
     for (std::size_t i = 0; i < md.vertexCount(); ++i) md.vertices[i * 11 + 1] += dy;
 }
 
-/// @brief Appends one box (half extents `half`, centered at `pos`) with a flat color to `dst`.
-void appendBox(fuhgl::render::MeshData& dst, const fuhgl::math::Vec3& half,
-               const fuhgl::math::Vec3& pos, const fuhgl::math::Vec3& color) {
-    fuhgl::render::MeshData b = fuhgl::render::shapes::boxData(half, color);
-    shiftY(b, pos.y);
-    appendTransformed(dst, b, fuhgl::math::translate({pos.x, 0.f, pos.z}));
-}
-
-// --- procedural house ---------------------------------------------------------------
-
-void pushVertex(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& p, const fuhgl::math::Vec3& n,
-                const fuhgl::math::Vec3& c, float u, float v) {
-    md.vertices.push_back(p.x); md.vertices.push_back(p.y); md.vertices.push_back(p.z);
-    md.vertices.push_back(n.x); md.vertices.push_back(n.y); md.vertices.push_back(n.z);
-    md.vertices.push_back(c.x); md.vertices.push_back(c.y); md.vertices.push_back(c.z);
-    md.vertices.push_back(u); md.vertices.push_back(v);
-}
-
-void addQuad(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& a, const fuhgl::math::Vec3& b,
-             const fuhgl::math::Vec3& c, const fuhgl::math::Vec3& d, const fuhgl::math::Vec3& n,
-             const fuhgl::math::Vec3& col) {
-    const std::uint32_t base = static_cast<std::uint32_t>(md.vertexCount());
-    pushVertex(md, a, n, col, 0.f, 0.f);
-    pushVertex(md, b, n, col, 1.f, 0.f);
-    pushVertex(md, c, n, col, 1.f, 1.f);
-    pushVertex(md, d, n, col, 0.f, 1.f);
-    md.indices.push_back(base); md.indices.push_back(base + 1); md.indices.push_back(base + 2);
-    md.indices.push_back(base); md.indices.push_back(base + 2); md.indices.push_back(base + 3);
-}
-
-void addTri(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& a, const fuhgl::math::Vec3& b,
-            const fuhgl::math::Vec3& c, const fuhgl::math::Vec3& n, const fuhgl::math::Vec3& col) {
-    const std::uint32_t base = static_cast<std::uint32_t>(md.vertexCount());
-    pushVertex(md, a, n, col, 0.f, 0.f);
-    pushVertex(md, b, n, col, 1.f, 0.f);
-    pushVertex(md, c, n, col, 0.5f, 1.f);
-    md.indices.push_back(base); md.indices.push_back(base + 1); md.indices.push_back(base + 2);
-}
-
-/// @brief Gabled roof prism (ridge along x) as its own MeshData: two slopes + two gable
-/// triangles, with an eave overhang. Base sits at y = 0 (the caller places it at wallH).
-fuhgl::render::MeshData makeRoofMesh(float w, float d, float roofH, const fuhgl::math::Vec3& color) {
-    const float hw = w * 0.5f + 0.14f, hd = d * 0.5f + 0.14f; // overhang
+/// @brief UV sphere as MeshData (pos/normal/color/uv per vertex, outward CCW winding) —
+/// used for the scattered rocks; keeps worldgen free of GL-side Mesh objects.
+fuhgl::render::MeshData uvSphereData(float radius, int seg, const fuhgl::math::Vec3& color) {
     fuhgl::render::MeshData md;
-    const fuhgl::math::Vec3 ns = fuhgl::math::normalize({0.f, roofH, hd});  // south slope
-    const fuhgl::math::Vec3 nn = fuhgl::math::normalize({0.f, roofH, -hd}); // north slope
-    addQuad(md, {-hw, 0.f, hd}, {hw, 0.f, hd}, {hw, roofH, 0.f}, {-hw, roofH, 0.f}, ns, color);
-    addQuad(md, {hw, 0.f, -hd}, {-hw, 0.f, -hd}, {-hw, roofH, 0.f}, {hw, roofH, 0.f}, nn, color);
-    addTri(md, {hw, 0.f, -hd}, {hw, 0.f, hd}, {hw, roofH, 0.f}, {1.f, 0.f, 0.f}, color);
-    addTri(md, {-hw, 0.f, hd}, {-hw, 0.f, -hd}, {-hw, roofH, 0.f}, {-1.f, 0.f, 0.f}, color);
+    const int rings = std::max(3, seg);
+    md.vertices.reserve(static_cast<std::size_t>(rings + 1) * (seg + 1) * 11);
+    for (int r = 0; r <= rings; ++r) {
+        const float phi = fuhgl::math::kPi * static_cast<float>(r) / rings; // 0..pi, top to bottom
+        const float y = std::cos(phi) * radius;
+        const float rr = std::sin(phi) * radius;
+        for (int s = 0; s <= seg; ++s) {
+            const float theta = 2.f * fuhgl::math::kPi * static_cast<float>(s) / seg;
+            const float x = rr * std::cos(theta), z = rr * std::sin(theta);
+            const fuhgl::math::Vec3 n = fuhgl::math::normalize({x, y, z});
+            const float vert[11] = {x,  y,  z,  n.x, n.y, n.z, color.x, color.y, color.z,
+                                    static_cast<float>(s) / seg, static_cast<float>(r) / rings};
+            md.vertices.insert(md.vertices.end(), vert, vert + 11);
+        }
+    }
+    for (int r = 0; r < rings; ++r)
+        for (int s = 0; s < seg; ++s) {
+            const std::uint32_t a = static_cast<std::uint32_t>(r * (seg + 1) + s);
+            const std::uint32_t b = a + seg + 1;
+            md.indices.push_back(a); md.indices.push_back(a + 1); md.indices.push_back(b);
+            md.indices.push_back(a + 1); md.indices.push_back(b + 1); md.indices.push_back(b);
+        }
     return md;
 }
 
-/// @brief One procedural house: walls box + door + windows + chimney merged into `body`,
-/// gabled roof into `roof`. Local space, base at y = 0, front door faces +z. `wallTint` picks
-/// one of a few palettes; uv 0..1 per box face so a brick texture tiles on the walls.
-void makeHouse(float w, float d, float wallH, float roofH, float wallTint,
-               fuhgl::render::MeshData& body, fuhgl::render::MeshData& roof) {
-    static const fuhgl::math::Vec3 wallPalettes[4] = {
-        {0.82f, 0.78f, 0.70f}, {0.72f, 0.45f, 0.36f}, {0.78f, 0.74f, 0.66f}, {0.62f, 0.66f, 0.70f}};
-    static const fuhgl::math::Vec3 roofPalettes[4] = {
-        {0.45f, 0.16f, 0.12f}, {0.30f, 0.22f, 0.18f}, {0.50f, 0.24f, 0.14f}, {0.28f, 0.28f, 0.32f}};
-    const int pal = static_cast<int>(wallTint * 4.f) % 4;
-    const fuhgl::math::Vec3 wall = wallPalettes[pal];
-    const fuhgl::math::Vec3 roofCol = roofPalettes[pal];
+// --- landscape pipeline -------------------------------------------------------------------
+// 1. macro relief: domain-warped coords + continentalness mask (low-freq simplex decides
+//    plains vs. mountains) combining plain fBm (plains) with ridged multifractal (mountains)
+// 2. hydraulic erosion (droplet particle sim, also produces the flow map) + thermal erosion
+// 3. splatmap: R grass / G rock (slope) / B sand (shore + flow channels) / A snow (altitude)
+// 4. vegetation & rocks scattered by poisson-disk sampling weighted by the splatmap
 
-    body = fuhgl::render::shapes::boxData({w * 0.5f, wallH * 0.5f, d * 0.5f}, wall);
-    shiftY(body, wallH * 0.5f); // walls
-    appendBox(body, {0.09f, 0.8f, 0.035f}, {0.f, 0.8f, d * 0.5f + 0.02f}, {0.24f, 0.14f, 0.08f}); // door
-    const fuhgl::math::Vec3 winCol{0.65f, 0.78f, 0.88f};
-    for (int s = -1; s <= 1; s += 2) { // windows front + back
-        appendBox(body, {0.28f, 0.38f, 0.03f}, {s * w * 0.25f, wallH * 0.62f, d * 0.5f + 0.015f}, winCol);
-        appendBox(body, {0.28f, 0.38f, 0.03f}, {s * w * 0.25f, wallH * 0.62f, -d * 0.5f - 0.015f}, winCol);
+float cellWorld(const WorldGenParams& p, int g) { return p.worldSize / static_cast<float>(g - 1); }
+
+/// @brief Hydraulic erosion: droplet particle simulation on the normalized heightmap.
+/// Each droplet flows downhill, erodes sediment where fast/steep and deposits it in the flats;
+/// the traveled water amount accumulates into `flow` (riverbeds).
+void hydraulicErode(std::vector<float>& h, int g, int droplets, Rng& rng,
+                    std::vector<float>& flow) {
+    const std::size_t n = static_cast<std::size_t>(g) * g;
+    flow.assign(n, 0.f);
+    auto at = [&](int x, int z) { return h[static_cast<std::size_t>(x) + g * z]; };
+    for (int d = 0; d < droplets; ++d) {
+        float x = 1.f + rng.nextf() * (g - 3), z = 1.f + rng.nextf() * (g - 3);
+        float speed = 1.f, water = 1.f, sediment = 0.f;
+        for (int step = 0; step < 48; ++step) {
+            const int xi = static_cast<int>(x), zi = static_cast<int>(z);
+            // gradient via bilinear interpolation of the height differences
+            const float fx = x - xi, fz = z - zi;
+            const float h00 = at(xi, zi), h10 = at(xi + 1, zi), h01 = at(xi, zi + 1), h11 = at(xi + 1, zi + 1);
+            const float gx = (h10 - h00) * (1.f - fz) + (h11 - h01) * fz;
+            const float gz = (h01 - h00) * (1.f - fx) + (h11 - h10) * fx;
+            float dirX = -gx, dirZ = -gz;
+            const float len = std::sqrt(dirX * dirX + dirZ * dirZ);
+            if (len < 1e-6f) break;
+            dirX /= len;
+            dirZ /= len;
+            const float nx = x + dirX, nz = z + dirZ;
+            if (nx < 0.f || nz < 0.f || nx > g - 1 || nz > g - 1) break;
+            const int nxi = static_cast<int>(nx), nzi = static_cast<int>(nz);
+            const float nfx = nx - nxi, nfz = nz - nzi;
+            const float newH = (at(nxi, nzi) * (1.f - nfx) + at(nxi + 1, nzi) * nfx) * (1.f - nfz) +
+                               (at(nxi, nzi + 1) * (1.f - nfx) + at(nxi + 1, nzi + 1) * nfx) * nfz;
+            const float deltaH = at(xi, zi) - newH; // >0: flowing downhill
+            const float capacity = std::max(deltaH * speed * water * 4.f, 0.01f);
+            if (sediment > capacity || deltaH <= 0.f) {
+                const float deposit = deltaH <= 0.f ? sediment : (sediment - capacity) * 0.5f;
+                h[static_cast<std::size_t>(xi) + g * zi] += deposit;
+                sediment -= deposit;
+            } else {
+                const float amount = std::min((capacity - sediment) * 0.3f, deltaH * 0.5f);
+                h[static_cast<std::size_t>(xi) + g * zi] -= amount;
+                sediment += amount;
+            }
+            speed = std::sqrt(std::max(0.f, speed * speed + deltaH * 4.f));
+            water *= 0.985f;
+            flow[static_cast<std::size_t>(xi) + g * zi] += water * speed * 0.02f;
+            x = nx;
+            z = nz;
+            if (water < 0.01f) break;
+        }
     }
-    if (w > 2.5f) // side windows on wider houses
-        for (int s = -1; s <= 1; s += 2)
-            appendBox(body, {0.03f, 0.38f, 0.28f}, {s * w * 0.5f + (s > 0 ? 0.015f : -0.015f), wallH * 0.62f, 0.f}, winCol);
-    appendBox(body, {0.16f, roofH * 0.7f, 0.16f}, {w * 0.28f, wallH + roofH * 0.45f, -d * 0.22f},
-              {0.55f, 0.53f, 0.50f}); // chimney
-    roof = makeRoofMesh(w, d, roofH, roofCol);
-    shiftY(roof, wallH); // eaves sit on top of the walls
+    for (float& v : h) v = std::min(1.f, std::max(0.f, v));
+    float maxFlow = 0.f;
+    for (const float f : flow) maxFlow = std::max(maxFlow, f);
+    if (maxFlow > 0.f)
+        for (float& f : flow) f /= maxFlow;
 }
 
-/// @brief Landscape: noise heightmap (ridged fBm, contrast shaping, optional domain warp +
-/// island falloff + lake basin) + scattered L-system trees and bushes that avoid water and
-/// keep a min distance.
+/// @brief Thermal erosion: material slides down where the slope exceeds the talus threshold.
+void thermalErode(std::vector<float>& h, int g, float talus, int passes) {
+    for (int pass = 0; pass < passes; ++pass)
+        for (int z = 1; z < g - 1; ++z)
+            for (int x = 1; x < g - 1; ++x) {
+                float& hc = h[static_cast<std::size_t>(x) + g * z];
+                const float hArr[4] = {h[static_cast<std::size_t>(x + 1) + g * z],
+                                       h[static_cast<std::size_t>(x - 1) + g * z],
+                                       h[static_cast<std::size_t>(x) + g * (z + 1)],
+                                       h[static_cast<std::size_t>(x) + g * (z - 1)]};
+                for (int k = 0; k < 4; ++k) {
+                    const float diff = hc - hArr[k];
+                    if (diff > talus) {
+                        const float move = (diff - talus) * 0.25f;
+                        hc -= move;
+                        h[static_cast<std::size_t>(x + (k == 0 ? 1 : k == 1 ? -1 : 0)) +
+                          g * (z + (k == 2 ? 1 : k == 3 ? -1 : 0))] += move;
+                    }
+                }
+            }
+}
+
+/// @brief Poisson-disk-ish scatter (dart throwing with a spatial hash): random points with a
+/// guaranteed min distance, accepted with probability `weight(x,z)` (density mask).
+std::vector<fuhgl::math::Vec2> poissonScatter(float half, float minDist, int maxPoints,
+                                              const std::function<float(float, float)>& weight,
+                                              Rng& rng) {
+    std::vector<fuhgl::math::Vec2> pts;
+    const float cell = minDist * 0.7071f;
+    const int gw = std::max(1, static_cast<int>(std::ceil(2.f * half / cell)));
+    std::vector<int> head(static_cast<std::size_t>(gw) * gw, -1);
+    std::vector<int> next;
+    const int attempts = maxPoints * 40;
+    for (int a = 0; a < attempts && static_cast<int>(pts.size()) < maxPoints; ++a) {
+        const float x = (rng.nextf() - 0.5f) * 2.f * half;
+        const float z = (rng.nextf() - 0.5f) * 2.f * half;
+        if (weight(x, z) < rng.nextf()) continue; // density-mask rejection
+        const int cx = static_cast<int>((x + half) / cell), cz = static_cast<int>((z + half) / cell);
+        bool tooClose = false;
+        const int r = static_cast<int>(std::ceil(minDist / cell));
+        for (int dz = -r; dz <= r && !tooClose; ++dz)
+            for (int dx = -r; dx <= r && !tooClose; ++dx) {
+                const int qx = cx + dx, qz = cz + dz;
+                if (qx < 0 || qz < 0 || qx >= gw || qz >= gw) continue;
+                for (int idx = head[static_cast<std::size_t>(qx) + gw * qz]; idx >= 0; idx = next[idx]) {
+                    const float ddx = pts[idx].x - x, ddz = pts[idx].y - z;
+                    if (ddx * ddx + ddz * ddz < minDist * minDist) { tooClose = true; break; }
+                }
+            }
+        if (tooClose) continue;
+        const int id = static_cast<int>(pts.size());
+        pts.push_back({x, z});
+        next.push_back(-1);
+        const std::size_t cellIdx = static_cast<std::size_t>(cx) + gw * cz;
+        next[id] = head[cellIdx];
+        head[cellIdx] = id;
+    }
+    return pts;
+}
+
 void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
     Noise noise(p.seed);
     const int g = std::max(2, p.terrainGrid);
@@ -157,78 +225,136 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
     w.waterLevelWorld = p.waterLevel > 0.f ? p.waterLevel * p.terrainHeight : 0.f;
     w.heightmap.resize(static_cast<std::size_t>(g) * g);
     const float expo = std::max(0.05f, p.heightExponent);
+    const float waterN = p.waterLevel; // normalized water level for masks
     for (int j = 0; j < g; ++j)
         for (int i = 0; i < g; ++i) {
             const float u = static_cast<float>(i) / static_cast<float>(g - 1);
             const float v = static_cast<float>(j) / static_cast<float>(g - 1);
-            float nx = (u - 0.5f) * p.worldSize * p.noiseScale;
-            float nz = (v - 0.5f) * p.worldSize * p.noiseScale;
+            const float x = (u - 0.5f) * p.worldSize, z = (v - 0.5f) * p.worldSize;
+            // 1. domain warp: distort the noise input -> flowing folds, organic coastlines
+            float nx = x * p.noiseScale, nz = z * p.noiseScale;
             if (p.warpStrength > 0.f) {
                 const fuhgl::math::Vec2 wp = noise.warp2(nx, nz, p.warpStrength, 3);
                 nx = wp.x;
                 nz = wp.y;
             }
-            float h = noise.ridged2(nx, nz, p.octaves, Noise::Base::Simplex);
-            h = std::pow(h, expo);                                                 // sharper peaks
+            // continentalness: very low-frequency simplex decides plains vs. mountain ranges
+            const float cont = noise.simplex2(nx * 0.22f + 7.3f, nz * 0.22f + 2.9f); // ~[-1,1]
+            const float mountainMask = smoothstep(0.15f, 0.75f, cont);
+            const float plains = noise.fbm2(nx, nz, 5, Noise::Base::Simplex) * 0.5f + 0.5f;
+            const float ridge = noise.ridged2(nx, nz, p.octaves, Noise::Base::Simplex); // sharp crests
+            float h = plains * (1.f - mountainMask) + ridge * mountainMask;
+            h = std::pow(std::min(1.f, std::max(0.f, h)), expo);
             if (p.lakeRadius > 0.f) { // explicit round lake basin around the center
-                const float wx = (u - 0.5f) * p.worldSize, wz = (v - 0.5f) * p.worldSize;
-                const float d = std::hypot(wx, wz);
-                h *= smoothstep(p.lakeRadius * 0.55f, p.lakeRadius, d); // 0 inside the basin
+                const float d = std::hypot(x, z);
+                h *= smoothstep(p.lakeRadius * 0.55f, p.lakeRadius, d);
             }
-            const float edge = std::max(std::fabs(u - 0.5f), std::fabs(v - 0.5f)) * 2.f; // [0,1] to border
-            const float fall = 1.f - smoothstep(0.82f, 1.f, edge);                 // island falloff
+            const float edge = std::max(std::fabs(u - 0.5f), std::fabs(v - 0.5f)) * 2.f;
+            const float fall = 1.f - smoothstep(0.82f, 1.f, edge);
             if (p.waterLevel > 0.f)
-                // falloff lands on a shore ring slightly above the water level (not below it)
-                h = h * fall + p.waterLevel * 1.05f * (1.f - fall);
+                h = h * fall + p.waterLevel * 1.05f * (1.f - fall); // shore ring above water
             else
                 h *= fall;
-            if (p.waterLevel > 0.f && h < p.waterLevel) h *= p.lakeCarve;           // lake basin
+            if (p.waterLevel > 0.f && h < p.waterLevel) h *= p.lakeCarve; // lake bed
             w.heightmap[static_cast<std::size_t>(i) + g * j] = h;
         }
 
+    // 2. erosion: hydraulic droplets carve valleys/riverbeds (and fill the flow map),
+    //    thermal passes relax slopes above the talus angle into debris fans
     Rng rng(p.seed ^ 0x7EE5u);
-    const float half = p.worldSize * 0.5f;
-    auto freeSpot = [&](float x, float z, float minDist) {
-        if (w.waterLevelWorld > 0.f && w.heightAt(x, z) < w.waterLevelWorld + 0.4f) return false; // not in the lake
-        for (const auto& other : w.trees) {
-            const float dx = other.position.x - x, dz = other.position.z - z;
-            if (dx * dx + dz * dz < minDist * minDist) return false;
-        }
-        for (const auto& other : w.bushes) {
-            const float dx = other.position.x - x, dz = other.position.z - z;
-            if (dx * dx + dz * dz < minDist * minDist) return false;
-        }
-        return true;
+    if (p.erosionDroplets > 0)
+        hydraulicErode(w.heightmap, g, p.erosionDroplets, rng, w.flowmap);
+    else
+        w.flowmap.assign(w.heightmap.size(), 0.f);
+    if (p.thermalPasses > 0) thermalErode(w.heightmap, g, p.talus, p.thermalPasses);
+
+    // 3. splatmap: per-cell material weights from height, slope and the erosion flow map.
+    // Slope is measured in world units (dh_world/dx); the rock band is relative to the
+    // steepest slope present so cliffs always get rock at any heightScale/grid combination.
+    const float cell = cellWorld(p, g);
+    w.splatmap.resize(static_cast<std::size_t>(g) * g * 4);
+    auto hAt = [&](int x, int z) {
+        x = std::min(g - 1, std::max(0, x));
+        z = std::min(g - 1, std::max(0, z));
+        return w.heightmap[static_cast<std::size_t>(x) + g * z];
     };
-    for (int t = 0; t < p.treeCount; ++t) {
-        const float x = (rng.nextf() - 0.5f) * 2.f * half;
-        const float z = (rng.nextf() - 0.5f) * 2.f * half;
-        if (!freeSpot(x, z, p.treeMinDist)) continue;
+    std::vector<float> slopeMap(static_cast<std::size_t>(g) * g, 0.f);
+    float maxSlope = 0.f;
+    for (int j = 0; j < g; ++j)
+        for (int i = 0; i < g; ++i) {
+            const float gx = (hAt(i + 1, j) - hAt(i - 1, j)) * 0.5f * w.heightScale / cell;
+            const float gz = (hAt(i, j + 1) - hAt(i, j - 1)) * 0.5f * w.heightScale / cell;
+            const float slope = std::sqrt(gx * gx + gz * gz);
+            slopeMap[static_cast<std::size_t>(i) + g * j] = slope;
+            maxSlope = std::max(maxSlope, slope);
+        }
+    const float rockLo = maxSlope * 0.5f, rockHi = maxSlope * 0.95f;
+    for (int j = 0; j < g; ++j)
+        for (int i = 0; i < g; ++i) {
+            const float h = hAt(i, j);
+            const float slope = slopeMap[static_cast<std::size_t>(i) + g * j];
+            const float flow = w.flowmap[static_cast<std::size_t>(i) + g * j];
+            float rock = smoothstep(rockLo, rockHi, slope);
+            float snow = smoothstep(0.58f, 0.8f, h); // altitude-based snowline (heightmap is [0,1])
+            float sand = smoothstep(0.035f, 0.f, std::fabs(h - waterN)) + flow * 0.6f; // shore + riverbeds
+            sand = std::min(1.f, sand);
+            float grass = std::min(1.f, std::max(0.f, 1.f - rock - snow - sand));
+            if (h < waterN) grass *= 0.15f; // lake bed
+            const std::size_t idx = (static_cast<std::size_t>(i) + g * j) * 4;
+            w.splatmap[idx + 0] = static_cast<unsigned char>(grass * 255.f);
+            w.splatmap[idx + 1] = static_cast<unsigned char>(std::min(1.f, rock) * 255.f);
+            w.splatmap[idx + 2] = static_cast<unsigned char>(sand * 255.f);
+            w.splatmap[idx + 3] = static_cast<unsigned char>(snow * 255.f);
+        }
+
+    // 4. poisson-disk scatter weighted by the splatmap: trees on grass, rocks on rock/steep
+    const float half = p.worldSize * 0.5f;
+    auto grassWeight = [&](float x, float z) {
+        if (w.heightAt(x, z) < w.waterLevelWorld + 0.3f) return 0.f;
+        const float u = std::min(1.f, std::max(0.f, x / w.sizeX + 0.5f)) * (g - 1);
+        const float v = std::min(1.f, std::max(0.f, z / w.sizeZ + 0.5f)) * (g - 1);
+        const std::size_t idx = (static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v)) * 4;
+        const float grass = w.splatmap[idx + 0] / 255.f;
+        const float rock = w.splatmap[idx + 1] / 255.f;
+        return grass * (1.f - rock);
+    };
+    auto rockWeight = [&](float x, float z) {
+        const float u = std::min(1.f, std::max(0.f, x / w.sizeX + 0.5f)) * (g - 1);
+        const float v = std::min(1.f, std::max(0.f, z / w.sizeZ + 0.5f)) * (g - 1);
+        const std::size_t idx = (static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v)) * 4;
+        return w.splatmap[idx + 1] / 255.f;
+    };
+    for (const auto& s : poissonScatter(half, p.treeMinDist, p.treeCount, grassWeight, rng)) {
         LSystem tree = LSystem::makeTree(static_cast<int>(rng.next() % 3u), p.seed);
         PlacedMesh pm;
         pm.mesh = tree.generate();
-        pm.position = {x, w.heightAt(x, z), z};
+        pm.position = {s.x, w.heightAt(s.x, s.y), s.y};
         pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
-        pm.scale = 0.45f + 0.5f * rng.nextf(); // modest trees
+        pm.scale = 0.45f + 0.5f * rng.nextf();
         w.trees.push_back(std::move(pm));
     }
-    for (int t = 0; t < p.bushCount; ++t) {
-        const float x = (rng.nextf() - 0.5f) * 2.f * half;
-        const float z = (rng.nextf() - 0.5f) * 2.f * half;
-        if (!freeSpot(x, z, p.treeMinDist * 0.5f)) continue;
+    for (const auto& s : poissonScatter(half, p.treeMinDist * 0.5f, p.bushCount, grassWeight, rng)) {
         PlacedMesh pm;
         pm.mesh = LSystem::makeBush().generate();
-        pm.position = {x, w.heightAt(x, z), z};
+        pm.position = {s.x, w.heightAt(s.x, s.y), s.y};
         pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
         pm.scale = 0.5f + 0.7f * rng.nextf();
         w.bushes.push_back(std::move(pm));
     }
+    for (const auto& s : poissonScatter(half, p.treeMinDist * 0.8f, p.rockCount, rockWeight, rng)) {
+        PlacedMesh pm;
+        pm.mesh = uvSphereData(1.f, 7, {0.45f, 0.44f, 0.42f});
+        pm.position = {s.x, w.heightAt(s.x, s.y) + 0.1f, s.y};
+        pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
+        pm.scale = 0.4f + 1.2f * rng.nextf();
+        w.rocks.push_back(std::move(pm));
+    }
 }
-
 /// @brief City: WFC layout over a ground plate; street cells get a sidewalk underlay + dark
 /// asphalt slab, block cells a concrete lot + a procedural house, plaza cells a lawn + park
 /// bushes; optional voronoi district plates underneath.
 void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
+    HouseGenerator houseGen;
     const int gw = std::max(2, p.cityGrid);
     Wfc wfc(gw, gw, "s"); // border tag "s": the ring closes with blocks/sidewalk edges
     w.tiles = makeCityTiles();
@@ -282,11 +408,20 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                 appendTransformed(w.roads, lot, place);
                 // procedural house on the lot
                 const float n = noise.value2(wx * 0.05f + 13.1f, wz * 0.05f + 7.7f); // per-block jitter
-                const float wallH = p.buildingHeight * (0.5f + 0.9f * n);
-                const float fw = p.cellSize * p.houseFootprint * (0.8f + 0.4f * n);
-                const float fd = p.cellSize * p.houseFootprint * (0.8f + 0.4f * noise.value2(wz * 0.07f, wx * 0.07f));
+                const std::uint32_t houseSeed =
+                    p.seed ^ 0x11A5u ^ (static_cast<std::uint32_t>(x) * 73856093u) ^
+                    (static_cast<std::uint32_t>(z) * 19349663u);
+                HouseGenerator::Params hp =
+                    HouseGenerator::randomParams(p.houseStyle, p.cellSize, houseSeed);
+                hp.seed = houseSeed;
+                hp.width *= (0.8f + 0.4f * n);
+                hp.depth *= (0.8f + 0.4f * noise.value2(wz * 0.07f, wx * 0.07f));
+                const HouseMesh hm = houseGen.generate(hp);
                 PlacedMesh pm;
-                makeHouse(fw, fd, wallH, std::max(1.2f, wallH * 0.45f), n, pm.mesh, pm.roofMesh);
+                pm.mesh = hm.walls;
+                pm.detailMesh = hm.details;
+                pm.roofMesh = hm.roof;
+                pm.roofType = static_cast<int>(hm.spec.roofType);
                 pm.position = {wx, 0.05f, wz};
                 pm.rotY = -c.rot * fuhgl::math::kPi * 0.5f;
                 w.buildings.push_back(std::move(pm));

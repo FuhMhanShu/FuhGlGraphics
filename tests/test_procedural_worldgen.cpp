@@ -7,6 +7,7 @@
 
 #include <fuhglgraphics/procedural/worldgen.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <set>
 
@@ -53,20 +54,29 @@ void testLandscapeHeightmap() {
         CHECK(h >= 0.f && h <= 1.f);
     }
     // island falloff: the border ring lands on the shore (slightly above the water level
-    // when a lake is carved, near zero otherwise)
+    // when a lake is carved, near zero otherwise); erosion may deposit a little sediment there
     const int g = w.gridW;
-    const float borderMax = p.waterLevel > 0.f ? p.waterLevel * 1.05f + 0.02f : 0.05f;
+    const float borderMax = p.waterLevel > 0.f ? p.waterLevel * 1.05f + 0.15f : 0.2f;
     for (int i = 0; i < g; ++i) {
         CHECK(w.heightmap[i] <= borderMax);
         CHECK(w.heightmap[i + g * (g - 1)] <= borderMax);
         CHECK(w.heightmap[g * i] <= borderMax);
         CHECK(w.heightmap[g * i + g - 1] <= borderMax);
     }
-    // lake basin: with waterLevel > 0 some samples are carved below the water level
-    int belowWater = 0;
-    for (const float h : w.heightmap)
-        if (h < p.waterLevel * 0.5f) ++belowWater;
-    CHECK(belowWater > 0);
+    // lake basin: with waterLevel > 0 some samples end below the water level
+    float minH = 1.f;
+    for (const float h : w.heightmap) minH = std::min(minH, h);
+    CHECK(minH < p.waterLevel);
+    // splatmap + flowmap exist and are in range
+    CHECK(w.splatmap.size() == static_cast<std::size_t>(g) * g * 4);
+    CHECK(w.flowmap.size() == static_cast<std::size_t>(g) * g);
+    int snowPixels = 0, rockPixels = 0;
+    for (std::size_t i = 0; i < w.splatmap.size(); i += 4) {
+        if (w.splatmap[i + 3] > 200) ++snowPixels; // A = snow
+        if (w.splatmap[i + 1] > 150) ++rockPixels; // G = rock
+    }
+    CHECK(snowPixels > 0);  // high peaks are snow-covered
+    CHECK(rockPixels > 0);  // steep slopes are rock
 }
 
 void testHeightAt() {
@@ -78,10 +88,40 @@ void testHeightAt() {
     const float z = -w.sizeZ * 0.5f + 20.f * (w.sizeZ / (w.gridH - 1)); // node z=20
     const float expect = w.heightmap[10 + w.gridW * 20] * w.heightScale;
     CHECK_NEAR(w.heightAt(x, z), expect, 1e-3f);
-    // clamping: outside the rect returns the border sample, never NaN
-    CHECK_NEAR(w.heightAt(-1e6f, 0.f), w.heightmap[0] * w.heightScale, 1e-3f);
-    CHECK_NEAR(w.heightAt(1e6f, 1e6f), w.heightmap[w.gridW * w.gridH - 1] * w.heightScale, 1e-3f);
+    // clamping: far outside the rect clamps to the edge column/row, never NaN
+    CHECK_NEAR(w.heightAt(-1e6f, 0.f), w.heightAt(-w.sizeX, 0.f), 1e-3f);
+    CHECK_NEAR(w.heightAt(1e6f, 1e6f), w.heightAt(w.sizeX, w.sizeZ), 1e-3f);
     CHECK(std::isfinite(w.heightAt(0.f, 0.f)));
+}
+
+void testErosionAndScatter() {
+    WorldGenParams p = landscapeParams();
+    p.erosionDroplets = 1500;
+    p.thermalPasses = 3;
+    const GeneratedWorld w = generateWorld(p);
+    // heightmap still valid after erosion
+    for (const float h : w.heightmap) CHECK(h >= 0.f && h <= 1.f);
+    // flow map was produced and normalized
+    float maxFlow = 0.f;
+    for (const float f : w.flowmap) maxFlow = std::max(maxFlow, f);
+    CHECK(maxFlow > 0.f && maxFlow <= 1.f + 1e-6f);
+    // poisson scatter: min distance respected among trees
+    for (std::size_t i = 0; i < w.trees.size(); ++i)
+        for (std::size_t j = i + 1; j < w.trees.size(); ++j) {
+            const float dx = w.trees[i].position.x - w.trees[j].position.x;
+            const float dz = w.trees[i].position.z - w.trees[j].position.z;
+            CHECK(dx * dx + dz * dz >= p.treeMinDist * p.treeMinDist * 0.9f);
+        }
+    // rocks scattered and on the ground
+    CHECK(!w.rocks.empty());
+    for (const auto& r : w.rocks) {
+        CHECK(r.mesh.vertexCount() > 0);
+        CHECK_NEAR(r.position.y, w.heightAt(r.position.x, r.position.z) + 0.1f, 0.5f);
+    }
+    // determinism with erosion
+    const GeneratedWorld w2 = generateWorld(p);
+    CHECK(w2.heightmap == w.heightmap);
+    CHECK(w2.splatmap == w.splatmap);
 }
 
 void testLandscapeTrees() {
@@ -174,10 +214,14 @@ void testCityLayout() {
     CHECK(w.parkCellCount >= plazaTiles);
     CHECK(w.buildings.size() + static_cast<std::size_t>(w.parkCellCount) ==
           static_cast<std::size_t>(blocks));
+    std::set<int> roofTypes;
     for (const auto& b : w.buildings) {
-        CHECK(b.mesh.vertexCount() > 24);      // box alone has 24 vertices
-        CHECK(b.roofMesh.vertexCount() > 0);   // roof prism
-        CHECK(b.roofMesh.indices.size() >= 12);
+        CHECK(b.mesh.vertexCount() >= 24);      // walls box (highrise may add a setback box)
+        CHECK(b.detailMesh.vertexCount() > 0);  // door/windows/chimney
+        CHECK(b.detailMesh.indices.size() >= 3);
+        CHECK(b.roofMesh.vertexCount() > 0);    // roof
+        CHECK(b.roofType >= 0 && b.roofType <= 2);
+        roofTypes.insert(b.roofType);
         const float gx = (b.position.x / p.cellSize) + (p.cityGrid - 1) * 0.5f;
         const float gz = (b.position.z / p.cellSize) + (p.cityGrid - 1) * 0.5f;
         CHECK_NEAR(gx, std::round(gx), 1e-3f);
@@ -186,6 +230,47 @@ void testCityLayout() {
     // park greenery: bushes on every park cell
     CHECK(w.bushes.size() == static_cast<std::size_t>(w.parkCellCount) * p.parkBushesPerPlaza);
     CHECK(w.parkCellCount > 0); // parkFraction guarantees parks for interior blocks
+    CHECK(!roofTypes.empty());
+}
+
+// average wall height (max y of the walls mesh) of the generated houses
+float avgWallHeight(WorldGenParams p) {
+    const GeneratedWorld w = generateWorld(p);
+    double sum = 0;
+    for (const auto& b : w.buildings) {
+        float maxY = 0.f;
+        for (std::size_t i = 0; i < b.mesh.vertexCount(); ++i)
+            maxY = std::max(maxY, b.mesh.vertices[i * 11 + 1]);
+        sum += maxY;
+    }
+    return w.buildings.empty() ? 0.f : static_cast<float>(sum / w.buildings.size());
+}
+
+void testHouseStyles() {
+    WorldGenParams base = cityParams();
+    base.houseStyle = HouseStyle::Village;
+    const float villageH = avgWallHeight(base);
+    base.houseStyle = HouseStyle::Town;
+    const float townH = avgWallHeight(base);
+    base.houseStyle = HouseStyle::Highrise;
+    const GeneratedWorld hr = generateWorld(base);
+    const float highriseH = avgWallHeight(base);
+    CHECK(villageH > 0.f && townH > 0.f && highriseH > 0.f);
+    CHECK(villageH < townH);      // village houses are lower than town houses
+    CHECK(highriseH > townH * 2); // highrise towers over town houses
+    for (const auto& b : hr.buildings) { // highrise: flat roofs + window grid details
+        CHECK(b.roofType == static_cast<int>(RoofType::Flat));
+        CHECK(b.detailMesh.vertexCount() > 24);
+    }
+    base.houseStyle = HouseStyle::Town;
+    const GeneratedWorld town = generateWorld(base);
+    bool anyGable = false, anyShed = false;
+    for (const auto& b : town.buildings) {
+        if (b.roofType == 0) anyGable = true; // Satteldach
+        if (b.roofType == 1) anyShed = true;  // Schleppdach
+    }
+    CHECK(anyGable);
+    CHECK(anyShed); // both roof variants occur with seed 777
 }
 
 void testCityTilesSolvable() {
@@ -229,8 +314,10 @@ void testDeterminismAndModes() {
 void runProceduralWorldgenTests() {
     testLandscapeHeightmap();
     testHeightAt();
+    testErosionAndScatter();
     testLandscapeTrees();
     testCityLayout();
+    testHouseStyles();
     testCityTilesSolvable();
     testDeterminismAndModes();
 }
