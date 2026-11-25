@@ -86,7 +86,11 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   (`temperature`/`humidity`/`biome` via a Whittaker lookup with `lapseRate`; scatter species and
   density follow the biome). The demo colors the vegetation splat channel with a soft Whittaker
   blend and adds strata bands to rock; new tests: Spline1D, climate/rivers, terracing
-  (1,648,832 checks, 0 failures).
+  (1,648,832 checks, 0 failures). New `--mode village` demo scene: big landscape + a small
+  procedural village (HouseGenerator houses on a flattened lake-shore plateau) rendered with
+  water, CSM shadows, IBL, HBAO, SSR, bloom, volumetric fog and wetness — CI-gated ref
+  `docs/images/g31_worldgen_village.png`; the landscape shot now uses a higher, more robust
+  camera vantage.
 - **G30 — procedural creatures** (`include/fuhglgraphics/procedural/creature.hpp`,
   `src/procedural/creature.cpp`): `Skeleton` graph (nodes with position/radius/`BodyPart`,
   `finalize()` bakes world-space ellipsoid + tapered-capsule prims with broadphase AABBs, linear

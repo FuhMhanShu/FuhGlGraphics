@@ -297,13 +297,18 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
     --prefix g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode both
 FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
     --prefix g31 --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline
-# writes g31_worldgen_{landscape,city,city_street}.png and g31_pipeline{,_street}.png
+FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
+    --prefix g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode village
+# writes g31_worldgen_{landscape,city,city_street,village}.png and g31_pipeline{,_street}.png
+# (--mode village: big landscape + small procedural village on the lake shore, rendered with
+#  water, CSM shadows, IBL, HBAO, SSR, bloom, volumetric fog and wetness enabled)
 # road surface + wet streets for the city modes (default: asphalt, dry):
 #   --surface asphalt|cobble|paving|dirt   (cobble/paving render with POM parallax)
 #   --wet                                  (dark reflective streets: SSR + roughness 0.12)
 ```
 
 ![G31 landscape](../../images/g31_worldgen_landscape.png)
+![G31 village on the lake shore](../../images/g31_worldgen_village.png)
 ![G31 city overview](../../images/g31_worldgen_city.png)
 ![G31 city street level](../../images/g31_worldgen_city_street.png)
 ![G31 cobblestone + wet streets overview](../../images/g31_cobble_city.png)
