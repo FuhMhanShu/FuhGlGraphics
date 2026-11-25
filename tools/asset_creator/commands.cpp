@@ -6,6 +6,7 @@
 
 #include <fuhgl/render/light.hpp>
 #include <fuhgl/render/mesh.hpp>
+#include <fuhgl/render/solid.hpp>
 
 #include <QFileInfo>
 
@@ -44,7 +45,9 @@ std::unique_ptr<QUndoCommand> makeSetTrsCommand(AssetDocument* doc, scene::Node*
                                                 const fuhgl::math::Vec3& translation,
                                                 const fuhgl::math::Quat& rotation,
                                                 const fuhgl::math::Vec3& scale) {
-    const auto oldT = node->translation, oldR = node->rotation, oldS = node->scale;
+    const fuhgl::math::Vec3 oldT = node->translation;
+    const fuhgl::math::Quat oldR = node->rotation;
+    const fuhgl::math::Vec3 oldS = node->scale;
     return std::make_unique<LambdaCommand>(
         doc, QObject::tr("Set TRS %1").arg(QString::fromStdString(node->name())),
         [node, translation, rotation, scale]() {

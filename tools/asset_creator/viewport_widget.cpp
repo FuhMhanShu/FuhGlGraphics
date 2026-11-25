@@ -6,6 +6,7 @@
 
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
+#include <QOpenGLFunctions_3_0>
 #include <QVBoxLayout>
 
 namespace assetcreator {
@@ -54,7 +55,7 @@ ViewportWidget::ViewportWidget(AssetDocument* doc, QWidget* parent)
         // FBO as its default framebuffer, so FBO 0 is not the widget surface here).
         // NOTE: use Qt's QOpenGLFunctions + the plain GL enums — the fuhgl::gl::GL_*
         // tokens clash with the GL macros leaked in by the Qt headers.
-        QOpenGLFunctions* glf = QOpenGLContext::currentContext()->functions();
+        auto* glf = QOpenGLContext::currentContext()->versionFunctions<QOpenGLFunctions_3_0>();
         const GLuint dstFbo = QOpenGLContext::currentContext()->defaultFramebufferObject();
         glf->glBindFramebuffer(GL_READ_FRAMEBUFFER, renderer_->output().id());
         glf->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dstFbo);

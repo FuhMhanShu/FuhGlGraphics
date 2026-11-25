@@ -7,6 +7,7 @@
 #include <fuhgl/gl/info.hpp>
 #include <fuhgl/gl/loader.hpp>
 #include <fuhgl/render/mesh.hpp>
+#include <fuhgl/render/solid.hpp>
 
 #include <QFileInfo>
 
