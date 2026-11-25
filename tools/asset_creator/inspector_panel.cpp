@@ -196,7 +196,7 @@ void InspectorPanel::rebuild() {
     addRow(tr("render scale"), p.renderScale, 0.25, 1, 0.05, [pushParam](double v) { pushParam("renderScale", v); });
 
     // G13 water section when the node owns a WaterComponent
-    QLayout* wl = waterBox_->layout();
+    auto* wl = static_cast<QVBoxLayout*>(waterBox_->layout());
     while (wl->count()) {
         QLayoutItem* it = wl->takeAt(0);
         if (it->widget()) it->widget()->deleteLater();

@@ -3,10 +3,9 @@
 #include <fuhglgraphics/scene/component.hpp>
 
 #include <fuhgl/gl/framebuffer.hpp>
-#include <fuhgl/gl/info.hpp>
-#include <fuhgl/gl/loader.hpp>
 
 #include <QOpenGLContext>
+#include <QOpenGLFunctions>
 #include <QVBoxLayout>
 
 namespace assetcreator {
@@ -52,13 +51,15 @@ ViewportWidget::ViewportWidget(AssetDocument* doc, QWidget* parent)
         renderer_->render(frame.view, &frame.materialIds, &frame.castShadow, nullptr, nullptr,
                           &frame.decals, frame.water, &frame.skins);
         // blit the renderer output into the widget's framebuffer (QOpenGLWidget uses an
-        // FBO as its default framebuffer, so FBO 0 is not the widget surface here)
-        auto& glf = fuhgl::gl::functions();
-        const unsigned dstFbo = QOpenGLContext::currentContext()->defaultFramebufferObject();
-        glf.glBindFramebuffer(fuhgl::gl::GL_READ_FRAMEBUFFER, renderer_->output().id());
-        glf.glBindFramebuffer(fuhgl::gl::GL_DRAW_FRAMEBUFFER, dstFbo);
-        glf.glBlitFramebuffer(0, 0, renderer_->width(), renderer_->height(), 0, 0, devW_, devH_,
-                              fuhgl::gl::GL_COLOR_BUFFER_BIT, fuhgl::gl::GL_NEAREST);
+        // FBO as its default framebuffer, so FBO 0 is not the widget surface here).
+        // NOTE: use Qt's QOpenGLFunctions + the plain GL enums — the fuhgl::gl::GL_*
+        // tokens clash with the GL macros leaked in by the Qt headers.
+        QOpenGLFunctions* glf = QOpenGLContext::currentContext()->functions();
+        const GLuint dstFbo = QOpenGLContext::currentContext()->defaultFramebufferObject();
+        glf->glBindFramebuffer(GL_READ_FRAMEBUFFER, renderer_->output().id());
+        glf->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dstFbo);
+        glf->glBlitFramebuffer(0, 0, renderer_->width(), renderer_->height(), 0, 0, devW_, devH_,
+                               GL_COLOR_BUFFER_BIT, GL_NEAREST);
     });
     connect(gl_, &fuhglgraphics::editor::GlViewportWidget::frameRendered, this,
             &ViewportWidget::frameRendered);

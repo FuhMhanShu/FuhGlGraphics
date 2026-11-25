@@ -5,6 +5,7 @@
 #include <fuhglgraphics/scene/node.hpp>
 
 #include <QOpenGLContext>
+#include <QWindow>
 #include <QRegularExpression>
 
 namespace assetcreator {
@@ -28,10 +29,10 @@ ChatController::ChatController(AssetDocument* doc, ViewportWidget* viewport, Cha
 }
 
 mcp::ToolHost ChatController::makeHostWithCurrentGL() {
-    // attach/glTF/water tools need a current GL context — use the viewport's
-    if (vp_ && vp_->glWidget() && vp_->glWidget()->context()) {
-        vp_->glWidget()->context()->makeCurrent(vp_->glWidget());
-    }
+    // attach/glTF/water tools need a current GL context — use the viewport's window
+    // (QOpenGLWidget is not a QSurface; makeCurrent takes the widget's QWindow)
+    if (vp_ && vp_->glWidget() && vp_->glWidget()->context() && vp_->glWidget()->windowHandle())
+        vp_->glWidget()->context()->makeCurrent(vp_->glWidget()->windowHandle());
     return doc_->makeToolHost();
 }
 
@@ -95,7 +96,7 @@ void ChatController::onSendMessage(const QString& text) {
     io::Json args;
     args.type = io::Json::Type::Object;
     auto str = [](const std::string& s) { io::Json v; v.type = io::Json::Type::String; v.str = s; return v; };
-    auto arr = [](const QStringList& l) {
+    auto arr = [&str](const QStringList& l) {
         io::Json v;
         v.type = io::Json::Type::Array;
         for (const QString& s : l) v.arr.push_back(str(s.toStdString()));

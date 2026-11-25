@@ -28,8 +28,7 @@ public:
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
 
 private:
-    static QModelIndex indexFor(fuhglgraphics::scene::Node* node,
-                                fuhglgraphics::scene::Node* parent);
+    QModelIndex indexFor(fuhglgraphics::scene::Node* node, fuhglgraphics::scene::Node* parent) const;
     fuhglgraphics::scene::Scene* scene_;
 };
 

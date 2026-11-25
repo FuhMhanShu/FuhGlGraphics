@@ -15,6 +15,8 @@
 #include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QOpenGLContext>
+#include <QWindow>
 #include <QSettings>
 #include <QSpinBox>
 #include <QStatusBar>
@@ -67,7 +69,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     connect(treePanel_, &SceneTreePanel::nodeSelected, this, &MainWindow::onSelectionChanged);
     connect(vpController_, &ViewportController::nodePicked, this, &MainWindow::onNodePicked);
-    connect(vpController_, &ViewportController::statusMessage, statusBar(), &QStatusBar::showMessage);
+    connect(vpController_, &ViewportController::statusMessage, this,
+            [this](const QString& m) { statusBar()->showMessage(m, 5000); });
     connect(viewport_, &ViewportWidget::frameRendered, this, &MainWindow::onFrameRendered);
     connect(viewport_, &ViewportWidget::glReadyChanged, this, &MainWindow::onGlReady);
     connect(chatPanel_, &ChatPanel::connectRequested, this, &MainWindow::onConnectMcp);
@@ -129,7 +132,7 @@ void MainWindow::openProject(const QString& path) {
         return;
     }
     auto* glw = viewport_->glWidget();
-    if (glw->context()) glw->context()->makeCurrent(glw);
+    if (glw->context() && glw->windowHandle()) glw->context()->makeCurrent(glw->windowHandle());
     QString err;
     if (!doc_->open(path, &err)) QMessageBox::warning(this, tr("Open failed"), err);
     refreshTitle();

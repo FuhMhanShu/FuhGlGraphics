@@ -31,7 +31,7 @@ void AssetBrowserPanel::onActivated(const QModelIndex& index) {
     const QString path = model_->filePath(index);
     const QString suffix = QFileInfo(path).suffix().toLower();
     if (suffix != "gltf" && suffix != "glb") return;
-    scene::Node* parent = selectedNodeFn();
+    fuhglgraphics::scene::Node* parent = selectedNodeFn();
     if (!parent) parent = &doc_->scene().root();
     pushCommand(makeLoadGltfCommand(doc_, parent, path));
 }

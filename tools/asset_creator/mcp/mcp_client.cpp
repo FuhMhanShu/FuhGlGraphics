@@ -85,7 +85,6 @@ void McpClient::sendLine(const io::Json& msg) {
     if (!process_) return;
     process_->write(mcp::serializeMessage(msg).c_str());
     process_->write("\n");
-    process_->flush();
 }
 
 void McpClient::requestToolsList() {

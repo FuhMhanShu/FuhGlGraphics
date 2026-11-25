@@ -14,7 +14,7 @@ void SceneTreeModel::reset() {
     endResetModel();
 }
 
-QModelIndex SceneTreeModel::indexFor(scene::Node* node, scene::Node* parent) {
+QModelIndex SceneTreeModel::indexFor(scene::Node* node, scene::Node* parent) const {
     if (!node || node == &scene_->root()) return QModelIndex();
     int row = 0;
     if (parent) {

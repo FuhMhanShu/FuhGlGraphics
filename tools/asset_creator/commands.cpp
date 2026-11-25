@@ -6,7 +6,6 @@
 
 #include <fuhgl/render/light.hpp>
 #include <fuhgl/render/mesh.hpp>
-#include <fuhgl/render/shapes.hpp>
 
 #include <QFileInfo>
 
