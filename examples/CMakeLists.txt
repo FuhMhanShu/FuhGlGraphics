@@ -172,6 +172,13 @@ target_link_libraries(fuhglgraphics_creature_screenshot PRIVATE fuhglgraphics)
 add_executable(fuhglgraphics_creature_showcase creature_showcase/main.cpp)
 target_link_libraries(fuhglgraphics_creature_showcase PRIVATE fuhglgraphics)
 
+# G37 ecophysiological-vegetation showcase: six G37 VegetationGenerator plants grown from
+# different EcoEnvironments (open meadow / dense forest / tropics / desert / windy coast /
+# autumn) side by side on a noise terrain; leaves render with G33 SSS backlighting —
+# headless to PNG.
+add_executable(fuhglgraphics_vegetation_showcase vegetation_showcase/main.cpp)
+target_link_libraries(fuhglgraphics_vegetation_showcase PRIVATE fuhglgraphics)
+
 # G31 world-generator showcase: procedural::generateWorld() builds a landscape (G24 noise
 # heightmap + lake basin + G26 L-system trees) and a city (G27 WFC layout + G28 district
 # plates + building boxes), attached to scene::Scene nodes; sun + CSM shadows + gradient sky,

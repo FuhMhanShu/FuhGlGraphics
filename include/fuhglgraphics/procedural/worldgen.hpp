@@ -3,7 +3,7 @@
 /// @file worldgen.hpp
 /// @brief World generator helper: one parameter struct (WorldGenParams) + one function
 /// (generateWorld) that procedurally builds either a LANDSCAPE (G24 noise heightmap with
-/// optional lake basin + scattered G26 L-system trees) or a CITY (G27 WFC street/building
+/// optional lake basin + scattered G37 eco-driven VegetationGenerator trees) or a CITY (G27 WFC street/building
 /// layout over a ground plate, optional G28 voronoi district plates). Pure CPU,
 /// deterministic per seed, no GL: the result is plain data (heightmap, placements, MeshData)
 /// that the app attaches to a scene::Scene (upload via Mesh::setMeshData, place via node
@@ -51,7 +51,7 @@ struct WorldGenParams {
     int erosionDroplets = 4000;   ///< hydraulic erosion droplets on the heightmap (0 = off)
     int thermalPasses = 4;        ///< thermal erosion passes (talus-angle relaxation) (0 = off)
     float talus = 0.09f;          ///< thermal talus threshold (normalized height drop per cell; ~35° world slope at default grid/height)
-    int treeCount = 120;          ///< scattered L-system trees, poisson-disk sampled (0 = off)
+    int treeCount = 120;          ///< scattered G37 vegetation trees (climate-map driven), poisson-disk sampled (0 = off)
     int bushCount = 160;          ///< scattered L-system bushes (0 = off)
     int rockCount = 40;           ///< scattered rocks on steep/rocky splatmask areas (0 = off)
     int grassBlades = 4000;       ///< hint for the app: instanced grass blades over the terrain (scene-side)
@@ -157,7 +157,7 @@ struct GeneratedWorld {
     bool wetRoads = false;                 ///< echo of WorldGenParams::wetRoads
 
     // --- placed objects ---
-    std::vector<PlacedMesh> trees;         ///< landscape: scattered L-system trees
+    std::vector<PlacedMesh> trees;         ///< landscape: scattered G37 vegetation trees (branches+leaves merged)
     std::vector<PlacedMesh> bushes;        ///< landscape: bushes; city: park greenery
     std::vector<PlacedMesh> rocks;         ///< landscape: scattered rocks (splatmap rock/slope)
     std::vector<PlacedMesh> buildings;     ///< city: one procedural house per non-park "block" cell (mesh = walls+door+windows, roofMesh = gabled roof)

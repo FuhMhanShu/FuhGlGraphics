@@ -1,6 +1,6 @@
 // World generator helper: generateWorld(params) builds either a landscape (G24 seeded noise
-// heightmap with contrast shaping, island falloff, optional lake basin; scattered G26 L-system
-// trees + bushes placed via rejection sampling on the height field) or a city (G27 WFC layout
+// heightmap with contrast shaping, island falloff, optional lake basin; scattered G37
+// eco-driven vegetation trees + G26 bushes) or a city (G27 WFC layout
 // from makeCityTiles() over a ground plate; street cells get a sidewalk underlay + dark asphalt
 // slab, block cells a concrete lot + a procedural house (walls/door/windows + gabled roof as a
 // separate mesh part), plaza cells a lawn + park bushes; optional G28 voronoi district plates).
@@ -10,6 +10,7 @@
 #include <fuhglgraphics/procedural/worldgen.hpp>
 
 #include <fuhglgraphics/procedural/plant.hpp>
+#include <fuhglgraphics/procedural/vegetation.hpp>
 
 #include <fuhgl/render.hpp>
 
@@ -62,6 +63,14 @@ void appendTransformed(fuhgl::render::MeshData& dst, const fuhgl::render::MeshDa
         dst.vertices.push_back(n.x); dst.vertices.push_back(n.y); dst.vertices.push_back(n.z);
         for (int k = 6; k < 11; ++k) dst.vertices.push_back(v[k]);
     }
+    for (const std::uint32_t idx : src.indices) dst.indices.push_back(base + idx);
+}
+
+/// @brief Appends `src` to `dst` (MeshData, 11 floats/vertex, indices offset) — used to merge
+/// the G37 vegetation branch + leaf meshes into one PlacedMesh.
+void appendMeshData(fuhgl::render::MeshData& dst, const fuhgl::render::MeshData& src) {
+    const std::uint32_t base = static_cast<std::uint32_t>(dst.vertexCount());
+    dst.vertices.insert(dst.vertices.end(), src.vertices.begin(), src.vertices.end());
     for (const std::uint32_t idx : src.indices) dst.indices.push_back(base + idx);
 }
 
@@ -635,30 +644,45 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
         const std::size_t idx = (static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v)) * 4;
         return w.splatmap[idx + 1] / 255.f;
     };
-    // trees: mixed species via the PlantGenerator (deciduous / fir / birch), bushes likewise
+    // trees: G37 ecophysiological VegetationGenerator — the same environmental parameters as
+    // the terrain (temperature/humidity climate maps) plus slope/altitude (wind exposure) and
+    // the scatter spacing (stand density) drive the growth form: cold taiga -> needle trees
+    // with conical crowns, wet tropics -> broad drip-tip leaves, dry -> thorns/succulents,
+    // windy ridges -> leaning flagged trees, dense stands -> tall pruned trunks; bushes likewise
     PlantGenerator plantGen;
+    VegetationGenerator vegGen;
+    auto climateAt = [&](float x, float z, float& temp, float& hum, float& slope) {
+        const float u = std::min(1.f, std::max(0.f, x / w.sizeX + 0.5f)) * (g - 1);
+        const float v = std::min(1.f, std::max(0.f, z / w.sizeZ + 0.5f)) * (g - 1);
+        const std::size_t idx = static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v);
+        temp = w.temperature.empty() ? 0.6f : w.temperature[idx];
+        hum = w.humidity.empty() ? 0.5f : w.humidity[idx];
+        slope = slopeMap[idx];
+    };
     for (const auto& s : poissonScatter(half, p.treeMinDist, p.treeCount, grassWeight, rng)) {
-        PlantParams pp;
-        pp.seed = p.seed ^ (rng.next() * 2654435761u);
-        // species follows the biome: taiga/tundra -> firs, jungle -> deciduous,
-        // otherwise a mixed deciduous/fir/birch roll
-        const int tb = biomeAt(s.x, s.y);
-        PlantKind kind = PlantKind::Deciduous;
-        if (tb == static_cast<int>(Biome::Taiga) || tb == static_cast<int>(Biome::Tundra))
-            kind = PlantKind::Fir;
-        else {
-            const float kindRoll = rng.nextf();
-            kind = kindRoll < 0.5f ? PlantKind::Deciduous
-                  : kindRoll < 0.75f ? PlantKind::Fir
-                                     : PlantKind::Birch;
-        }
-        pp.kind = kind;
-        pp.scale = 0.45f + 0.5f * rng.nextf();
+        float temp = 0.6f, hum = 0.5f, slope = 0.f;
+        climateAt(s.x, s.y, temp, hum, slope);
+        EcoEnvironment eco;
+        eco.temperature = temp;
+        eco.humidity = hum;
+        eco.windExposure = std::min(1.f, std::max(0.f, slope * 1.8f + std::max(0.f, w.heightAt(s.x, s.y) / w.heightScale - 0.7f) * 1.5f));
+        const float wa = rng.nextf() * 2.f * fuhgl::math::kPi; // prevailing wind direction
+        eco.windDir = {std::cos(wa), 0.f, std::sin(wa)};
+        eco.standDensity = std::min(1.f, std::max(0.f, 1.f - p.treeMinDist / 14.f));
+        eco.seed = p.seed ^ (rng.next() * 2654435761u);
+        VegetationParams vp = VegetationGenerator::randomParams(eco, eco.seed);
+        vp.scale = 0.45f + 0.5f * rng.nextf();
+        // world-scale trees are small: fewer attractors/nodes keep the mesh budget sane
+        vp.sca.attractors = 140 + static_cast<int>(rng.nextf() * 120.f);
+        vp.sca.maxNodes = 1200;
+        vp.sca.maxIterations = 32;
+        const VegetationMesh vm = vegGen.generate(vp);
         PlacedMesh pm;
-        pm.mesh = plantGen.generate(pp).mesh;
+        pm.mesh = vm.branches;
+        appendMeshData(pm.mesh, vm.leaves); // one vertex-colored mesh per tree
         pm.position = {s.x, w.heightAt(s.x, s.y), s.y};
         pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
-        pm.scale = pp.scale;
+        pm.scale = 1.f; // scale is already baked into the generated mesh
         w.trees.push_back(std::move(pm));
     }
     for (const auto& s : poissonScatter(half, p.treeMinDist * 0.5f, p.bushCount, grassWeight, rng)) {

@@ -34,3 +34,4 @@ void runProceduralHouseTests();
 void runProceduralCitygenTests();
 void runProceduralPlantTests();
 void runMcpTests();
+void runProceduralVegetationTests();

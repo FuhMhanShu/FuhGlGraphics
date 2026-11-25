@@ -285,6 +285,22 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   `heightAt()` / instancing. Quick start: [G26 tutorial](en/tutorials/g26_lsystem.md),
   demo `examples/lsystem_screenshot`, screenshots: [forest](images/g26_lsystem_forest.png),
   [tree closeup](images/g26_lsystem_tree.png).
+- **Ecophysiological vegetation (G37).** `procedural::VegetationGenerator`
+  (`procedural/vegetation.hpp`): fill an `EcoEnvironment` (temperature/humidity — the same
+  [0,1] values as the G31 world climate maps — plus windExposure/windDir, standDensity,
+  season, seed), then `VegetationGenerator::generate(VegetationParams{eco, scale, sca})`
+  returns a `VegetationMesh` with separate `branches`/`leaves` meshes (11 floats/vertex;
+  uv.x = age/radius, uv.y = wet-side factor, vertex colors = baked leaf-age/autumn/bark/moss
+  tints) plus the `VegetationMaterial` for the shader side (leaf young/old colors, autumn
+  ramp, `sss` for `render::Effect::Subsurface` backlighting via `MeshEntry::subsurface`,
+  bark-crack noise scale, moss coverage). The plant is grown by the Space Colonization
+  Algorithm toward light attractors (open tree → broad crown; dense stand → self-pruned
+  lower branches, tall trunk, small top crown), climate rules pick the leaf morphology
+  (drip tips when wet, needles when cold, thorns/succulent when dry, wind lean + reduced
+  height when exposed), and branch radii follow the Da Vinci pipe model
+  (`applyPipeModel`, R² = Σ rᵢ²). G31 landscape trees already use it. Quick start:
+  [G37 tutorial](en/tutorials/g37_vegetation.md), demo `examples/vegetation_showcase`,
+  design: [docs/VEGETATION_GENERATION.md](VEGETATION_GENERATION.md).
 - **Wave function collapse (G27).** `procedural::Wfc w(width, height, borderTag)`;
   `addTile(WfcTile{name, weight, {E, S, W, N tags}})`; `solve(seed)` returns per-cell
   `{tile, rot}` placements (row-major, tile < 0 = unsolved after backtracking). Tiles rotate

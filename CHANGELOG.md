@@ -41,6 +41,26 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   from FuhGLCore `fuhgl/render/solid.hpp` (marching tetrahedra). `CityGenParams::houseClutter`
   scales prop density for large pipeline cities. Tests: `testOrganicFeatures` (house suite
   4,334,828 checks, 0 failures; worldgen 29,420 + citygen 73,328, 0 failures).
+- **G37 ecophysiological vegetation generator** — `procedural/vegetation.{hpp,cpp}`
+  (`procedural::VegetationGenerator`): plants are grown from the same environmental
+  parameters as terrain and buildings (`EcoEnvironment`: temperature/humidity like the G31
+  climate maps, plus wind exposure/direction, stand density, season). Space Colonization
+  Algorithm toward light attractors (lone tree → broad oak-like crown; dense stand →
+  self-pruned lower branches, tall straight trunk, small top crown), climate-to-geometry
+  rules (`deriveGrowthForm`: wet → huge thin drip-tip leaves, dry → small waxy leaves /
+  thorns / succulent trunk, cold/snow → needle tree with conical drooping crown, wind →
+  constant wind vector on the growth direction + reduced height / ground cover), Da Vinci
+  pipe model (`applyPipeModel`: R^n = Σ r_i^n, n≈2) for branch radii, and procedural leaf &
+  bark texturing (`VegetationMaterial` + baked vertex tints: young light-green shoots vs.
+  dark old leaves, autumn/drought chlorophyll ramp green→yellow→orange→red-brown, G33
+  `Effect::Subsurface` backlighting through thin leaves via `MeshEntry::subsurface`, bark
+  cracks via vertically stretched simplex noise, moss on the wet weather side). Per-vertex
+  growth attributes are packed into uv (uv.x = age/radius, uv.y = wet-side factor) for
+  custom shaders. G31 `generateWorld` landscape trees are now grown from the per-cell
+  climate maps (slope/altitude → wind exposure, spacing → stand density). Design doc
+  `docs/VEGETATION_GENERATION.md`, unit tests `tests/test_procedural_vegetation.cpp`,
+  demo `examples/vegetation_showcase` (six environments side by side), tutorials en/de,
+  CI renders `docs/images/ci/g37_vegetation_*.png`.
 
 ### Fixed
 
