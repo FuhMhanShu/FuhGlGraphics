@@ -12,15 +12,18 @@
 // Rendered headless (surfaceless EGL) to PNG for docs/images/.
 //
 // Usage: fuhglgraphics_worldgen_screenshot --prefix g31_worldgen [--width 1280] [--height 720]
-//          [--frames 16] [--seed 777] [--mode both|landscape|city|pipeline] [--style town]
+//          [--frames 16] [--seed 777] [--mode both|landscape|city|pipeline|village] [--style town]
 //          [--surface asphalt|cobble|paving|dirt] [--wet]
-//   writes <prefix>_landscape.png, <prefix>_city.png, <prefix>_city_street.png and
-//   <prefix>_pipeline*.png (skipping the shots of a mode not selected).
+//   writes <prefix>_landscape.png, <prefix>_city.png, <prefix>_city_street.png,
+//   <prefix>_village.png and <prefix>_pipeline*.png (skipping unselected modes).
+//   --mode village: big landscape + small procedural village on the lake shore with many
+//   effects (water, CSM shadows, IBL, HBAO, SSR, bloom, volumetric fog, wetness).
 //
 // Exit code 2 when no headless GL context is available.
 
 #include <fuhglgraphics/graphics.hpp>
 #include <fuhglgraphics/procedural/citygen.hpp>
+#include <fuhglgraphics/procedural/plant.hpp>
 #include <fuhglgraphics/procedural/worldgen.hpp>
 
 #include <fuhgl/fuhgl.hpp>
@@ -46,7 +49,7 @@ struct Args {
     std::string prefix = "g31_worldgen";
     int width = 1280, height = 720, frames = 16;
     unsigned seed = 777u;
-    std::string mode = "both"; // both | landscape | city | pipeline
+    std::string mode = "both"; // both | landscape | city | pipeline | village
     std::string style = "town"; // village | town | highrise (city house style)
     std::string surface = "asphalt"; // asphalt | cobble | paving | dirt (city road surface)
     bool wet = false; // wet roads: dark + reflective
@@ -613,6 +616,8 @@ int main(int argc, char** argv) {
     const fuhgl::Texture brickNormal = makeBrickNormal(256);
     const fuhgl::Texture brickHeight = makeBrickHeight(256);
     const fuhgl::Texture shingle = makeShingleTex(256);
+    const FacadeTexSet plasterTex = makePlasterTexSet(256);
+    const FacadeTexSet stoneTex = makeStoneTexSet(256);
 
     fuhgl::FirstPersonCamera cam;
     const bool doLandscape = args.mode == "both" || args.mode == "landscape";
@@ -764,11 +769,12 @@ int main(int argc, char** argv) {
         } else {
             lakeSouthZ = world.sizeZ * 0.25f;
         }
-        // high vantage SE of the lake, looking NW across the water: sky on top, mountains
-        // (rock/snow) behind the far shore, lake band in the middle, grass foreground
-        const float camX = lakeCx + 30.f, camZ = lakeSouthZ + 14.f;
-        cam.position = {camX, world.heightAt(camX, camZ) + 16.f, camZ};
-        aimAt(cam, {lakeCx - 20.f, world.waterLevelWorld + 5.f, lakeCz - 35.f});
+        // high vantage SE of the lake, looking NW across the water: sky + mountains on top,
+        // lake band in the middle, shore with trees/grass in the foreground. The camera sits
+        // well above the terrain so the composition is robust against relief changes.
+        const float camX = lakeCx + p.worldSize * 0.24f, camZ = lakeSouthZ + p.worldSize * 0.18f;
+        cam.position = {camX, std::max(world.heightAt(camX, camZ), world.waterLevelWorld) + 34.f, camZ};
+        aimAt(cam, {lakeCx - p.worldSize * 0.12f, world.waterLevelWorld + 6.f, lakeCz - p.worldSize * 0.22f});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
                          water ? &water->surface : nullptr, &env)) {
@@ -776,6 +782,263 @@ int main(int argc, char** argv) {
             return 1;
         }
         std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", path.c_str());
+    }
+
+    // --- village: big landscape + a small procedural village on the lake shore ----------
+    // Many effects on: water, CSM shadows, IBL, HBAO, SSR, bloom, volumetric fog, wetness.
+    if (args.mode == "village") {
+        procedural::WorldGenParams p;
+        p.mode = procedural::WorldGenParams::Mode::Landscape;
+        p.seed = args.seed;
+        p.worldSize = 200.f;
+        p.terrainGrid = 129;
+        p.terrainHeight = 34.f;
+        p.warpStrength = 0.6f;
+        p.heightExponent = 0.85f;
+        p.waterLevel = 0.30f;
+        p.lakeRadius = 55.f;
+        p.treeCount = 150;
+        p.bushCount = 200;
+        p.rockCount = 60;
+        p.grassBlades = 6000;
+        p.treeMinDist = 6.f;
+        p.riverCount = 14;
+        procedural::GeneratedWorld world = procedural::generateWorld(p);
+
+        // lake south shore (same search as the landscape shot)
+        float lakeCx = 0.f, lakeCz = 0.f, lakeSouthZ = -1e9f;
+        int lakeN = 0;
+        const float lakeSearchR = p.lakeRadius * 1.25f;
+        for (int j = 0; j < world.gridH; ++j)
+            for (int i = 0; i < world.gridW; ++i) {
+                if (world.heightmap[static_cast<std::size_t>(i) + world.gridW * j] < p.waterLevel) {
+                    const float x = (static_cast<float>(i) / (world.gridW - 1) - 0.5f) * world.sizeX;
+                    const float z = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
+                    if (std::hypot(x, z) > lakeSearchR) continue;
+                    lakeCx += x;
+                    lakeCz += z;
+                    ++lakeN;
+                    lakeSouthZ = std::max(lakeSouthZ, z);
+                }
+            }
+        if (lakeN > 0) { lakeCx /= lakeN; lakeCz /= lakeN; } else { lakeSouthZ = p.worldSize * 0.25f; }
+
+        // flatten a village plateau on the south shore (edit the heightmap in place so the
+        // terrain mesh, the grass heightFn and the camera all see the flat ground)
+        const fuhgl::math::Vec2 vc{lakeCx, lakeSouthZ + 12.f};
+        const float vr = 26.f;
+        const float plateauY = world.waterLevelWorld + 1.4f;
+        const float plateauN = plateauY / world.heightScale;
+        const int g = world.gridW;
+        const auto ss = [](float e0, float e1, float x) {
+            const float t = std::min(1.f, std::max(0.f, (x - e0) / (e1 - e0)));
+            return t * t * (3.f - 2.f * t);
+        };
+        for (int j = 0; j < world.gridH; ++j)
+            for (int i = 0; i < world.gridW; ++i) {
+                const float x = (static_cast<float>(i) / (g - 1) - 0.5f) * world.sizeX;
+                const float z = (static_cast<float>(j) / (g - 1) - 0.5f) * world.sizeZ;
+                const float d = std::hypot(x - vc.x, z - vc.y);
+                const float t = 1.f - ss(vr * 0.55f, vr, d);
+                float& h = world.heightmap[static_cast<std::size_t>(i) + g * j];
+                h = h * (1.f - t) + plateauN * t;
+            }
+        // drop the scatter inside the village disc so houses do not intersect trees
+        const auto inVillage = [&](const fuhgl::math::Vec3& pos) {
+            return std::hypot(pos.x - vc.x, pos.z - vc.y) < vr + 5.f;
+        };
+        const auto notInVillage = [&](const procedural::PlacedMesh& pm) { return !inVillage(pm.position); };
+        world.trees.erase(std::remove_if(world.trees.begin(), world.trees.end(), notInVillage),
+                          world.trees.end());
+        world.bushes.erase(std::remove_if(world.bushes.begin(), world.bushes.end(), notInVillage),
+                           world.bushes.end());
+        world.rocks.erase(std::remove_if(world.rocks.begin(), world.rocks.end(), notInVillage),
+                          world.rocks.end());
+
+        scene::Scene scene;
+        MeshArena arena;
+        const fuhgl::Texture splatTex = makeSplatAlbedoTex(world);
+        scene::Node& tn = scene.root().createChild("terrain");
+        fuhgl::render::Mesh terrainMesh;
+        terrainMesh.setMeshData(terrainMeshData(world));
+        {
+            scene::MeshEntry& te = tn.attach<scene::MeshComponent>().addMesh(&terrainMesh);
+            te.albedoTexture = &splatTex;
+            te.roughness = 1.f;
+            te.castShadow = true;
+            te.materialId = 1;
+        }
+        scene.root().effects.enable(render::Effect::Water);
+        scene::Node& wn = scene.root().createChild("lake");
+        wn.translation = {0.f, world.waterLevelWorld, 0.f};
+        scene::WaterComponent* water = &wn.attach<scene::WaterComponent>();
+        water->surface.create(160, p.worldSize * 1.1f);
+        water->surface.waves = {
+            {{1.f, 0.15f}, 0.32f, 16.f, 2.0f, 0.65f},
+            {{0.7f, 0.7f}, 0.20f, 8.f, 1.4f, 0.55f},
+            {{-0.5f, 0.86f}, 0.11f, 4.5f, 1.0f, 0.45f},
+        };
+        water->surface.reflectionStrength = 0.8f;
+        water->surface.foamStrength = 1.f;
+        water->surface.deepColor = {0.004f, 0.05f, 0.11f};
+        water->surface.shallowColor = {0.06f, 0.30f, 0.38f};
+        if (p.grassBlades > 0) {
+            fuhgl::render::Mesh blade;
+            fuhgl::render::shapes::box(blade, {0.015f, 0.22f, 0.015f}, {0.25f, 0.45f, 0.18f});
+            scene::Node& grass = scene.root().createChild("grass");
+            grass.instancing.enabled = true;
+            grass.instancing.count = p.grassBlades;
+            grass.instancing.layout = scene::InstanceLayout::Random;
+            grass.instancing.extent = {p.worldSize - 8.f, 4.f, p.worldSize - 8.f};
+            grass.instancing.seed = 7u;
+            grass.instancing.heightFn = [&world](float x, float z) {
+                const float h = world.heightAt(x, z);
+                if (h < world.waterLevelWorld + 0.15f) return -1000.f;
+                const int gg = world.gridW;
+                const float u = std::min(1.f, std::max(0.f, x / world.sizeX + 0.5f)) * (gg - 1);
+                const float v = std::min(1.f, std::max(0.f, z / world.sizeZ + 0.5f)) * (gg - 1);
+                const std::size_t idx = (static_cast<std::size_t>(u) + gg * static_cast<std::size_t>(v)) * 4;
+                if (world.splatmap[idx + 0] < 110) return -1000.f;
+                return h + 0.22f;
+            };
+            scene::MeshEntry& ge = grass.attach<scene::MeshComponent>().addMesh(&blade);
+            ge.albedo = {0.55f, 0.75f, 0.35f};
+            ge.roughness = 1.f;
+            ge.castShadow = false;
+            ge.materialId = 2;
+        }
+        auto addPlant = [&](const std::string& prefix, const std::vector<procedural::PlacedMesh>& plants,
+                            std::uint32_t materialId) {
+            for (std::size_t i = 0; i < plants.size(); ++i) {
+                const auto& t = plants[i];
+                scene::Node& n = scene.root().createChild(prefix + std::to_string(i));
+                n.translation = t.position;
+                n.rotation = fuhgl::math::fromAxisAngle(t.rotY, {0.f, 1.f, 0.f});
+                n.scale = {t.scale, t.scale, t.scale};
+                scene::MeshEntry& e = n.attach<scene::MeshComponent>().addMesh(arena.add(t.mesh));
+                e.albedo = t.tint;
+                e.roughness = 0.9f;
+                e.castShadow = true;
+                e.materialId = materialId;
+            }
+        };
+        addPlant("tree", world.trees, 30);
+        addPlant("bush", world.bushes, 31);
+        addPlant("rock", world.rocks, 32);
+
+        // the village: a loose grid of procedural houses (HouseGenerator, Village style) on the
+        // plateau, facade material + roof per house, reflective glass panes
+        procedural::HouseGenerator houseGen;
+        std::uint32_t hs = args.seed ^ 0x11EAu;
+        auto nextr = [&]() {
+            hs = hs * 1664525u + 1013904223u;
+            return static_cast<float>(hs >> 8) * (1.f / 16777216.f);
+        };
+        int houseCount = 0;
+        for (int gz = -2; gz <= 2; ++gz)
+            for (int gx = -3; gx <= 3; ++gx) {
+                if (nextr() < 0.3f) continue;
+                const float hx = vc.x + gx * 9.f + (nextr() - 0.5f) * 2.f;
+                const float hz = vc.y + gz * 9.f + (nextr() - 0.5f) * 2.f;
+                if (std::hypot(hx - vc.x, hz - vc.y) > vr - 6.f) continue;
+                const std::uint32_t hseed = args.seed ^ (0x5EEDu + static_cast<std::uint32_t>(houseCount) * 7919u);
+                auto hp = procedural::HouseGenerator::randomParams(procedural::HouseStyle::Village, 8.f, hseed);
+                hp.seed = hseed;
+                hp.width = 5.f + nextr() * 2.5f;
+                hp.depth = 5.f + nextr() * 2.5f;
+                const auto hm = houseGen.generate(hp);
+                scene::Node& n = scene.root().createChild("vhouse" + std::to_string(houseCount));
+                n.translation = {hx, plateauY, hz};
+                n.rotation = fuhgl::math::fromAxisAngle(nextr() * 2.f * fuhgl::math::kPi, {0.f, 1.f, 0.f});
+                scene::MeshComponent& mc = n.attach<scene::MeshComponent>();
+                const FacadeTexSet* ft =
+                    hm.spec.facade == procedural::FacadeMaterial::Plaster ? &plasterTex
+                    : hm.spec.facade == procedural::FacadeMaterial::Stone   ? &stoneTex
+                                                                           : nullptr;
+                scene::MeshEntry& walls = mc.addMesh(arena.add(hm.walls));
+                walls.albedo = {1.f, 1.f, 1.f};
+                walls.albedoTexture = ft ? &ft->albedo : &brickAlbedo;
+                walls.normalMap = ft ? &ft->normal : &brickNormal;
+                walls.heightMap = ft ? &ft->height : &brickHeight; // POM parallax on the facade
+                walls.parallaxScale = 0.05f;
+                walls.parallaxLayers = 24;
+                walls.roughness = 0.85f;
+                walls.castShadow = true;
+                walls.materialId = 5;
+                if (hm.glass.vertexCount() > 0) {
+                    scene::MeshEntry& gl = mc.addMesh(arena.add(hm.glass));
+                    setupGlassEntry(gl);
+                }
+                if (hm.details.vertexCount() > 0) {
+                    scene::MeshEntry& det = mc.addMesh(arena.add(hm.details));
+                    det.albedo = {1.4f, 1.4f, 1.4f};
+                    det.roughness = 0.4f;
+                    det.castShadow = true;
+                    det.materialId = 8;
+                }
+                if (hm.roof.vertexCount() > 0) {
+                    scene::MeshEntry& roof = mc.addMesh(arena.add(hm.roof));
+                    roof.albedoTexture = &shingle;
+                    roof.albedo = {1.6f, 1.6f, 1.6f};
+                    roof.roughness = 0.7f;
+                    roof.castShadow = true;
+                    roof.materialId = 6;
+                }
+                ++houseCount;
+            }
+        // a ring of trees around the village clearing
+        procedural::PlantGenerator plantGen;
+        for (int t = 0; t < 14; ++t) {
+            const float ang = nextr() * 2.f * fuhgl::math::kPi;
+            const float rad = vr + 3.f + nextr() * 6.f;
+            const float tx = vc.x + std::cos(ang) * rad, tz = vc.y + std::sin(ang) * rad;
+            const float th = world.heightAt(tx, tz);
+            if (th < world.waterLevelWorld + 0.3f) continue;
+            procedural::PlantParams pp;
+            pp.kind = static_cast<procedural::PlantKind>(static_cast<int>(nextr() * 3.f)); // deciduous/fir/birch
+            pp.seed = args.seed ^ (0x7EAFu + static_cast<std::uint32_t>(t) * 131u);
+            pp.scale = 0.5f + 0.5f * nextr();
+            const auto pm = plantGen.generate(pp);
+            scene::Node& n = scene.root().createChild("villageTree" + std::to_string(t));
+            n.translation = {tx, th, tz};
+            n.rotation = fuhgl::math::fromAxisAngle(nextr() * 2.f * fuhgl::math::kPi, {0.f, 1.f, 0.f});
+            n.scale = {pp.scale, pp.scale, pp.scale};
+            scene::MeshEntry& e = n.attach<scene::MeshComponent>().addMesh(arena.add(pm.mesh));
+            e.albedo = {0.9f, 1.f, 0.9f};
+            e.roughness = 0.9f;
+            e.castShadow = true;
+            e.materialId = 30;
+        }
+        std::fprintf(stderr, "worldgen_screenshot: village seed %u: %d houses on the shore\n",
+                     args.seed, houseCount);
+
+        // many effects: water + reflections, CSM shadows, IBL, HBAO, SSR, bloom, volumetric
+        // fog, wetness (morning damp), TAA + upscale + ACES tonemap
+        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.35f, 0.30f, -0.85f}));
+        scene.root().effects.enable(render::Effect::Water);
+        scene.root().effects.enable(render::Effect::CsmShadows);
+        scene.root().effects.enable(render::Effect::Ibl);
+        scene.root().effects.enable(render::Effect::Hbao);
+        scene.root().effects.enable(render::Effect::Ssr);
+        scene.root().effects.enable(render::Effect::Bloom);
+        scene.root().effects.enable(render::Effect::VolumetricFog);
+        scene.root().effects.enable(render::Effect::Wetness);
+        scene.root().effects.params.exposure = 1.1f;
+        scene.root().effects.params.shadowCenter = {vc.x, plateauY, vc.y};
+        scene.root().effects.params.shadowRadius = 120.f;
+        scene.root().effects.params.shadowZFar = 400.f;
+
+        // low vantage SE of the village looking NW: village foreground, lake middle,
+        // mountains + sun behind the far shore
+        cam.position = {vc.x + 26.f, plateauY + 4.5f, vc.y + 30.f};
+        aimAt(cam, {lakeCx - 15.f, world.waterLevelWorld + 5.f, lakeCz - 30.f});
+        const std::string vPath = args.prefix + "_village.png";
+        if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, vPath,
+                         &water->surface, &env)) {
+            std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", vPath.c_str());
+            return 1;
+        }
+        std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", vPath.c_str());
     }
 
     // --- city: generateWorld(City) -> WFC layout, roads, district plates, houses, parks ---
@@ -826,8 +1089,6 @@ int main(int argc, char** argv) {
 
         // houses: walls entry with the per-facade POM material (Backstein/Rauhputz/Stein from
         // PlacedMesh::facade), glass entry (reflective), roof entry with shingle texture
-        const FacadeTexSet plasterTex = makePlasterTexSet(256);
-        const FacadeTexSet stoneTex = makeStoneTexSet(256);
         for (std::size_t i = 0; i < world.buildings.size(); ++i) {
             const auto& b = world.buildings[i];
             scene::Node& n = scene.root().createChild("house" + std::to_string(i));
@@ -998,8 +1259,6 @@ int main(int argc, char** argv) {
             if (b.detailMesh.vertexCount() > 0) appendT(detAll, b.detailMesh, m);
             if (b.roofMesh.vertexCount() > 0) appendT(roofAll, b.roofMesh, m);
         }
-        const FacadeTexSet plasterTex = makePlasterTexSet(256);
-        const FacadeTexSet stoneTex = makeStoneTexSet(256);
         for (int fi = 0; fi < 3; ++fi) {
             if (wallsAll[fi].vertexCount() == 0) continue;
             const FacadeTexSet* ft = fi == 1 ? &plasterTex : fi == 2 ? &stoneTex : nullptr;
