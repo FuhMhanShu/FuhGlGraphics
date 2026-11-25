@@ -353,8 +353,27 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   `examples/gpu_skinning_screenshot`, screenshots: [GPU on](images/g14_gpu_skinning_on.png),
   [CPU fallback](images/g14_gpu_skinning_off.png).
   hardening, temporal upscaling, bokeh DoF, screenshot diffs in CI, debug HUD.
-- **Infrastructure (G11).** On-disk asset cache keyed by content hash, JSON config system
-  (same minimal in-repo JSON parser as the glTF loader), minimal Qt editor.
+- **Infrastructure (G11) — partially implemented.** `io::AssetCache`
+  (`include/fuhglgraphics/io/asset_cache.hpp`) is the on-disk asset cache keyed by the
+  FNV-1a 64 content hash (`open(dir)`, `put(path)`, `get(hash, ext)`); the JSON config for
+  render settings is `scene::effectsToJson`/`effectsFromJson`/`setEffectParam` (in
+  `scene/serialize.hpp`, also used by `.fasset` and the MCP render tools). The minimal Qt
+  editor building block is `editor::GlViewportWidget`; the full editor surface is the G12
+  asset creator below.
+- **Asset creator + MCP (G12).** `fuhglgraphics_asset_creator` (`tools/asset_creator/`,
+  built with `FUHGLGRAPHICS_WITH_QT=ON` + `FUHGLGRAPHICS_BUILD_TOOLS=ON`):
+  `fuhglgraphics_asset_creator [--project scene.fasset] [--lang en|de]` — scene tree +
+  inspector + asset browser, G3-renderer viewport (orbit camera, click-picking), LLM chat
+  over MCP. The Qt-free MCP layer `mcp/` (`mcp::jsonrpc`, `mcp::tool_catalog`,
+  `mcp::mcp_server`) is usable without Qt; `fuhglgraphics_mcp_server` (`tools/mcp_server/`)
+  serves the catalog on stdio to any MCP client. The catalog tools: `scene_*`
+  (list/add/remove/set_trs/add_shape/add_light), `render_list_effects` / `render_set_effect` /
+  `render_get_settings` / `render_set_param` / `render_set_params` (deferred-render settings),
+  `water_add_to_scene` / `water_get_params` / `water_set_params` (G13), and the procedural
+  `procedural_noise` / `procedural_marching_cubes` / `procedural_lsystem` / `procedural_wfc` /
+  `procedural_voronoi` / `procedural_sdf` / `procedural_creature` / `procedural_worldgen`
+  (G24–G31; `attach:true` adds the generated mesh as a scene node when the host has GL
+  resolvers). Quick start: [G12 tutorial](en/tutorials/g12_asset_creator.md).
 
 ## Error handling
 

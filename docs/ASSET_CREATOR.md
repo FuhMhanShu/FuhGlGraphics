@@ -1,7 +1,7 @@
 # FuhGlGraphics — Asset Creator (G12) design
 
-Status: **design agreed, implementation after review.** Language of this document:
-English (docs at this level are English-only, see [README.md](README.md)).
+Status: **implemented (phases P1, P2, P4; P5 polish open — see §10).** Language of this
+document: English (docs at this level are English-only, see [README.md](README.md)).
 Code, comments and API docs stay English; the tool UI is multilingual (see §2).
 
 ## 1. Goal
@@ -82,21 +82,33 @@ tools/asset_creator/
                               via the Qt-free fuhglgraphics::mcp::jsonrpc helpers
 ```
 
-## 4. Library extensions (Qt-free, unit-testable)
+## 4. Library extensions (Qt-free, unit-testable) — implemented
 
-- `io::writeJson(const io::Json&, std::string&, std::string* err)` in
-  `include/fuhglgraphics/io/json.hpp` / `src/io/json.cpp` — the existing parser has only a
-  reader; MCP requests and `.fasset` saving need a writer. Test: roundtrip in
-  `tests/test_io.cpp` (label `unit`).
-- `include/fuhglgraphics/scene/serialize.hpp` — `serializeScene(const scene::Scene&, io::Json&)`
-  / `deserializeScene(...)`: node tree (name, TRS, component parameters, material factors,
-  texture/asset paths, effects, instancing). GL objects (`Mesh*`, `Texture*`) are stored as
-  path references and recreated on load. Test: `tests/test_scene_serialize.cpp` (`unit`).
-- `include/fuhglgraphics/mcp/jsonrpc.hpp` — Qt-free JSON-RPC 2.0 message build/parse helpers
-  on top of `io::Json` (request/response/notification, id matching). Test:
-  `tests/test_mcp.cpp` (`unit`).
+- `io::writeJson` / `writeJsonFile` in `include/fuhglgraphics/io/json.hpp` (G19) — the writer
+  the MCP requests and `.fasset` saving need. Test: roundtrip in `tests/test_io.cpp`.
+- `include/fuhglgraphics/scene/serialize.hpp` — `sceneToJson` / `sceneFromJson` (G19) plus
+  the public effect-JSON mapping `effectsToJson` / `effectsFromJson` / `setEffectParam` /
+  `effectParamToJson` / `effectParamNames` (used by the MCP render tools and the G11 JSON
+  renderer config). Test: `tests/test_serialize.cpp` + `tests/test_mcp.cpp` (`unit`).
+- `include/fuhglgraphics/io/asset_cache.hpp` — G11 on-disk asset cache keyed by FNV-1a
+  content hash (`io::AssetCache`). Test: `tests/test_mcp.cpp` (`unit`).
+- `include/fuhglgraphics/mcp/jsonrpc.hpp` — Qt-free JSON-RPC 2.0 build/parse helpers
+  (request/notification/response/error, line framing, id matching) on top of `io::Json`.
+- `include/fuhglgraphics/mcp/tool_catalog.hpp` — the **tool catalog**: `toolsListJson()` /
+  `callTool()` over a `ToolHost`. Groups: scene ops (`scene_*`), deferred-render settings
+  (`render_list_effects`, `render_set_effect`, `render_get_settings`, `render_set_param(s)` —
+  all `render::Effect` + `scene::EffectParams`), G13 water (`water_add_to_scene`,
+  `water_get_params`, `water_set_params`) and the procedural generators G24–G31
+  (`procedural_noise`, `procedural_marching_cubes`, `procedural_lsystem`, `procedural_wfc`,
+  `procedural_voronoi`, `procedural_sdf`, `procedural_creature`, `procedural_worldgen`,
+  each with `attach:true` to add the result as a scene node via the host's GL resolvers).
+- `include/fuhglgraphics/mcp/mcp_server.hpp` — stdio MCP server (initialize /
+  notifications/initialized / ping / tools/list / tools/call), plus the standalone Qt-free
+  executable `tools/mcp_server` → `fuhglgraphics_mcp_server`.
+- `scene::Node::removeChild` / `takeChild` — node removal with undo support.
 
-All three keep the `WITH_QT=OFF` CI jobs green (no Qt includes).
+All of these keep the `WITH_QT=OFF` CI jobs green (no Qt includes). Tests:
+`tests/test_mcp.cpp` (`unit`).
 
 ## 5. The three areas
 
@@ -160,22 +172,30 @@ All three keep the `WITH_QT=OFF` CI jobs green (no Qt includes).
 
 ## 9. Phases
 
-1. **P1 skeleton:** CMake/qmake target, `io::writeJson`, `scene/serialize`,
-   MainWindow + `ViewportWidget` + new/open/save `.fasset` — runnable tool rendering a scene.
-2. **P2 data structures:** SceneTreeModel, inspector, selection, QUndoCommands,
-   context menu, primitives (box/plane/sphere from `MeshData`).
-3. **P3 assets:** asset browser, glTF drag&drop, project asset folder.
-4. **P4 MCP chat:** `mcp::jsonrpc` + `McpClient` (stdio), ChatPanel/ChatController,
-   settings dialog, tool-result → command bridge.
-5. **P5 polishing:** 3D gizmo, thumbnails, animation playback in the viewport,
-   glb export, CI smoke.
+1. **P1 skeleton — done:** CMake (`FUHGLGRAPHICS_BUILD_TOOLS`) + qmake target,
+   `io::writeJson`, `scene/serialize`, MainWindow + `ViewportWidget` (G3 renderer +
+   orbit camera) + new/open/save `.fasset`.
+2. **P2 data structures — done:** SceneTreeModel, inspector (TRS, per-node effect toggles,
+   common EffectParams, G13 water params), selection (tree + viewport picking), QUndoCommands,
+   context menu, primitives (box/quad/sphere).
+3. **P3 assets — done:** asset browser on the project folder, glTF load (double-click /
+   context menu), project `.fasset` + `<project>/.cache` (G11 `io::AssetCache`).
+4. **P4 MCP chat — done:** `mcp::jsonrpc` + `McpClient` (stdio QProcess, configurable server
+   command; `builtin` = in-repo catalog in-process), ChatPanel/ChatController, settings
+   dialog, `assetAction` → QUndoCommand bridge; the catalog exposes the procedural G24–G31
+   functions, the deferred-render settings and the G13 water params (see §4).
+5. **P5 polishing — open:** 3D gizmo, thumbnails, animation playback in the viewport,
+   glb export.
 
 Delivery: branch `vibe/<slug>-<id>`, one PR per phase after review (per
 [DEVELOPMENT.md](DEVELOPMENT.md) "Adding a feature").
 
 ## 10. Open points
 
-- 3D gizmo rendering path (overlay meshes in a second `SceneView` vs. FuhGLCore blitter).
-- Thumbnail generation (separate small render vs. cached PNG in the asset cache, G11).
-- Exact MCP chat-tool contract (name/arguments) — defined by the configured server;
-  the tool stays generic and shows `tools/list` results.
+- 3D gizmo rendering path (overlay meshes in a second `SceneView` vs. FuhGLCore blitter) — P5.
+- Thumbnail generation (separate small render vs. cached PNG in the asset cache, G11) — P5.
+- MCP chat-tool contract for **external** servers (name/arguments) — still defined by the
+  configured server; the tool stays generic and shows `tools/list` results. The **builtin**
+  contract is now fixed in-repo: `mcp/tool_catalog.hpp` (scene ops, `render_*` settings,
+  `water_*` G13 params, `procedural_*` G24–G31; `attach:true` adds generated meshes as nodes
+  when the host binds GL resolvers), served in-process or via `fuhglgraphics_mcp_server`.

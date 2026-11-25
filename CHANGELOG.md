@@ -42,6 +42,37 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G12 — asset creator Qt tool + MCP layer** (design: [docs/ASSET_CREATOR.md](docs/ASSET_CREATOR.md)):
+  - Qt-free MCP library module `mcp/` (`include/fuhglgraphics/mcp/`, `src/mcp/`): `mcp::jsonrpc`
+    (JSON-RPC 2.0 line-delimited build/parse/framing/id-matching on `io::Json`),
+    `mcp::tool_catalog` (`toolsListJson()`/`callTool()` over a `mcp::ToolHost`) and
+    `mcp::mcp_server` (`handleLine`/`runServer`: initialize, notifications/initialized,
+    ping, tools/list, tools/call). The catalog exposes **scene ops** (`scene_*`),
+    **deferred-render settings** (`render_list_effects`, `render_set_effect`,
+    `render_get_settings`, `render_set_param(s)` — every `render::Effect` and
+    `scene::EffectParams` field), **G13 water** (`water_add_to_scene`, `water_get_params`,
+    `water_set_params`) and the **procedural functions G24–G31** (`procedural_noise`,
+    `procedural_marching_cubes`, `procedural_lsystem`, `procedural_wfc`,
+    `procedural_voronoi`, `procedural_sdf`, `procedural_creature`, `procedural_worldgen`;
+    `attach:true` adds generated meshes as scene nodes via the host's GL resolvers).
+  - `tools/mcp_server/` → Qt-free executable `fuhglgraphics_mcp_server` (stdio MCP server,
+    headless: data tools fully, attach reports `attached:false` without GL).
+  - `tools/asset_creator/` → Qt6 tool `fuhglgraphics_asset_creator` (CMake option
+    `FUHGLGRAPHICS_BUILD_TOOLS`, qmake `asset_creator.pro`): MVC — scene tree + inspector
+    (TRS, per-node effect toggles, EffectParams, G13 water params) + asset browser (left
+    dock), G3 `DeferredRenderer` viewport with orbit camera + `scene::pick` selection
+    (center), MCP chat (right dock; external server command via settings dialog or
+    `builtin` = in-repo catalog in-process; `/tool {json}` direct calls; `assetAction`
+    results → QUndoCommands). `.fasset` JSON projects (`scene::serialize` + `io::writeJson`),
+    UI multilingual (en default, de). CI: stdio MCP smoke + `xvfb-run ... --version`.
+  - `scene::Node::removeChild`/`takeChild` (removal with undo), public effect-JSON helpers
+    `scene::effectsToJson`/`effectsFromJson`/`setEffectParam`/`effectParamToJson`/
+    `effectParamNames` in `scene/serialize.hpp` (also the G11 JSON render config).
+  - G11 part: `io::AssetCache` (`include/fuhglgraphics/io/asset_cache.hpp`) — on-disk asset
+    cache keyed by FNV-1a 64 content hash; used for `<project>/.cache`.
+  - Tests: `tests/test_mcp.cpp` (label `unit`, no GL/Qt) — jsonrpc round-trips, the whole
+    catalog incl. attach path, the stdio server end-to-end, AssetCache. Tutorial
+    `docs/en|de/tutorials/g12_asset_creator.md`.
 - **G31 — world generator helper** (`include/fuhglgraphics/procedural/worldgen.hpp`,
   `src/procedural/worldgen.cpp`): `procedural::generateWorld(WorldGenParams)` builds either a
   landscape or a city. Landscape pipeline: macro relief from layered noise (domain warp +

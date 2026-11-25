@@ -70,6 +70,12 @@ public:
     Node& addChild(std::unique_ptr<Node> child);
     /// @brief Creates and adds a named child.
     Node& createChild(std::string name = {});
+    /// @brief Removes (and destroys) the given child node. Returns false when `child`
+    /// is not a direct child of this node. Used by the G12 asset creator / MCP scene tools.
+    bool removeChild(Node* child);
+    /// @brief Removes the child WITHOUT destroying it and returns ownership (undo support
+    /// in the G12 asset creator). Returns nullptr when `child` is not a direct child.
+    std::unique_ptr<Node> takeChild(Node* child);
     /// @brief Destroys all children (G19: sceneFromJson rebuilds the root in place).
     void clearChildren() { children_.clear(); }
     const std::vector<std::unique_ptr<Node>>& children() const { return children_; }

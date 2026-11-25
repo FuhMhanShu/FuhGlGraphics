@@ -17,7 +17,11 @@ include/fuhglgraphics/   public API (headers)
   render/                 G3 deferred renderer + G8 decals + G10 (DoF bokeh, debug HUD)
                           (implemented: deferred_renderer.hpp, effects.hpp, gbuffer.hpp,
                           decals.hpp, debug_hud.hpp)
-  io/                     G4 glTF 2.0 loader (implemented: json.hpp, gltf.hpp)
+  io/                     G4 glTF 2.0 loader (implemented: json.hpp, gltf.hpp) +
+                          G11 asset_cache.hpp (content-hash on-disk cache)
+  mcp/                    G12 MCP layer (Qt-free, implemented: jsonrpc.hpp JSON-RPC 2.0,
+                          tool_catalog.hpp = tools incl. procedural G24-G31 + deferred-render
+                          settings + G13 water, mcp_server.hpp = stdio server)
   particles/              G5 GPU particle system (implemented: particle_system.hpp;
                           compute on GL >= 4.3, CPU fallback below)
   anim/                   G6 animation/skinning (implemented: animation.hpp;
@@ -28,8 +32,10 @@ include/fuhglgraphics/   public API (headers)
                           node.hpp, scene.hpp)
   editor/                 G2+G11 Qt6 editor code (WITH_QT only): gl_viewport_widget.hpp =
                           GL viewport widget (fps limiter, frame stats, screenshots)
-  tools/                  G12 asset creator Qt tool (planned: tools/asset_creator/,
-                          design in docs/ASSET_CREATOR.md, WITH_QT + BUILD_TOOLS only)
+  tools/                  G12 executables (FUHGLGRAPHICS_BUILD_TOOLS=ON):
+                          tools/mcp_server/ = fuhglgraphics_mcp_server (Qt-free stdio MCP server),
+                          tools/asset_creator/ = fuhglgraphics_asset_creator (Qt6, WITH_QT only;
+                          design in docs/ASSET_CREATOR.md)
 src/                      implementations (PIMPL targets)
   version.cpp
   render/                 G3 implementation + GLSL (deferred_renderer.cpp, deferred_glsl.hpp)
@@ -39,6 +45,8 @@ src/                      implementations (PIMPL targets)
   probes/                 G7 implementation (light_probes.cpp)
   render/debug_hud.cpp    G10 HUD implementation
   scene/                  G9 implementation (component.cpp, effects.cpp, node.cpp, scene.cpp)
+  mcp/                    G12 MCP implementation (jsonrpc.cpp, tool_catalog*.cpp, mcp_server.cpp)
+  io/asset_cache.cpp      G11 asset cache
 editor/                   G2 editor Qt code (WITH_QT only): gl_viewport_widget.cpp (impl of
                           include/fuhglgraphics/editor/gl_viewport_widget.hpp)
 examples/                 screenshot tools (render demo scenes headless to PNG):
@@ -85,6 +93,7 @@ docs/                     README.md (language picker), USER_GUIDE.md, DEVELOPMEN
 | Option | Values | Default |
 |---|---|---|
 | `FUHGLGRAPHICS_WITH_QT` | ON/OFF | ON |
+| `FUHGLGRAPHICS_BUILD_TOOLS` | ON/OFF | ON |
 | `FUHGLGRAPHICS_BUILD_TESTS` | ON/OFF | ON |
 | `FUHGLGRAPHICS_BUILD_EXAMPLES` | ON/OFF | ON |
 | `FUHGLGRAPHICS_ENABLE_HARDENING` | ON/OFF | ON |

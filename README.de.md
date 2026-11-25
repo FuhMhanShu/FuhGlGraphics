@@ -60,10 +60,12 @@ umgesetzt — eine Zeile pro Anforderung, mit Tutorial und Screenshot (alle Scre
 | G29 | SDF / 3D-Fraktale: `procedural::sdf`-Primitive + `smoothMin` + `mandelbulb` DE; `procedural::meshFromSdf` mesht jedes SDF via G25 Marching Cubes | [G29](docs/de/tutorials/g29_mandelbulb.md) | [g29_mandelbulb_wide.png](docs/images/g29_mandelbulb_wide.png) |
 | G30 | Prozedurale Kreaturen: `procedural::Skeleton`-Graph + `creatureSdf` smooth-min SDF + Simplex-Detail; `meshCreature` via G25 mit Krümmung im Vertex-Color; `bakeCreatureMaps` Objektraum-Noise-Haut | [G30](docs/de/tutorials/g30_creature.md) | [g30_creature_wide.png](docs/images/g30_creature_wide.png) |
 | G31 | World-Generator-Hilfsfunktion `procedural::generateWorld(WorldGenParams)`: Landschaft (Spline-Relief, Terracing, Flüsse, Whittaker-Biome, PlantGenerator) oder WFC-Stadt (prozedurale Häuser, wählbare/nasse Straßen); deterministisch pro Seed | [G31](docs/de/tutorials/g31_worldgen.md) | [g31_worldgen_city.png](docs/images/g31_worldgen_city.png) |
+| G12 | Asset-Creator-Qt-Tool `fuhglgraphics_asset_creator` + MCP: Szenenbaum/Inspektor/Asset-Browser, G3-Viewport mit Picking, LLM-Chat über stdio JSON-RPC 2.0; der MCP-Katalog (`mcp/`) macht die prozeduralen Funktionen G24–G31, die Deferred-Render-Einstellungen (`Effect`/`EffectParams`) und die G13-Wasser-Parameter zugreifbar; Qt-freier stdio-MCP-Server `fuhglgraphics_mcp_server`; `.fasset`-JSON-Projekte, G11-Asset-Cache | [G12](docs/de/tutorials/g12_asset_creator.md) | — |
 
-Als Nächstes: **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor)
-oder **G2** (Qt-Editor) — siehe [REQUIREMENTS.md](docs/REQUIREMENTS.md); **G12**
-(Asset-Creator) ist in Ausarbeitung: [ASSET_CREATOR.md](docs/ASSET_CREATOR.md).
+Als Nächstes: **G12 P5 Polish** (3D-Gizmo, Thumbnails) — siehe [REQUIREMENTS.md](docs/REQUIREMENTS.md)
+und [ASSET_CREATOR.md](docs/ASSET_CREATOR.md); **G11** ist teilweise umgesetzt
+(`io::AssetCache` Content-Hash-Cache, `scene::effectsToJson` JSON-Render-Config,
+`editor::GlViewportWidget`).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.
 

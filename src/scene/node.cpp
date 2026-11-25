@@ -58,6 +58,29 @@ Node& Node::createChild(std::string name) {
     return addChild(std::make_unique<Node>(std::move(name)));
 }
 
+bool Node::removeChild(Node* child) {
+    for (auto it = children_.begin(); it != children_.end(); ++it) {
+        if (it->get() == child) {
+            child->setParent(nullptr);
+            children_.erase(it);
+            return true;
+        }
+    }
+    return false;
+}
+
+std::unique_ptr<Node> Node::takeChild(Node* child) {
+    for (auto it = children_.begin(); it != children_.end(); ++it) {
+        if (it->get() == child) {
+            child->setParent(nullptr);
+            std::unique_ptr<Node> out = std::move(*it);
+            children_.erase(it);
+            return out;
+        }
+    }
+    return nullptr;
+}
+
 bool Node::detach(const Component* c) {
     for (auto it = components_.begin(); it != components_.end(); ++it) {
         if (it->get() == c) {

@@ -62,10 +62,12 @@ so far — one row per requirement, with tutorial and screenshot (all screenshot
 | G29 | SDF / 3D fractals: `procedural::sdf` primitives + `smoothMin` + `mandelbulb` DE; `procedural::meshFromSdf` meshes any SDF via G25 marching cubes | [G29](docs/en/tutorials/g29_mandelbulb.md) | [g29_mandelbulb_wide.png](docs/images/g29_mandelbulb_wide.png) |
 | G30 | Procedural creatures: `procedural::Skeleton` graph + `creatureSdf` smooth-min SDF + simplex detail; `meshCreature` via G25 with curvature in the vertex color; `bakeCreatureMaps` object-space noise skin maps | [G30](docs/en/tutorials/g30_creature.md) | [g30_creature_wide.png](docs/images/g30_creature_wide.png) |
 | G31 | World generator helper `procedural::generateWorld(WorldGenParams)`: landscape (spline relief, terracing, rivers, Whittaker biomes, PlantGenerator) or WFC city (procedural houses, selectable/wet roads); deterministic per seed | [G31](docs/en/tutorials/g31_worldgen.md) | [g31_worldgen_city.png](docs/images/g31_worldgen_city.png) |
+| G12 | Asset creator Qt tool `fuhglgraphics_asset_creator` + MCP: scene tree/inspector/asset browser, G3 viewport with picking, LLM chat over stdio JSON-RPC 2.0; the MCP catalog (`mcp/`) exposes the procedural G24–G31 functions, the deferred-render settings (`Effect`/`EffectParams`) and the G13 water params; Qt-free stdio MCP server `fuhglgraphics_mcp_server`; `.fasset` JSON projects, G11 asset cache | [G12](docs/en/tutorials/g12_asset_creator.md) | — |
 
-Next: **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
-(Qt editor) — see [REQUIREMENTS.md](docs/REQUIREMENTS.md); **G12** (asset creator) is in
-design: [ASSET_CREATOR.md](docs/ASSET_CREATOR.md).
+Next: **G12 P5 polish** (3D gizmo, thumbnails) — see [REQUIREMENTS.md](docs/REQUIREMENTS.md)
+and [ASSET_CREATOR.md](docs/ASSET_CREATOR.md); **G11** is partially in place
+(`io::AssetCache` content-hash cache, `scene::effectsToJson` JSON render config,
+`editor::GlViewportWidget`).
 Baseline: OpenGL 3.3 core (GL 4.3 gates GPU particles/skinning, macOS ≤ 4.1), inherited
 from FuhGLCore.
 

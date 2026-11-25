@@ -60,7 +60,7 @@ fuhgl::math::Vec3 vec3Of(const io::Json& j, const fuhgl::math::Vec3& def) {
             static_cast<float>(j.arr[2].asNumber(def.z))};
 }
 
-io::Json effectsToJson(const Effects& fx) {
+io::Json effectsToJsonImpl(const Effects& fx) {
     io::Json j;
     j.type = io::Json::Type::Object;
     io::Json list;
@@ -120,7 +120,49 @@ io::Json effectsToJson(const Effects& fx) {
     return j;
 }
 
-bool effectsFromJson(const io::Json& j, Effects& fx, std::string* err) {
+bool setParamField(EffectParams& q, const std::string& name, const io::Json& v) {
+#define P_NUM(field)     if (name == #field) { q.field = static_cast<float>(v.asNumber(q.field)); return true; }
+#define P_INT(field)     if (name == #field) { q.field = v.asInt(q.field); return true; }
+#define P_BOOL(field)     if (name == #field) { q.field = v.asBool(q.field); return true; }
+#define P_VEC3(field)     if (name == #field) { q.field = vec3Of(v, q.field); return true; }
+    P_NUM(exposure) P_NUM(taaBlend) P_NUM(upscaleSharpness) P_NUM(shadowStrength)
+    P_VEC3(shadowCenter) P_NUM(shadowRadius) P_NUM(shadowZNear) P_NUM(shadowZFar)
+    P_BOOL(shadowSnapToTexels) P_NUM(shadowCascadeBlend) P_NUM(shadowLightSize)
+    if (name == "shadowFilter") {
+        q.shadowFilter = static_cast<fuhgl::render::ShadowFilter>(v.asInt(static_cast<int>(q.shadowFilter)));
+        return true;
+    }
+    P_NUM(shadowMinVariance) P_NUM(shadowNormalOffset) P_NUM(shadowPcfRadius)
+    P_NUM(renderScale) P_INT(msaaSamples) P_INT(shadowMapSize) P_INT(csmCascades)
+    P_NUM(lightProbeStrength) P_NUM(dofFocusDist) P_NUM(dofStrength) P_NUM(dofMaxCoC)
+    P_NUM(ssaoRadius) P_NUM(ssaoIntensity) P_NUM(ssaoBias) P_INT(ssaoSamples)
+    P_INT(ssrMaxSteps) P_NUM(ssrThickness) P_NUM(ssrMaxDist) P_NUM(ssrStrength)
+    P_NUM(bloomThreshold) P_NUM(bloomStrength) P_NUM(bloomRadius)
+    P_NUM(volumetricDensity) P_NUM(volumetricCloudiness) P_NUM(volumetricHeightFalloff)
+    P_NUM(volumetricNoiseScale) P_NUM(volumetricAnisotropy) P_NUM(volumetricMaxDist)
+    P_NUM(volumetricStrength) P_INT(volumetricSteps)
+    P_NUM(wetnessAmount) P_NUM(wetnessPuddle) P_NUM(wetnessNoiseScale)
+    if (name == "tonemapOperator") {
+        if (v.isString()) {
+            const std::string op = v.asString();
+            if (op == "aces") q.tonemapOperator = 0;
+            else if (op == "reinhard") q.tonemapOperator = 1;
+            else if (op == "uncharted2") q.tonemapOperator = 2;
+            else if (op == "linear") q.tonemapOperator = 3;
+            else return false;
+        } else {
+            q.tonemapOperator = v.asInt(q.tonemapOperator);
+        }
+        return true;
+    }
+#undef P_NUM
+#undef P_INT
+#undef P_BOOL
+#undef P_VEC3
+    return false;
+}
+
+bool effectsFromJsonImpl(const io::Json& j, Effects& fx, std::string* err) {
     fx = Effects{};
     const io::Json* list = j.find("list");
     if (list && list->type == io::Json::Type::Array) {
@@ -135,53 +177,7 @@ bool effectsFromJson(const io::Json& j, Effects& fx, std::string* err) {
     }
     const io::Json* p = j.find("params");
     if (p && p->type == io::Json::Type::Object) {
-        EffectParams& q = fx.params;
-        q.exposure = static_cast<float>(p->at("exposure").asNumber(q.exposure));
-        q.taaBlend = static_cast<float>(p->at("taaBlend").asNumber(q.taaBlend));
-        q.upscaleSharpness = static_cast<float>(p->at("upscaleSharpness").asNumber(q.upscaleSharpness));
-        q.shadowStrength = static_cast<float>(p->at("shadowStrength").asNumber(q.shadowStrength));
-        q.shadowCenter = vec3Of(p->at("shadowCenter"), q.shadowCenter);
-        q.shadowRadius = static_cast<float>(p->at("shadowRadius").asNumber(q.shadowRadius));
-        q.shadowZNear = static_cast<float>(p->at("shadowZNear").asNumber(q.shadowZNear));
-        q.shadowZFar = static_cast<float>(p->at("shadowZFar").asNumber(q.shadowZFar));
-        q.shadowFilter = static_cast<fuhgl::render::ShadowFilter>(p->at("shadowFilter").asInt(static_cast<int>(q.shadowFilter)));
-        q.shadowSnapToTexels = p->at("shadowSnapToTexels").asBool(q.shadowSnapToTexels);
-        q.shadowCascadeBlend = static_cast<float>(p->at("shadowCascadeBlend").asNumber(q.shadowCascadeBlend));
-        q.shadowLightSize = static_cast<float>(p->at("shadowLightSize").asNumber(q.shadowLightSize));
-        q.shadowMinVariance = static_cast<float>(p->at("shadowMinVariance").asNumber(q.shadowMinVariance));
-        q.shadowNormalOffset = static_cast<float>(p->at("shadowNormalOffset").asNumber(q.shadowNormalOffset));
-        q.shadowPcfRadius = static_cast<float>(p->at("shadowPcfRadius").asNumber(q.shadowPcfRadius));
-        q.renderScale = static_cast<float>(p->at("renderScale").asNumber(q.renderScale));
-        q.msaaSamples = p->at("msaaSamples").asInt(q.msaaSamples);
-        q.shadowMapSize = p->at("shadowMapSize").asInt(q.shadowMapSize);
-        q.csmCascades = p->at("csmCascades").asInt(q.csmCascades);
-        q.lightProbeStrength = static_cast<float>(p->at("lightProbeStrength").asNumber(q.lightProbeStrength));
-        q.dofFocusDist = static_cast<float>(p->at("dofFocusDist").asNumber(q.dofFocusDist));
-        q.dofStrength = static_cast<float>(p->at("dofStrength").asNumber(q.dofStrength));
-        q.dofMaxCoC = static_cast<float>(p->at("dofMaxCoC").asNumber(q.dofMaxCoC));
-        q.ssaoRadius = static_cast<float>(p->at("ssaoRadius").asNumber(q.ssaoRadius));
-        q.ssaoIntensity = static_cast<float>(p->at("ssaoIntensity").asNumber(q.ssaoIntensity));
-        q.ssaoBias = static_cast<float>(p->at("ssaoBias").asNumber(q.ssaoBias));
-        q.ssaoSamples = p->at("ssaoSamples").asInt(q.ssaoSamples);
-        q.ssrMaxSteps = p->at("ssrMaxSteps").asInt(q.ssrMaxSteps);
-        q.ssrThickness = static_cast<float>(p->at("ssrThickness").asNumber(q.ssrThickness));
-        q.ssrMaxDist = static_cast<float>(p->at("ssrMaxDist").asNumber(q.ssrMaxDist));
-        q.ssrStrength = static_cast<float>(p->at("ssrStrength").asNumber(q.ssrStrength));
-        q.bloomThreshold = static_cast<float>(p->at("bloomThreshold").asNumber(q.bloomThreshold));
-        q.bloomStrength = static_cast<float>(p->at("bloomStrength").asNumber(q.bloomStrength));
-        q.bloomRadius = static_cast<float>(p->at("bloomRadius").asNumber(q.bloomRadius));
-        q.volumetricDensity = static_cast<float>(p->at("volumetricDensity").asNumber(q.volumetricDensity));
-        q.volumetricCloudiness = static_cast<float>(p->at("volumetricCloudiness").asNumber(q.volumetricCloudiness));
-        q.volumetricHeightFalloff = static_cast<float>(p->at("volumetricHeightFalloff").asNumber(q.volumetricHeightFalloff));
-        q.volumetricNoiseScale = static_cast<float>(p->at("volumetricNoiseScale").asNumber(q.volumetricNoiseScale));
-        q.volumetricAnisotropy = static_cast<float>(p->at("volumetricAnisotropy").asNumber(q.volumetricAnisotropy));
-        q.volumetricMaxDist = static_cast<float>(p->at("volumetricMaxDist").asNumber(q.volumetricMaxDist));
-        q.volumetricStrength = static_cast<float>(p->at("volumetricStrength").asNumber(q.volumetricStrength));
-        q.volumetricSteps = p->at("volumetricSteps").asInt(q.volumetricSteps);
-        q.wetnessAmount = static_cast<float>(p->at("wetnessAmount").asNumber(q.wetnessAmount));
-        q.wetnessPuddle = static_cast<float>(p->at("wetnessPuddle").asNumber(q.wetnessPuddle));
-        q.wetnessNoiseScale = static_cast<float>(p->at("wetnessNoiseScale").asNumber(q.wetnessNoiseScale));
-        q.tonemapOperator = p->at("tonemapOperator").asInt(q.tonemapOperator);
+        for (const auto& kv : p->obj) setParamField(fx.params, kv.first, kv.second);
     }
     return true;
 }
@@ -278,7 +274,7 @@ io::Json nodeToJson(const Node& n) {
         j.obj["rotation"] = q;
     }
     j.obj["scale"] = vec3Json(n.scale);
-    j.obj["effects"] = effectsToJson(n.effects);
+    j.obj["effects"] = effectsToJsonImpl(n.effects);
     {
         io::Json in;
         in.type = io::Json::Type::Object;
@@ -373,7 +369,7 @@ bool nodeFromJson(Node& n, const io::Json& j, const MeshResolver& resolveMesh,
     n.scale = vec3Of(j.at("scale"), n.scale);
     {
         const io::Json& fx = j.at("effects");
-        if (fx.type == io::Json::Type::Object && !effectsFromJson(fx, n.effects, err)) return false;
+        if (fx.type == io::Json::Type::Object && !effectsFromJsonImpl(fx, n.effects, err)) return false;
     }
     {
         const io::Json& in = j.at("instancing");
@@ -488,6 +484,45 @@ bool nodeFromJson(Node& n, const io::Json& j, const MeshResolver& resolveMesh,
 }
 
 } // namespace
+
+io::Json effectsToJson(const Effects& fx) { return effectsToJsonImpl(fx); }
+
+bool effectsFromJson(const io::Json& j, Effects& fx, std::string* err) {
+    return effectsFromJsonImpl(j, fx, err);
+}
+
+bool setEffectParam(EffectParams& p, const std::string& name, const io::Json& value,
+                    std::string* err) {
+    if (setParamField(p, name, value)) return true;
+    if (err) *err = "unknown effect parameter: " + name;
+    return false;
+}
+
+io::Json effectParamToJson(const EffectParams& p, const std::string& name) {
+    Effects fx;
+    fx.params = p;
+    io::Json j = effectsToJsonImpl(fx);
+    const io::Json* params = j.find("params");
+    if (params) {
+        const io::Json* v = params->find(name);
+        if (v) return *v;
+    }
+    return io::Json{};
+}
+
+std::vector<std::string> effectParamNames() {
+    return {"exposure", "taaBlend", "upscaleSharpness", "shadowStrength", "shadowCenter",
+            "shadowRadius", "shadowZNear", "shadowZFar", "shadowFilter", "shadowSnapToTexels",
+            "shadowCascadeBlend", "shadowLightSize", "shadowMinVariance", "shadowNormalOffset",
+            "shadowPcfRadius", "renderScale", "msaaSamples", "shadowMapSize", "csmCascades",
+            "lightProbeStrength", "dofFocusDist", "dofStrength", "dofMaxCoC", "ssaoRadius",
+            "ssaoIntensity", "ssaoBias", "ssaoSamples", "ssrMaxSteps", "ssrThickness",
+            "ssrMaxDist", "ssrStrength", "bloomThreshold", "bloomStrength", "bloomRadius",
+            "volumetricDensity", "volumetricCloudiness", "volumetricHeightFalloff",
+            "volumetricNoiseScale", "volumetricAnisotropy", "volumetricMaxDist",
+            "volumetricStrength", "volumetricSteps", "wetnessAmount", "wetnessPuddle",
+            "wetnessNoiseScale", "tonemapOperator"};
+}
 
 std::unique_ptr<fuhgl::render::Mesh> defaultShapeResolver(const io::Json& meshSpec) {
     if (meshSpec.type != io::Json::Type::Object) return nullptr;

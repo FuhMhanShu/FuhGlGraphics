@@ -36,7 +36,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev
+          sudo apt-get install -y qt6-base-dev xvfb
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DFUHGLGRAPHICS_WITH_QT=${{ matrix.with_qt }}
@@ -46,6 +46,36 @@ jobs:
 
       - name: Unit tests (label "unit" — no GL context required)
         run: ctest --test-dir build -C Release --output-on-failure -L unit
+
+      # G12 MCP server smoke (Qt-free, built with FUHGLGRAPHICS_BUILD_TOOLS=ON): speak
+      # JSON-RPC 2.0 over stdio — initialize, tools/list (procedural + render + water
+      # tools present), tools/call render_set_param + procedural_noise + procedural_wfc.
+      # Linux only (bash + .exe-less binary path).
+      - name: MCP server smoke (stdio JSON-RPC)
+        if: runner.os == 'Linux'
+        run: |
+          OUT=$(printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"render_set_param","arguments":{"name":"bloomThreshold","value":2.5}}}' \
+            '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"procedural_noise","arguments":{"seed":1,"kind":"simplex2","x":0.5,"y":0.5}}}' \
+            '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"procedural_wfc","arguments":{"preset":"dungeon","width":4,"height":4,"seed":2}}}' \
+            | ./build/tools/mcp_server/fuhglgraphics_mcp_server)
+          echo "$OUT"
+          # initialize + tools/list answers are top-level JSON; tools/call payloads are
+          # pretty-printed+escaped inside content[].text — match unquoted tokens there
+          echo "$OUT" | grep -q '"protocolVersion"'
+          echo "$OUT" | grep -q '"procedural_worldgen"'
+          echo "$OUT" | grep -q '"render_set_effect"'
+          echo "$OUT" | grep -q '"water_set_params"'
+          echo "$OUT" | grep -q 'bloomThreshold'
+          echo "$OUT" | grep -q '2\.5'
+          echo "$OUT" | grep -q 'cells'
+
+      # G12 asset creator Qt tool smoke: build + --version under xvfb (Linux, WITH_QT only)
+      - name: Asset creator tool smoke (build + --version under xvfb)
+        if: runner.os == 'Linux' && matrix.with_qt == 'ON'
+        run: xvfb-run -a ./build/tools/asset_creator/fuhglgraphics_asset_creator --version
 
   # Headless GL smoke tests (label "gl_context") on Mesa llvmpipe via surfaceless EGL.
   # FUHGL_LINUX_BACKEND=EGL compiles FuhGLCore's EGL window backend, which provides the
