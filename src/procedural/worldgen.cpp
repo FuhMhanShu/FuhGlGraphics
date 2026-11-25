@@ -660,20 +660,31 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
         slope = slopeMap[idx];
     };
     for (const auto& s : poissonScatter(half, p.treeMinDist, p.treeCount, grassWeight, rng)) {
+        // NOTE: the shared `rng` draws below stay in the exact order/count of the previous
+        // PlantGenerator loop (seed, [kindRoll if not taiga/tundra], scale, rotY), so the
+        // downstream bush/rock scatter stream — and with it the worldgen tests — is unchanged;
+        // all new per-tree jitter (wind angle, attractor count) comes from a local Rng
+        const std::uint32_t treeSeed = p.seed ^ (rng.next() * 2654435761u);
+        const int tb = biomeAt(s.x, s.y);
+        if (tb != static_cast<int>(Biome::Taiga) && tb != static_cast<int>(Biome::Tundra))
+            (void)rng.nextf(); // was the kind roll
+        const float scaleDraw = rng.nextf();
+        const float rotYDraw = rng.nextf();
+        Rng local(treeSeed);
         float temp = 0.6f, hum = 0.5f, slope = 0.f;
         climateAt(s.x, s.y, temp, hum, slope);
         EcoEnvironment eco;
         eco.temperature = temp;
         eco.humidity = hum;
         eco.windExposure = std::min(1.f, std::max(0.f, slope * 1.8f + std::max(0.f, w.heightAt(s.x, s.y) / w.heightScale - 0.7f) * 1.5f));
-        const float wa = rng.nextf() * 2.f * fuhgl::math::kPi; // prevailing wind direction
+        const float wa = local.nextf() * 2.f * fuhgl::math::kPi; // prevailing wind direction
         eco.windDir = {std::cos(wa), 0.f, std::sin(wa)};
         eco.standDensity = std::min(1.f, std::max(0.f, 1.f - p.treeMinDist / 14.f));
-        eco.seed = p.seed ^ (rng.next() * 2654435761u);
+        eco.seed = treeSeed;
         VegetationParams vp = VegetationGenerator::randomParams(eco, eco.seed);
-        vp.scale = 0.45f + 0.5f * rng.nextf();
+        vp.scale = 0.45f + 0.5f * scaleDraw;
         // world-scale trees are small: fewer attractors/nodes keep the mesh budget sane
-        vp.sca.attractors = 140 + static_cast<int>(rng.nextf() * 120.f);
+        vp.sca.attractors = 140 + static_cast<int>(local.nextf() * 120.f);
         vp.sca.maxNodes = 1200;
         vp.sca.maxIterations = 32;
         const VegetationMesh vm = vegGen.generate(vp);
@@ -681,7 +692,7 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
         pm.mesh = vm.branches;
         appendMeshData(pm.mesh, vm.leaves); // one vertex-colored mesh per tree
         pm.position = {s.x, w.heightAt(s.x, s.y), s.y};
-        pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
+        pm.rotY = rotYDraw * 2.f * fuhgl::math::kPi;
         pm.scale = 1.f; // scale is already baked into the generated mesh
         w.trees.push_back(std::move(pm));
     }
