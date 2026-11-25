@@ -26,107 +26,44 @@ Qt6-Editor) — siehe die vereinbarten Anforderungen [G1–G11](docs/REQUIREMENT
 
 ## Status
 
-Requirements G1–G11 liegen vor ([docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)).
-Bereits umgesetzt: **G1** (FuhGLCore-Anbindung), **G3** — der Deferred-Renderer
-`fuhglgraphics::render::DeferredRenderer` mit erweitertem G-Buffer (Albedo+Normal,
-Metallic/Roughness/AO, Emissive, Motion-Vectors, Material-ID), PBR-Lighting über die
-FuhGLCore-Lights/Shadows/IBL und einer Post-Chain (TAA → FSR1-artiges Upscaling →
-ACES-Tonemapping) mit Einzelschaltern — siehe [G3-Tutorial](docs/de/tutorials/g3_deferred_renderer.md)
-und Screenshots in [docs/images/](docs/images/g3_deferred_1280x720.png) — sowie **G9** — der
-Szenengraph `fuhglgraphics::scene::Scene` (Nodes mit polymorpher Komponentenliste, mehrere
-Meshes + Albedo-/Normalmap-Texturen pro Node, Licht-/Kamera-Komponenten, Effektliste +
-Parameter pro Node, Instancing pro Node, World-AABBs + Frustum-Culling; `Scene::fillFrame()`
-füttert den G3-Renderer) — siehe [G9-Tutorial](docs/de/tutorials/g9_scene_graph.md) und
-Effekt-Vergleichsbilder in [docs/images/](docs/images/g9_scene_graph.png) — und **G4** —
-glTF-2.0-Asset-Loading: `fuhglgraphics::io::loadGltf()` (.gltf/.glb, eigener JSON-Parser,
-Puffer/Accessoren/Primitive/Materialien/Bilder) + `io::instantiateGltf()` auf den
-G9-Szenengraphen — siehe [G4-Tutorial](docs/de/tutorials/g4_gltf_loader.md) und Bilder in
-[docs/images/](docs/images/g4_gltf_ship.png) — und **G5** — GPU-Partikel
-(`particles::ParticleSystem`, Compute ab GL 4.3 mit CPU-Fallback) als
-G9-`ParticleEmitterComponent`, gerendert im G3-"particles"-Post-Pass — siehe
-[G5-Tutorial](docs/de/tutorials/g5_particles.md) und Bilder in
-[docs/images/](docs/images/g5_particles_fire.png) — und **G6** — Animation/Skinning:
-`fuhglgraphics::anim::AnimationPlayer` (TRS-Clips, Once/Loop/PingPong) +
-`anim::Skeleton` mit CPU-Skinning (`skinMeshCpu`), glTF-Animationen/Skins über den
-G4-Loader, als G9-`AnimationComponent` — siehe
-[G6-Tutorial](docs/de/tutorials/g6_animation.md) und Bilder in
-[docs/images/](docs/images/g6_animation_bend.png) — und **G7** — SH-Light-Probes
-(`probes::LightProbeGrid`, CPU-Bake + 3D-Textur-Sampling in der G3-Lighting-Pass) für
-diffuses indirektes Licht / Color-Bleeding, als G9-`LightProbeComponent` — siehe
-[G7-Tutorial](docs/de/tutorials/g7_light_probes.md) und Bilder in
-[docs/images/](docs/images/g7_probes_on.png) — und **G8** — Deferred-Decals
-(`render::Decal`-Boxen in den G-Buffer projiziert, Material-ID-gegated) als G9-
-`DecalComponent` — siehe [G8-Tutorial](docs/de/tutorials/g8_decals.md) und Bilder in
-[docs/images/](docs/images/g8_decals_on.png) — und **G10** — Quick-Upgrades: DoF mit
-hexagonalem Bokeh-Kernel (`Effect::Dof`), Mini-Debug-HUD auf FuhGLCore's TextRenderer
-(`Effect::DebugHud`) und perzeptueller PSNR-Screenshot-Diff in der CI — siehe
-[G10-Tutorial](docs/de/tutorials/g10_upgrades.md) und Bilder in
-[docs/images/](docs/images/g10_dof_on.png).
-und **G14** — GPU-Skinning (`anim::GpuSkinner`: VAO + JOINTS_0/WEIGHTS_0-Attribute +
-Matrix-Palette-SSBO, gezeichnet vom GLSL-430-Skinning-Shader des G3-G-Buffer-Passes, wenn
-`Effect::GpuSkinning` an ist, GL >= 4.3; CPU-Fallback darunter) — siehe
-[G14-Tutorial](docs/de/tutorials/g14_gpu_skinning.md) und Bilder in
-[docs/images/](docs/images/g14_gpu_skinning_on.png) — und **G15** — SSAO (`Effect::Ssao`:
-G-Buffer-basierter Hemisphären-Kernel-Pass vor dem Lighting, AO-Faktor in der Ressource
-`ssao`, vom Lighting-Pass gesampelt) — siehe [G15-Tutorial](docs/de/tutorials/g15_ssao.md)
-und Bilder in [docs/images/](docs/images/g15_ssao_on.png) — und **G16** — Screen-Space
-Reflections (`Effect::Ssr`: Post-Pass nach dem Lighting, raymarched gegen die G-Buffer-Tiefe,
-Fresnel/Roughness/Edge-Maske, Ausgabe `hdrS`) — siehe [G16-Tutorial](docs/de/tutorials/g16_ssr.md)
-und Bilder in [docs/images/](docs/images/g16_ssr_on.png) — und **G17** — Bloom
-(`Effect::Bloom`: Post-Pass nach den Partikeln, vor TAA; Bright-Pass oberhalb des einstellbaren
-`bloomThreshold` + 9-Tap-Blur + Add in `hdrB`) — siehe [G17-Tutorial](docs/de/tutorials/g17_bloom.md)
-und Bilder in [docs/images/](docs/images/g17_bloom_on.png) — und **G18** — Picking /
-Ray-Casting auf dem Szenengraphen (`scene::pick()`: Strahl von der Kamera durch ein Pixel,
-World-AABB-Culling, Möller–Trumbore-Dreieckstests auf `MeshEntry::meshData`) — siehe
-[G18-Tutorial](docs/de/tutorials/g18_picking.md) und Bilder in
-[docs/images/](docs/images/g18_picking_marker.png) — und **G19** — Szenen-Serialisierung
-(`scene/serialize.hpp`: Scene <-> JSON-Round-Trip über `io::writeJson`, Mesh-Specs über einen
-`MeshResolver`-Callback aufgelöst, `saveScene`/`loadScene` für .json-Dateien) — siehe
-[G19-Tutorial](docs/de/tutorials/g19_serialization.md) und Bilder in
-[docs/images/](docs/images/g19_serialization_loaded.png) — und **G20** — Terrain + LOD
-(`scene::TerrainComponent`: FuhGLCore-F38/F41-`terrainLods`-LodMesh im `fillFrame()`-Pfad,
-pro Frame LOD-Level aus der Kamera-Distanz über `DrawItem::lod`, `heightAt()` zum Platzieren
-von Objekten) — siehe [G20-Tutorial](docs/de/tutorials/g20_terrain_lod.md) und Bilder in
-[docs/images/](docs/images/g20_terrain_far.png) — und **G21** — volumetrischer Nebel/Wolken
-(`Effect::VolumetricFog`: "volumetric"-Post-Pass nach den Partikeln, vor Bloom — rayge-marchtes
-3D-Noise-Volumen mit Höhen-Falloff + Henyey–Greenstein-Sonnenstreuung gegen die G-Buffer-Tiefe;
-reine CPU-Zwillinge in `render/volumetric.hpp`) — siehe [G21-Tutorial](docs/de/tutorials/g21_volumetric_fog.md)
-und Bilder in [docs/images/](docs/images/g21_volumetric_on.png) — und **G22** — Wetness/Regen
-auf PBR (`Effect::Wetness`: Roughness/Albedo-Modulation im Lighting-Pass mit Noise-Pfützen-Maske
-auf nach oben zeigenden Flächen + SSR-Stärke-Boost; reine CPU-Zwillinge in `render/wetness.hpp`)
-— siehe [G22-Tutorial](docs/de/tutorials/g22_wetness.md) und Bilder in
-[docs/images/](docs/images/g22_wetness_wet.png) — und **G23** — Tonemapping-Operatoren
-(`render::TonemapOperator`: ACES / Reinhard / Uncharted2 / linear, pro Frame über `uOperator`
-im Tonemap-Pass, reine CPU-Zwillinge in `render/tonemap.hpp`) + einstellbarer Bloom-Threshold
-(`bloomThreshold`, G17) — siehe [G23-Tutorial](docs/de/tutorials/g23_tonemap.md) und Bilder in
-[docs/images/](docs/images/g23_tonemap_uncharted2.png) — und **G24** — das prozedurale
-Noise-Modul (`procedural::Noise` in `procedural/noise.hpp`: seeded, deterministischer
-Value-/Perlin-/Simplex-Noise 2D+3D mit fBm/Ridged/Turbulence und Domain-Warp; gemeinsame
-Noise-Quelle für die G25–G29-Generatoren) — siehe [G24-Tutorial](docs/de/tutorials/g24_procedural_noise.md)
-und Bilder in [docs/images/](docs/images/g24_noise_wide.png) — und **G25** — Marching Cubes
-(`procedural::marchingCubes` / `marchingCubesChunked`: Voxel-Volumen → wasserdichtes
-indexiertes `MeshData`, für Höhlen-Terrain und SDF-Meshing) — siehe
-[G25-Tutorial](docs/de/tutorials/g25_marching_cubes.md) und Bilder in
-[docs/images/](docs/images/g25_marching_cubes_cave.png) — und **G26** — L-Systeme
-(`procedural::LSystem`: Regel-Ersetzung + 3D-Turtle → `MeshData` für Bäume/Farne/Büsche, Presets
-`makeTree`/`makeFern`/`makeBush`) — siehe [G26-Tutorial](docs/de/tutorials/g26_lsystem.md) und
-Bilder in [docs/images/](docs/images/g26_lsystem_forest.png) — und **G27** — Wave Function
-Collapse (`procedural::Wfc`: Edge-Tag-Tiles + Rotationen, Min-Entropie + Propagation +
-Backtracking → Dungeon-/Stadt-Layouts als Szenen-Knoten) — siehe
-[G27-Tutorial](docs/de/tutorials/g27_wfc.md) und Bilder in
-[docs/images/](docs/images/g27_wfc_overview.png) — und **G28** — Voronoi-Diagramme
-(`procedural::voronoi2d` Zellen + F1/F2 + `extrudeCells`-Prismen → gerissene Platten,
-Kristall-Splitter) — siehe [G28-Tutorial](docs/de/tutorials/g28_voronoi.md) und Bilder in
-[docs/images/](docs/images/g28_voronoi_shattered.png) — und **G29** — SDF / 3D-Fraktale
-(`procedural::sdf`-Primitive + `smoothMin` + `mandelbulb` DE; `procedural::meshFromSdf` mesht
-jedes SDF via G25 Marching Cubes) — siehe [G29-Tutorial](docs/de/tutorials/g29_mandelbulb.md)
-und Bilder in [docs/images/](docs/images/g29_mandelbulb_wide.png) — und **G30** — prozedurale
-Kreaturen (`procedural::Skeleton`-Graph + `creatureSdf` smooth-min SDF + Simplex-Detail;
-`meshCreature` via G25 mit Krümmung im Vertex-Color; `bakeCreatureMaps` Objektraum-Noise-Haut)
-— siehe [G30-Tutorial](docs/de/tutorials/g30_creature.md) und Bilder in
-[docs/images/](docs/images/g30_creature_wide.png).
-Als Nächstes: **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor) oder
-**G2** (Qt-Editor).
+Requirements G1–G11 liegen vor ([docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)). Bereits
+umgesetzt — eine Zeile pro Anforderung, mit Tutorial und Screenshot (alle Screenshots in
+[docs/images/](docs/images/)):
+
+| Req | Feature | Tutorial | Screenshot |
+| --- | ------- | -------- | ---------- |
+| G1 | FuhGLCore-Anbindung (CMake/qmake) | — | — |
+| G3 | Deferred-Renderer `render::DeferredRenderer`: erweiterter G-Buffer (Albedo+Normal, Metallic/Roughness/AO, Emissive, Motion-Vectors, Material-ID), PBR-Lighting über FuhGLCore-Lights/Shadows/IBL, Post-Chain (TAA → FSR1-artiges Upscaling → ACES-Tonemapping) mit Einzelschaltern | [G3](docs/de/tutorials/g3_deferred_renderer.md) | [g3_deferred_1280x720.png](docs/images/g3_deferred_1280x720.png) |
+| G4 | glTF-2.0-Asset-Loading: `io::loadGltf()` (.gltf/.glb, eigener JSON-Parser) + `io::instantiateGltf()` auf den G9-Szenengraphen | [G4](docs/de/tutorials/g4_gltf_loader.md) | [g4_gltf_ship.png](docs/images/g4_gltf_ship.png) |
+| G5 | GPU-Partikel `particles::ParticleSystem` (Compute ab GL 4.3, CPU-Fallback) als G9-`ParticleEmitterComponent`, gerendert im G3-"particles"-Post-Pass | [G5](docs/de/tutorials/g5_particles.md) | [g5_particles_fire.png](docs/images/g5_particles_fire.png) |
+| G6 | Animation/Skinning: `anim::AnimationPlayer` (TRS-Clips) + `anim::Skeleton` mit CPU-Skinning, glTF-Animationen/Skins über den G4-Loader, als G9-`AnimationComponent` | [G6](docs/de/tutorials/g6_animation.md) | [g6_animation_bend.png](docs/images/g6_animation_bend.png) |
+| G7 | SH-Light-Probes `probes::LightProbeGrid` (CPU-Bake + 3D-Textur-Sampling in der G3-Lighting-Pass) für diffuses indirektes Licht / Color-Bleeding, als G9-`LightProbeComponent` | [G7](docs/de/tutorials/g7_light_probes.md) | [g7_probes_on.png](docs/images/g7_probes_on.png) |
+| G8 | Deferred-Decals: `render::Decal`-Boxen in den G-Buffer projiziert (Material-ID-gegated) als G9-`DecalComponent` | [G8](docs/de/tutorials/g8_decals.md) | [g8_decals_on.png](docs/images/g8_decals_on.png) |
+| G9 | Szenengraph `scene::Scene`: Nodes mit polymorpher Komponentenliste, mehrere Meshes + Albedo-/Normalmap-Texturen pro Node, Licht-/Kamera-Komponenten, Effektliste + Parameter pro Node, Instancing pro Node, World-AABBs + Frustum-Culling; `Scene::fillFrame()` füttert den G3-Renderer | [G9](docs/de/tutorials/g9_scene_graph.md) | [g9_scene_graph.png](docs/images/g9_scene_graph.png) |
+| G10 | Quick-Upgrades: DoF mit hexagonalem Bokeh-Kernel (`Effect::Dof`), Mini-Debug-HUD (`Effect::DebugHud`), perzeptueller PSNR-Screenshot-Diff in der CI | [G10](docs/de/tutorials/g10_upgrades.md) | [g10_dof_on.png](docs/images/g10_dof_on.png) |
+| G13 | Realistisches Wasser `water::WaterSurface` (Gerstner-Wellen) als G9-`WaterComponent`: planarer Reflexions-Pass + Wasser-Post-Pass (Fresnel-Mix, Schaum, Sonnen-Glint), `Effect::Water` | [G13](docs/de/tutorials/g13_water.md) | [g13_water_1280x720.png](docs/images/g13_water_1280x720.png) |
+| G14 | GPU-Skinning `anim::GpuSkinner` (VAO + JOINTS_0/WEIGHTS_0-Attribute + Matrix-Palette-SSBO, GL >= 4.3; CPU-Fallback darunter), gezeichnet vom G3-G-Buffer-Pass wenn `Effect::GpuSkinning` an ist | [G14](docs/de/tutorials/g14_gpu_skinning.md) | [g14_gpu_skinning_on.png](docs/images/g14_gpu_skinning_on.png) |
+| G15 | SSAO `Effect::Ssao`: G-Buffer-basierter Hemisphären-Kernel-Pass vor dem Lighting, vom Lighting-Pass gesampelt | [G15](docs/de/tutorials/g15_ssao.md) | [g15_ssao_on.png](docs/images/g15_ssao_on.png) |
+| G16 | Screen-Space Reflections `Effect::Ssr`: Post-Pass nach dem Lighting, raymarched gegen die G-Buffer-Tiefe (Fresnel/Roughness/Edge-Maske) | [G16](docs/de/tutorials/g16_ssr.md) | [g16_ssr_on.png](docs/images/g16_ssr_on.png) |
+| G17 | Bloom `Effect::Bloom`: Post-Pass nach den Partikeln, vor TAA; Bright-Pass oberhalb des einstellbaren `bloomThreshold` + 9-Tap-Blur | [G17](docs/de/tutorials/g17_bloom.md) | [g17_bloom_on.png](docs/images/g17_bloom_on.png) |
+| G18 | Picking / Ray-Casting auf dem Szenengraphen `scene::pick()`: Strahl von der Kamera durch ein Pixel, World-AABB-Culling, Müller–Trumbore-Dreieckstests | [G18](docs/de/tutorials/g18_picking.md) | [g18_picking_marker.png](docs/images/g18_picking_marker.png) |
+| G19 | Szenen-Serialisierung `scene/serialize.hpp`: Scene <-> JSON-Round-Trip über `io::writeJson`, `saveScene`/`loadScene` für .json-Dateien | [G19](docs/de/tutorials/g19_serialization.md) | [g19_serialization_loaded.png](docs/images/g19_serialization_loaded.png) |
+| G20 | Terrain + LOD `scene::TerrainComponent`: LodMesh im `fillFrame()`-Pfad, pro Frame LOD-Level aus der Kamera-Distanz, `heightAt()` zum Platzieren von Objekten | [G20](docs/de/tutorials/g20_terrain_lod.md) | [g20_terrain_far.png](docs/images/g20_terrain_far.png) |
+| G21 | Volumetrischer Nebel/Wolken `Effect::VolumetricFog`: rayge-marchtes 3D-Noise-Volumen mit Henyey–Greenstein-Sonnenstreuung gegen die G-Buffer-Tiefe (reine CPU-Zwillinge in `render/volumetric.hpp`) | [G21](docs/de/tutorials/g21_volumetric_fog.md) | [g21_volumetric_on.png](docs/images/g21_volumetric_on.png) |
+| G22 | Wetness/Regen auf PBR `Effect::Wetness`: Roughness/Albedo-Modulation mit Noise-Pfützen-Maske auf nach oben zeigenden Flächen + SSR-Boost (reine CPU-Zwillinge in `render/wetness.hpp`) | [G22](docs/de/tutorials/g22_wetness.md) | [g22_wetness_wet.png](docs/images/g22_wetness_wet.png) |
+| G23 | Tonemapping-Operatoren `render::TonemapOperator` (ACES / Reinhard / Uncharted2 / linear, pro Frame) + einstellbarer Bloom-Threshold (`bloomThreshold`, G17) | [G23](docs/de/tutorials/g23_tonemap.md) | [g23_tonemap_uncharted2.png](docs/images/g23_tonemap_uncharted2.png) |
+| G24 | Prozedurales Noise `procedural::Noise`: seeded, deterministischer Value-/Perlin-/Simplex-Noise 2D+3D mit fBm/Ridged/Turbulence und Domain-Warp; gemeinsame Noise-Quelle für die G25–G29-Generatoren | [G24](docs/de/tutorials/g24_procedural_noise.md) | [g24_noise_wide.png](docs/images/g24_noise_wide.png) |
+| G25 | Marching Cubes `procedural::marchingCubes` / `marchingCubesChunked`: Voxel-Volumen → wasserdichtes indexiertes `MeshData` (Höhlen-Terrain, SDF-Meshing) | [G25](docs/de/tutorials/g25_marching_cubes.md) | [g25_marching_cubes_cave.png](docs/images/g25_marching_cubes_cave.png) |
+| G26 | L-Systeme `procedural::LSystem`: Regel-Ersetzung + 3D-Turtle → `MeshData` für Bäume/Farne/Büsche (Presets `makeTree`/`makeFern`/`makeBush`) | [G26](docs/de/tutorials/g26_lsystem.md) | [g26_lsystem_forest.png](docs/images/g26_lsystem_forest.png) |
+| G27 | Wave Function Collapse `procedural::Wfc`: Edge-Tag-Tiles + Rotationen, Min-Entropie + Propagation + Backtracking → Dungeon-/Stadt-Layouts als Szenen-Knoten | [G27](docs/de/tutorials/g27_wfc.md) | [g27_wfc_overview.png](docs/images/g27_wfc_overview.png) |
+| G28 | Voronoi-Diagramme `procedural::voronoi2d` Zellen + F1/F2 + `extrudeCells`-Prismen → gerissene Platten, Kristall-Splitter | [G28](docs/de/tutorials/g28_voronoi.md) | [g28_voronoi_shattered.png](docs/images/g28_voronoi_shattered.png) |
+| G29 | SDF / 3D-Fraktale: `procedural::sdf`-Primitive + `smoothMin` + `mandelbulb` DE; `procedural::meshFromSdf` mesht jedes SDF via G25 Marching Cubes | [G29](docs/de/tutorials/g29_mandelbulb.md) | [g29_mandelbulb_wide.png](docs/images/g29_mandelbulb_wide.png) |
+| G30 | Prozedurale Kreaturen: `procedural::Skeleton`-Graph + `creatureSdf` smooth-min SDF + Simplex-Detail; `meshCreature` via G25 mit Krümmung im Vertex-Color; `bakeCreatureMaps` Objektraum-Noise-Haut | [G30](docs/de/tutorials/g30_creature.md) | [g30_creature_wide.png](docs/images/g30_creature_wide.png) |
+| G31 | World-Generator-Hilfsfunktion `procedural::generateWorld(WorldGenParams)`: ein Aufruf baut eine Noise-Höhenfeld-Landschaft mit L-System-Bäumen oder eine WFC-Stadt mit Voronoi-Stadtteilplatten; deterministisch pro Seed | [G31](docs/de/tutorials/g31_worldgen.md) | [g31_worldgen_city.png](docs/images/g31_worldgen_city.png) |
+
+Als Nächstes: **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor)
+oder **G2** (Qt-Editor) — siehe [REQUIREMENTS.md](docs/REQUIREMENTS.md); **G12**
+(Asset-Creator) ist in Ausarbeitung: [ASSET_CREATOR.md](docs/ASSET_CREATOR.md).
 Baseline: OpenGL 3.3 Core (GL 4.3 gatet GPU-Partikel/Skinning, macOS ≤ 4.1), übernommen
 von FuhGLCore.
 
