@@ -994,7 +994,8 @@ int main(int argc, char** argv) {
             roof.castShadow = true;
         }
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.3f, 0.55f, 0.6f}));
-        scene.root().effects.enable(render::Effect::Ssr); // reflections on wet roads / glass
+        // no SSR here: the ~6500-house scene with SSR washes out under headless llvmpipe
+        // (the WFC city scene above keeps SSR and renders fine)
 
         // overview steeply down onto the plateau, same camera as the (stable) WFC city
         // overview: road grid + houses fill the lower frame, sky above
@@ -1025,8 +1026,8 @@ int main(int argc, char** argv) {
             }
             const auto& nd = world.roads.nodes[best];
             const float gy = world.heightAt(nd.x, nd.y);
-            cam.position = {nd.x, gy + 2.4f, nd.y + 7.f};
-            aimAt(cam, {0.f, world.heightAt(0.f, 0.f) + 1.8f, 0.f});
+            cam.position = {nd.x, gy + 3.2f, nd.y + 9.f};
+            aimAt(cam, {0.f, world.heightAt(0.f, 0.f) + 2.2f, 0.f});
             const std::string stPath = args.prefix + "_pipeline_street.png";
             if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, stPath, &wc.surface, &env)) {
                 std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", stPath.c_str());
