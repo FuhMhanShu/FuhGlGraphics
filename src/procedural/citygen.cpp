@@ -112,7 +112,8 @@ void buildTerrainAndZones(const CityGenParams& p, CityWorld& w) {
 
 // --- stage 2: road graph --------------------------------------------------------------------
 
-RoadGraph buildRoads(const CityGenParams& p, const CityWorld& w, fuhgl::render::MeshData& roadMesh) {
+RoadGraph buildRoads(const CityGenParams& p, const CityWorld& w, fuhgl::render::MeshData& roadMesh,
+                        fuhgl::render::MeshData& sidewalkMesh) {
     Noise warpNoise(p.seed ^ 0xB0ADu);
     RoadGraph graph;
     const int n = std::max(2, p.roadGrid);
@@ -150,8 +151,8 @@ RoadGraph buildRoads(const CityGenParams& p, const CityWorld& w, fuhgl::render::
     roadSurfaceStyle(p.roadSurface, p.wetRoads, surfCol, uvScale);
     const fuhgl::math::Vec3 walk{0.55f, 0.55f, 0.52f};
     Rng rng(p.seed ^ 0xB0A2u);
-    auto addQuad = [&](const fuhgl::math::Vec2& a, const fuhgl::math::Vec2& b, float width, float y,
-                       const fuhgl::math::Vec3& col, float uvs, float jitter) {
+    auto addQuad = [&](fuhgl::render::MeshData& dst, const fuhgl::math::Vec2& a, const fuhgl::math::Vec2& b,
+                       float width, float y, const fuhgl::math::Vec3& col, float uvs, float jitter) {
         const fuhgl::math::Vec2 dir = b - a;
         const float len = std::sqrt(dot2(dir, dir));
         if (len < 1e-4f) return;
@@ -162,18 +163,18 @@ RoadGraph buildRoads(const CityGenParams& p, const CityWorld& w, fuhgl::render::
         const fuhgl::math::Vec2 p1 = a - side * hw + fuhgl::math::Vec2{(rng.nextf() - 0.5f) * 2.f * j, (rng.nextf() - 0.5f) * 2.f * j};
         const fuhgl::math::Vec2 p2 = b - side * hw + fuhgl::math::Vec2{(rng.nextf() - 0.5f) * 2.f * j, (rng.nextf() - 0.5f) * 2.f * j};
         const fuhgl::math::Vec2 p3 = b + side * hw + fuhgl::math::Vec2{(rng.nextf() - 0.5f) * 2.f * j, (rng.nextf() - 0.5f) * 2.f * j};
-        const std::uint32_t base = static_cast<std::uint32_t>(roadMesh.vertexCount());
-        pushFlatVertex(roadMesh, p0.x, y, p0.y, col, uvs);
-        pushFlatVertex(roadMesh, p1.x, y, p1.y, col, uvs);
-        pushFlatVertex(roadMesh, p2.x, y, p2.y, col, uvs);
-        pushFlatVertex(roadMesh, p3.x, y, p3.y, col, uvs);
-        roadMesh.indices.push_back(base); roadMesh.indices.push_back(base + 2); roadMesh.indices.push_back(base + 1);
-        roadMesh.indices.push_back(base); roadMesh.indices.push_back(base + 3); roadMesh.indices.push_back(base + 2);
+        const std::uint32_t base = static_cast<std::uint32_t>(dst.vertexCount());
+        pushFlatVertex(dst, p0.x, y, p0.y, col, uvs);
+        pushFlatVertex(dst, p1.x, y, p1.y, col, uvs);
+        pushFlatVertex(dst, p2.x, y, p2.y, col, uvs);
+        pushFlatVertex(dst, p3.x, y, p3.y, col, uvs);
+        dst.indices.push_back(base); dst.indices.push_back(base + 2); dst.indices.push_back(base + 1);
+        dst.indices.push_back(base); dst.indices.push_back(base + 3); dst.indices.push_back(base + 2);
     };
     for (const auto& e : graph.edges) {
         const fuhgl::math::Vec2 a = graph.nodes[e.first], b = graph.nodes[e.second];
-        addQuad(a, b, p.roadWidth + 1.6f, plateauY + 0.02f, walk, 1.f, 0.f);   // sidewalk underlay
-        addQuad(a, b, p.roadWidth, plateauY + 0.05f, surfCol, uvScale, p.roadIrregularity);
+        addQuad(sidewalkMesh, a, b, p.roadWidth + 1.6f, plateauY + 0.02f, walk, 1.f, 0.f); // sidewalk underlay
+        addQuad(roadMesh, a, b, p.roadWidth, plateauY + 0.05f, surfCol, uvScale, p.roadIrregularity);
         if (rng.nextf() < p.roadDamage) {
             // pothole: small dark square somewhere along the street segment
             const float t = 0.25f + 0.5f * rng.nextf();
@@ -192,13 +193,13 @@ RoadGraph buildRoads(const CityGenParams& p, const CityWorld& w, fuhgl::render::
     for (const auto& nd : graph.nodes) {
         const float h = p.roadWidth * 0.5f + 0.8f;
         const fuhgl::math::Vec2 c = nd;
-        const std::uint32_t base = static_cast<std::uint32_t>(roadMesh.vertexCount());
-        pushFlatVertex(roadMesh, c.x - h, plateauY + 0.02f, c.y - h, walk);
-        pushFlatVertex(roadMesh, c.x + h, plateauY + 0.02f, c.y - h, walk);
-        pushFlatVertex(roadMesh, c.x + h, plateauY + 0.02f, c.y + h, walk);
-        pushFlatVertex(roadMesh, c.x - h, plateauY + 0.02f, c.y + h, walk);
-        roadMesh.indices.push_back(base); roadMesh.indices.push_back(base + 2); roadMesh.indices.push_back(base + 1);
-        roadMesh.indices.push_back(base); roadMesh.indices.push_back(base + 3); roadMesh.indices.push_back(base + 2);
+        const std::uint32_t base = static_cast<std::uint32_t>(sidewalkMesh.vertexCount());
+        pushFlatVertex(sidewalkMesh, c.x - h, plateauY + 0.02f, c.y - h, walk);
+        pushFlatVertex(sidewalkMesh, c.x + h, plateauY + 0.02f, c.y - h, walk);
+        pushFlatVertex(sidewalkMesh, c.x + h, plateauY + 0.02f, c.y + h, walk);
+        pushFlatVertex(sidewalkMesh, c.x - h, plateauY + 0.02f, c.y + h, walk);
+        sidewalkMesh.indices.push_back(base); sidewalkMesh.indices.push_back(base + 2); sidewalkMesh.indices.push_back(base + 1);
+        sidewalkMesh.indices.push_back(base); sidewalkMesh.indices.push_back(base + 3); sidewalkMesh.indices.push_back(base + 2);
     }
     return graph;
 }
@@ -388,7 +389,7 @@ CityWorld generateCityWorld(const CityGenParams& p) {
     buildTerrainAndZones(p, w);
     w.roadSurface = p.roadSurface;
     w.wetRoads = p.wetRoads;
-    w.roads = buildRoads(p, w, w.roadMesh);
+    w.roads = buildRoads(p, w, w.roadMesh, w.sidewalkMesh);
 
     // blocks = grid cells whose four corner nodes survived the water mask; rebuild the
     // (i,j) -> node-id mapping exactly like buildRoads did (same scan order + warp + mask)

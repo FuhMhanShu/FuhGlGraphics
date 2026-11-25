@@ -164,7 +164,8 @@ void testCityLayout() {
     CHECK(w.cityW == p.cityGrid && w.cityCellSize == p.cellSize);
     CHECK(!w.tiles.empty());
     CHECK(w.cityGround.vertexCount() > 0);
-    CHECK(w.roads.vertexCount() > 0);
+    CHECK(w.roads.vertexCount() > 0);      // street slabs (textured app-side)
+    CHECK(w.pavements.vertexCount() > 0);  // sidewalk + lot plates + lawn
     CHECK(w.districts.vertexCount() > 0); // blocksPerDistrict > 0
 
     // every solved cell references a valid tile; adjacent edge tags match (incl. border "s")

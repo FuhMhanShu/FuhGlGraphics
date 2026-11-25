@@ -114,8 +114,10 @@ struct GeneratedWorld {
     int cityW = 0, cityH = 0;              ///< WFC grid size
     float cityCellSize = 0.f;              ///< world size of one cell
     fuhgl::render::MeshData cityGround;    ///< base plate under the whole city (top at y = 0)
-    fuhgl::render::MeshData roads;         ///< merged slabs: sidewalk underlay + road surface (with
-                                           ///< irregular edges + pothole patches) + park lawn (plaza cells)
+    fuhgl::render::MeshData roads;         ///< street slabs only (irregular edges, chosen surface,
+                                           ///< pothole patches) — the textured mesh, app attaches the
+                                           ///< road texture set (cobble gets POM) + wet material here
+    fuhgl::render::MeshData pavements;     ///< sidewalk underlay + lot plates + park lawn slabs (plain vertex colors)
     fuhgl::render::MeshData districts;     ///< voronoi district plates (empty when blocksPerDistrict == 0)
     RoadSurface roadSurface = RoadSurface::Asphalt; ///< echo of WorldGenParams::roadSurface (texture choice)
     bool wetRoads = false;                 ///< echo of WorldGenParams::wetRoads

@@ -517,7 +517,7 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                     fuhgl::render::shapes::boxData({p.cellSize * 0.46f, 0.02f, p.cellSize * 0.46f},
                                                    {0.16f, 0.42f, 0.16f});
                 shiftY(lawn, 0.04f);
-                appendTransformed(w.roads, lawn, place);
+                appendTransformed(w.pavements, lawn, place);
                 for (int b = 0; b < p.parkBushesPerPlaza; ++b) {
                     PlantParams pp;
                     pp.kind = PlantKind::Bush;
@@ -537,7 +537,7 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                     fuhgl::render::shapes::boxData({p.cellSize * 0.47f, 0.025f, p.cellSize * 0.47f},
                                                    {0.48f, 0.47f, 0.44f});
                 shiftY(lot, 0.025f);
-                appendTransformed(w.roads, lot, place);
+                appendTransformed(w.pavements, lot, place);
                 // procedural house on the lot
                 const float n = noise.value2(wx * 0.05f + 13.1f, wz * 0.05f + 7.7f); // per-block jitter
                 const std::uint32_t houseSeed =
@@ -567,7 +567,7 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                     fuhgl::render::shapes::boxData({p.cellSize * 0.5f, 0.02f, p.cellSize * 0.5f},
                                                    {0.55f, 0.55f, 0.52f});
                 shiftY(walk, 0.02f);
-                appendTransformed(w.roads, walk, place);
+                appendTransformed(w.pavements, walk, place);
                 fuhgl::math::Vec3 surfCol;
                 float uvScale = 0.25f;
                 roadSurfaceStyle(p.roadSurface, p.wetRoads, surfCol, uvScale);

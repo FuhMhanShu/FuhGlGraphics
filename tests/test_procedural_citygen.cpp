@@ -79,7 +79,8 @@ void testRoadGraph() {
     const CityWorld w = generateCityWorld(params());
     CHECK(!w.roads.nodes.empty());
     CHECK(!w.roads.edges.empty());
-    CHECK(w.roadMesh.vertexCount() > 0);
+    CHECK(w.roadMesh.vertexCount() > 0);     // street quads (textured app-side)
+    CHECK(w.sidewalkMesh.vertexCount() > 0); // sidewalk underlay + intersection squares
     CHECK(w.roadMesh.indices.size() % 3 == 0);
     // no road node under water
     for (const auto& nd : w.roads.nodes) CHECK(w.heightAt(nd.x, nd.y) >= w.waterLevelWorld);

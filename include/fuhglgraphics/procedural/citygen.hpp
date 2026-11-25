@@ -81,8 +81,9 @@ struct CityWorld {
 
     // stage 2: roads
     RoadGraph roads;
-    fuhgl::render::MeshData roadMesh;   ///< sidewalk underlay + street quads (irregular edges,
-                                        ///< chosen surface, pothole patches) + intersection squares
+    fuhgl::render::MeshData roadMesh;   ///< street quads only (irregular edges, chosen surface,
+                                        ///< pothole patches) — the textured mesh (cobble gets POM)
+    fuhgl::render::MeshData sidewalkMesh; ///< sidewalk underlay + intersection squares (plain vertex colors)
     RoadSurface roadSurface = RoadSurface::Asphalt; ///< echo of CityGenParams::roadSurface
     bool wetRoads = false;                 ///< echo of CityGenParams::wetRoads
 
