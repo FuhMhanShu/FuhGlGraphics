@@ -79,6 +79,13 @@ struct EffectParams {
     float wetnessAmount = 0.8f;   ///< global rain amount 0..1 (0 = dry)
     float wetnessPuddle = 0.7f;   ///< puddle mask strength: 0 = flat wet film, 1 = only depressions
     float wetnessNoiseScale = 3.5f; ///< world units per puddle-noise cell
+    // --- G31 building weathering (Effect::Weathering, lighting pass) ---
+    float weatherStrength = 0.8f;      ///< global weathering intensity 0..1
+    float weatherHumidity = 0.5f;      ///< local humidity 0..1 -> moss/lichen + rain streaks
+    float weatherBaseY = 0.f;           ///< ground level of the buildings (splash-stain reference)
+    float weatherRainStreaks = 0.6f;    ///< strength of the vertical dirt streaks on walls 0..1
+    fuhgl::math::Vec3 weatherSoilColor{0.36f, 0.29f, 0.21f}; ///< local soil color (splash stain + plinth)
+    fuhgl::math::Vec3 weatherMossColor{0.24f, 0.33f, 0.16f}; ///< moss/lichen color
     // --- G23 tonemapping operator (Effect::Tonemap) ---
     int tonemapOperator = 0;      ///< render::TonemapOperator: 0 = ACES, 1 = Reinhard, 2 = Uncharted2, 3 = linear
     // --- G30 lens flare + anamorphic streaks (Effect::LensFlare / Effect::Anamorphic) ---

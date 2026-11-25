@@ -90,8 +90,9 @@ void appendBox(fuhgl::render::MeshData& dst, const fuhgl::math::Vec3& half,
 
 // --- roof solids (base at y = 0, caller shifts onto the walls) ---------------------------
 
-fuhgl::render::MeshData gableRoof(float w, float d, float h, const fuhgl::math::Vec3& col) {
-    const float hw = w * 0.5f + 0.14f, hd = d * 0.5f + 0.14f;
+fuhgl::render::MeshData gableRoof(float w, float d, float h, const fuhgl::math::Vec3& col,
+                                   float overhang = 0.14f) {
+    const float hw = w * 0.5f + overhang, hd = d * 0.5f + overhang;
     fuhgl::render::MeshData md;
     addQuad(md, {-hw, 0.f, hd}, {hw, 0.f, hd}, {hw, h, 0.f}, {-hw, h, 0.f}, col);   // south slope
     addQuad(md, {hw, 0.f, -hd}, {-hw, 0.f, -hd}, {-hw, h, 0.f}, {hw, h, 0.f}, col);  // north slope
@@ -100,8 +101,9 @@ fuhgl::render::MeshData gableRoof(float w, float d, float h, const fuhgl::math::
     return md;
 }
 
-fuhgl::render::MeshData shedRoof(float w, float d, float h, const fuhgl::math::Vec3& col) {
-    const float hw = w * 0.5f + 0.14f, hd = d * 0.5f + 0.14f;
+fuhgl::render::MeshData shedRoof(float w, float d, float h, const fuhgl::math::Vec3& col,
+                                  float overhang = 0.14f) {
+    const float hw = w * 0.5f + overhang, hd = d * 0.5f + overhang;
     const float yLow = h * 0.45f;
     const fuhgl::math::Vec3 A{-hw, yLow, hd}, B{hw, yLow, hd}, C{hw, h, -hd}, D{-hw, h, -hd};
     const fuhgl::math::Vec3 E{hw, yLow, -hd}, F{-hw, yLow, -hd};
@@ -113,8 +115,9 @@ fuhgl::render::MeshData shedRoof(float w, float d, float h, const fuhgl::math::V
     return md;
 }
 
-fuhgl::render::MeshData hippedRoof(float w, float d, float h, const fuhgl::math::Vec3& col) {
-    const float hw = w * 0.5f + 0.14f, hd = d * 0.5f + 0.14f;
+fuhgl::render::MeshData hippedRoof(float w, float d, float h, const fuhgl::math::Vec3& col,
+                                    float overhang = 0.14f) {
+    const float hw = w * 0.5f + overhang, hd = d * 0.5f + overhang;
     const float rh = std::max(0.f, hw - h); // ridge half-length (hip run ~ h horizontally)
     fuhgl::render::MeshData md;
     addQuad(md, {-hw, 0.f, hd}, {hw, 0.f, hd}, {rh, h, 0.f}, {-rh, h, 0.f}, col);  // south slope
@@ -124,11 +127,65 @@ fuhgl::render::MeshData hippedRoof(float w, float d, float h, const fuhgl::math:
     return md;
 }
 
-fuhgl::render::MeshData flatRoof(float w, float d, float t, const fuhgl::math::Vec3& col) {
+fuhgl::render::MeshData flatRoof(float w, float d, float t, const fuhgl::math::Vec3& col,
+                                  float overhang = 0.1f) {
     fuhgl::render::MeshData md =
-        fuhgl::render::shapes::boxData({w * 0.5f + 0.1f, t * 0.5f, d * 0.5f + 0.1f}, col);
+        fuhgl::render::shapes::boxData({w * 0.5f + overhang, t * 0.5f, d * 0.5f + overhang}, col);
     shiftY(md, t * 0.5f);
     return md;
+}
+
+// --- BuildingContext -> derived architecture rules ----------------------------------------
+// Climate->form: much rain/snow -> steep gable/hipped roof, wide eaves, gutter; arid ->
+// flat roof with parapet; hot -> small windows + shutters + light high-albedo walls;
+// cold -> big windows + chimney; flood zone -> stilts. Resources -> facade/roof material.
+// Wealth/density -> storeys, ornaments, patches, shop front, garden fence.
+struct Derived {
+    FacadeMaterial facade = FacadeMaterial::Brick;
+    float roofPitchMul = 1.f;
+    float overhang = 0.14f;
+    bool forceGutter = false;
+    bool forceFlat = false;
+    bool parapet = false;
+    float windowScale = 1.f;
+    bool forceShutters = false;
+    bool forceChimney = false;
+    float wallLighten = 0.f;  ///< hot climate: light facade colors reflect the sun
+    float stiltLift = 0.f;    ///< flood zone: lift the whole house onto posts
+    bool shopFront = false;   ///< high density: ground floor = shop with display windows
+    bool fence = false;       ///< low density: detached house with garden fence
+    bool patches = false;     ///< low wealth: patched walls (mixed materials)
+    bool cornice = false;     ///< high wealth: ornamental cornice bands per floor
+    float irregularMul = 1.f; ///< wealth scales the wall jitter (rich = clean, poor = rough)
+};
+
+Derived derive(const BuildingContext& c, unsigned seed) {
+    Derived d;
+    d.facade = HouseGenerator::resolveFacadeMaterial(c, seed);
+    const float snowLoad = c.precipitation * (1.f - c.temperature);
+    if (c.precipitation > 0.6f || snowLoad > 0.35f) {
+        d.roofPitchMul = 1.35f;  // steep roof sheds rain/snow
+        d.overhang = 0.30f;      // wide eaves keep the facade dry
+        d.forceGutter = true;
+    }
+    if (c.precipitation < 0.3f && c.temperature > 0.6f) {
+        d.forceFlat = true;      // arid: flat (walkable) roof with parapet
+        d.parapet = true;
+        d.overhang = 0.06f;
+    }
+    d.windowScale = std::min(1.3f, std::max(0.55f, 1.3f - c.temperature * 0.75f));
+    if (c.temperature > 0.65f) {
+        d.forceShutters = true;  // shutters against the sun
+        d.wallLighten = 0.28f;   // high albedo reflects sunlight
+    }
+    if (c.temperature < 0.35f) d.forceChimney = true; // heating
+    if (c.waterProximity > 0.55f) d.stiltLift = 1.0f + 0.9f * c.waterProximity;
+    if (c.density > 0.7f) d.shopFront = true;
+    if (c.density < 0.35f) d.fence = true;
+    if (c.wealth > 0.7f) d.cornice = true;
+    if (c.wealth < 0.3f) d.patches = true;
+    d.irregularMul = c.wealth > 0.7f ? 0.4f : (c.wealth < 0.3f ? 1.8f : 1.f);
+    return d;
 }
 
 // --- palettes -----------------------------------------------------------------------------
@@ -161,7 +218,65 @@ Palette pickPalette(HouseStyle style, Rng& rng) {
     return pal;
 }
 
+/// @brief Overrides the style palette with the local-resource material colors and applies the
+/// hot-climate lightening (high albedo). Wood = warm planks + dark shingle roof; adobe = sand
+/// plaster + clay; concrete = grey + dark glass; stone/brick keep their POM texture sets.
+void applyMaterialPalette(Palette& pal, FacadeMaterial mat, const BuildingContext& ctx) {
+    switch (mat) {
+        case FacadeMaterial::Wood:
+            pal.wall = {0.62f, 0.48f, 0.33f};
+            pal.roof = {0.32f, 0.22f, 0.15f}; // wood shingles
+            break;
+        case FacadeMaterial::Adobe:
+            pal.wall = {0.86f, 0.72f, 0.52f};
+            pal.roof = {0.62f, 0.45f, 0.30f};
+            break;
+        case FacadeMaterial::Concrete:
+            pal.wall = {0.74f, 0.76f, 0.79f};
+            pal.roof = {0.42f, 0.43f, 0.46f};
+            pal.window = {0.22f, 0.33f, 0.44f};
+            break;
+        case FacadeMaterial::Stone:
+            pal.roof = {0.24f, 0.26f, 0.30f}; // slate
+            break;
+        case FacadeMaterial::Brick:
+            pal.roof = {0.55f, 0.20f, 0.13f}; // red clay tiles
+            break;
+        default:
+            break;
+    }
+    if (ctx.temperature > 0.65f) // hot: light walls reflect the sun (high albedo)
+        pal.wall = pal.wall * (1.f - 0.28f) + fuhgl::math::Vec3{0.28f, 0.28f, 0.28f};
+}
+
 } // namespace
+
+FacadeMaterial HouseGenerator::resolveFacadeMaterial(const BuildingContext& ctx, unsigned seed) {
+    LocalMaterial m = ctx.localMaterial;
+    if (m == LocalMaterial::Auto) {
+        if (ctx.density > 0.85f && ctx.wealth > 0.6f) {
+            m = LocalMaterial::Concrete; // metropole: concrete/steel/glass, not local stone
+        } else {
+            switch (ctx.biome) { // worldgen Biome cast
+                case 2: m = LocalMaterial::Adobe; break;            // desert
+                case 4: case 5: case 6: m = LocalMaterial::Wood; break; // forest/jungle/taiga
+                case 7: case 8: case 9: m = LocalMaterial::Stone; break; // tundra/rock/snow
+                default: m = LocalMaterial::Brick; break;            // shore/grassland: clay
+            }
+        }
+    }
+    switch (m) {
+        case LocalMaterial::Wood: return FacadeMaterial::Wood;
+        case LocalMaterial::Stone: return FacadeMaterial::Stone;
+        case LocalMaterial::Adobe: return FacadeMaterial::Adobe;
+        case LocalMaterial::Concrete: return FacadeMaterial::Concrete;
+        case LocalMaterial::Brick: return FacadeMaterial::Brick;
+        default: {
+            Rng rng(seed);
+            return static_cast<FacadeMaterial>(rng.next() % 3u); // no biome: brick/plaster/stone
+        }
+    }
+}
 
 HouseGenerator::Params HouseGenerator::randomParams(HouseStyle style, float cellSize, unsigned seed) {
     Rng rng(seed);
@@ -185,38 +300,78 @@ HouseGenerator::Params HouseGenerator::randomParams(HouseStyle style, float cell
     return p;
 }
 
+HouseGenerator::Params HouseGenerator::randomParams(HouseStyle style, float cellSize, unsigned seed,
+                                                    const BuildingContext& ctx) {
+    Params p = randomParams(style, cellSize, seed);
+    p.context = ctx;
+    p.facade = resolveFacadeMaterial(ctx, seed); // local resources -> material
+    Rng rng(seed ^ 0xC7C0u);
+    // density -> storeys: suburb 1-2, town 2-4, city 4-6, center 8+ (highrise style keeps its range)
+    if (style != HouseStyle::Highrise) {
+        if (ctx.density < 0.35f) p.floors = 1 + static_cast<int>(rng.next() % 2u);
+        else if (ctx.density < 0.65f) p.floors = 2 + static_cast<int>(rng.next() % 3u);
+        else if (ctx.density < 0.85f) p.floors = 4 + static_cast<int>(rng.next() % 3u);
+        else p.floors = 8 + static_cast<int>(rng.next() % 5u);
+    } else {
+        p.floors = 6 + static_cast<int>(ctx.density * 10.f) + static_cast<int>(rng.next() % 3u);
+    }
+    if (ctx.density > 0.7f) {
+        // block-edge construction: the house fills the lot (shared side walls)
+        p.width = cellSize * rng.range(0.80f, 0.92f);
+        p.depth = cellSize * rng.range(0.80f, 0.92f);
+    }
+    return p;
+}
+
 HouseMesh HouseGenerator::generate(const Params& p) const {
     Rng rng(p.seed);
     HouseMesh hm;
     hm.spec.width = p.width;
     hm.spec.depth = p.depth;
     hm.spec.floors = p.floors;
+    hm.spec.context = p.context;
     const float w = p.width, d = p.depth;
     const float wallH = p.floors * p.floorHeight;
     hm.spec.wallHeight = wallH;
-    const Palette pal = pickPalette(p.style, rng);
+    // environment/socio-economy rules: context wins over an explicit facade when it carries
+    // a resource/biome hint (localMaterial != Auto or biome >= 0)
+    const Derived der = derive(p.context, p.seed);
+    const FacadeMaterial facade =
+        (p.context.localMaterial != LocalMaterial::Auto || p.context.biome >= 0) ? der.facade : p.facade;
+    hm.spec.facade = facade;
+    hm.spec.windowScale = der.windowScale;
+    hm.spec.roofOverhang = der.overhang;
+    const Palette pal0 = pickPalette(p.style, rng);
+    Palette pal = pal0;
+    applyMaterialPalette(pal, facade, p.context);
+    const float irr = p.wallIrregularity * der.irregularMul;
 
     // --- walls (with a slight per-vertex jitter = bump-like relief on the facade) ---
     hm.walls = fuhgl::render::shapes::boxData({w * 0.5f, wallH * 0.5f, d * 0.5f}, pal.wall);
     shiftY(hm.walls, wallH * 0.5f);
-    hm.spec.facade = p.facade;
-    if (p.wallIrregularity > 0.f) {
+    if (irr > 0.f) {
         hm.spec.wallIrregular = true;
         for (std::size_t i = 0; i < hm.walls.vertexCount(); ++i) {
             float* v = &hm.walls.vertices[i * 11];
-            v[0] += (rng.nextf() - 0.5f) * 2.f * p.wallIrregularity;
-            v[2] += (rng.nextf() - 0.5f) * 2.f * p.wallIrregularity;
+            v[0] += (rng.nextf() - 0.5f) * 2.f * irr;
+            v[2] += (rng.nextf() - 0.5f) * 2.f * irr;
         }
     }
     // facade material detail: stone gets relief courses, plaster a plinth band (brick relies
-    // on the app-side POM brick set)
-    if (p.facade == FacadeMaterial::Stone) {
+    // on the app-side POM brick set); adobe/wood/concrete get a soil-colored plinth
+    if (facade == FacadeMaterial::Adobe || facade == FacadeMaterial::Wood ||
+        facade == FacadeMaterial::Concrete) {
+        const fuhgl::math::Vec3 plinth = p.context.soilColor * 0.85f;
+        appendBox(hm.details, {w * 0.5f + 0.02f, 0.30f, 0.02f}, {0.f, 0.30f, d * 0.5f + 0.02f}, plinth);
+        appendBox(hm.details, {w * 0.5f + 0.02f, 0.30f, 0.02f}, {0.f, 0.30f, -d * 0.5f - 0.02f}, plinth);
+    }
+    if (facade == FacadeMaterial::Stone) {
         const fuhgl::math::Vec3 stoneDark = pal.wall * 0.82f;
         for (float y = 0.35f; y < wallH; y += 0.55f)
             for (int s = -1; s <= 1; s += 2) // front + back
                 appendBox(hm.details, {w * 0.5f + 0.014f, 0.07f, 0.014f},
                           {0.f, y, s * (d * 0.5f + 0.014f)}, stoneDark);
-    } else if (p.facade == FacadeMaterial::Plaster) {
+    } else if (facade == FacadeMaterial::Plaster) {
         const fuhgl::math::Vec3 plinth = pal.wall * 0.7f;
         appendBox(hm.details, {w * 0.5f + 0.02f, 0.28f, 0.02f}, {0.f, 0.28f, d * 0.5f + 0.02f}, plinth);
         appendBox(hm.details, {w * 0.5f + 0.02f, 0.28f, 0.02f}, {0.f, 0.28f, -d * 0.5f - 0.02f}, plinth);
@@ -258,57 +413,97 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
     }
 
     // --- windows per floor, front + back: frame in details, glass pane in hm.glass,
-    //     optional shutters (Fensterläden) flanking each window ---
-    const bool shutters = p.style != HouseStyle::Highrise && rng.nextf() < 0.5f;
+    //     optional shutters (Fensterläden) flanking each window. Window size follows the
+    //     climate (small when hot, large when cold); the ground floor of a shop-front house
+    //     gets display windows instead (added below). ---
+    const bool shutters =
+        p.style != HouseStyle::Highrise && (der.forceShutters || rng.nextf() < 0.5f);
     hm.spec.hasShutters = shutters;
+    const float ws = der.windowScale;
     for (int f = 0; f < p.floors; ++f) {
+        if (der.shopFront && f == 0) continue; // ground floor = shop front
         const float y = p.floorHeight * (0.45f + f * 1.0f);
         if (y > wallH - 0.7f) break;
         for (int s = -1; s <= 1; s += 2) {
             const float wx = s * w * 0.24f;
-            appendBox(hm.details, {0.30f, 0.42f, 0.03f}, {wx, y, d * 0.5f + 0.02f}, pal.window);
-            appendBox(hm.details, {0.30f, 0.42f, 0.03f}, {wx, y, -d * 0.5f - 0.02f}, pal.window);
-            appendBox(hm.glass, {0.25f, 0.36f, 0.015f}, {wx, y, d * 0.5f + 0.045f}, pal.window);
-            appendBox(hm.glass, {0.25f, 0.36f, 0.015f}, {wx, y, -d * 0.5f - 0.045f}, pal.window);
+            appendBox(hm.details, {0.30f * ws, 0.42f * ws, 0.03f}, {wx, y, d * 0.5f + 0.02f}, pal.window);
+            appendBox(hm.details, {0.30f * ws, 0.42f * ws, 0.03f}, {wx, y, -d * 0.5f - 0.02f}, pal.window);
+            appendBox(hm.glass, {0.25f * ws, 0.36f * ws, 0.015f}, {wx, y, d * 0.5f + 0.045f}, pal.window);
+            appendBox(hm.glass, {0.25f * ws, 0.36f * ws, 0.015f}, {wx, y, -d * 0.5f - 0.045f}, pal.window);
             if (shutters) {
                 const fuhgl::math::Vec3 shutterCol = pal.beam * 1.15f + fuhgl::math::Vec3{0.1f, 0.12f, 0.1f};
                 for (int side = -1; side <= 1; side += 2) {
-                    appendBox(hm.details, {0.09f, 0.42f, 0.02f},
-                              {wx + side * 0.42f, y, d * 0.5f + 0.03f}, shutterCol);
-                    appendBox(hm.details, {0.09f, 0.42f, 0.02f},
-                              {wx + side * 0.42f, y, -d * 0.5f - 0.03f}, shutterCol);
+                    appendBox(hm.details, {0.09f * ws, 0.42f * ws, 0.02f},
+                              {wx + side * 0.42f * ws, y, d * 0.5f + 0.03f}, shutterCol);
+                    appendBox(hm.details, {0.09f * ws, 0.42f * ws, 0.02f},
+                              {wx + side * 0.42f * ws, y, -d * 0.5f - 0.03f}, shutterCol);
                 }
             }
         }
     }
 
-    // --- roof: gable / lean-to / hipped ---
-    const float roofRoll = rng.nextf();
-    const float roofH = std::max(1.1f, wallH * (p.style == HouseStyle::Village ? 0.5f : 0.38f));
-    if (roofRoll < 0.45f) {
-        hm.roof = gableRoof(w, d, roofH, pal.roof);
-        hm.spec.roofType = RoofType::Gable;
-    } else if (roofRoll < 0.7f) {
-        hm.roof = shedRoof(w, d, roofH, pal.roof);
-        hm.spec.roofType = RoofType::Shed;
-    } else {
-        hm.roof = hippedRoof(w, d, roofH, pal.roof);
-        hm.spec.roofType = RoofType::Hipped;
+    // --- shop front (high density): ground floor = Ladenlokal with big display windows,
+    //     a sign band above the door and the door pushed to the side ---
+    if (der.shopFront && p.style != HouseStyle::Highrise) {
+        hm.spec.hasShopFront = true;
+        const float y = p.floorHeight * 0.5f;
+        for (int s = -1; s <= 1; s += 2) {
+            const float wx = s * w * 0.27f;
+            appendBox(hm.details, {0.55f, 0.75f, 0.03f}, {wx, y, d * 0.5f + 0.02f}, pal.window);
+            appendBox(hm.glass, {0.50f, 0.70f, 0.015f}, {wx, y, d * 0.5f + 0.045f}, pal.window);
+        }
+        // sign band above the shop front (the center door stays between the display windows)
+        appendBox(hm.details, {w * 0.5f + 0.02f, 0.14f, 0.03f},
+                  {0.f, p.floorHeight + 0.12f, d * 0.5f + 0.03f}, {0.65f, 0.18f, 0.14f});
     }
-    shiftY(hm.roof, wallH);
 
-    // --- Dachrinne: gutter along the eaves + one downpipe at the front-right corner ---
-    if (rng.nextf() < 0.85f) {
+    // --- roof: arid climate -> flat roof with parapet (rooftop terrace); much rain/snow ->
+    //     only steep gable/hipped (sheds water); otherwise gable / lean-to / hipped ---
+    const float roofRoll = rng.nextf();
+    float roofH = std::max(1.1f, wallH * (p.style == HouseStyle::Village ? 0.5f : 0.38f)) *
+                  der.roofPitchMul;
+    const float oh = der.overhang;
+    hm.spec.roofHeight = roofH;
+    if (der.forceFlat) {
+        hm.roof = flatRoof(w, d, 0.25f, pal.roof, oh);
+        hm.spec.roofType = RoofType::Flat;
+        shiftY(hm.roof, wallH);
+        // parapet (Brüstung) around the flat roof edge
+        hm.spec.hasParapet = true;
+        const fuhgl::math::Vec3 pc = pal.wall * 0.9f;
+        const float hw = w * 0.5f + oh, hd = d * 0.5f + oh, ph = 0.45f;
+        appendBox(hm.roof, {hw, ph * 0.5f, 0.05f}, {0.f, wallH + ph * 0.5f, hd - 0.05f}, pc);
+        appendBox(hm.roof, {hw, ph * 0.5f, 0.05f}, {0.f, wallH + ph * 0.5f, -hd + 0.05f}, pc);
+        appendBox(hm.roof, {0.05f, ph * 0.5f, hd}, {hw - 0.05f, wallH + ph * 0.5f, 0.f}, pc);
+        appendBox(hm.roof, {0.05f, ph * 0.5f, hd}, {-hw + 0.05f, wallH + ph * 0.5f, 0.f}, pc);
+    } else if (roofRoll < 0.45f || (der.roofPitchMul > 1.2f && roofRoll < 0.75f)) {
+        hm.roof = gableRoof(w, d, roofH, pal.roof, oh);
+        hm.spec.roofType = RoofType::Gable;
+        shiftY(hm.roof, wallH);
+    } else if (roofRoll < 0.7f && der.roofPitchMul <= 1.2f) {
+        hm.roof = shedRoof(w, d, roofH, pal.roof, oh);
+        hm.spec.roofType = RoofType::Shed;
+        shiftY(hm.roof, wallH);
+    } else {
+        hm.roof = hippedRoof(w, d, roofH, pal.roof, oh);
+        hm.spec.roofType = RoofType::Hipped;
+        shiftY(hm.roof, wallH);
+    }
+
+    // --- Dachrinne: gutter along the eaves + one downpipe at the front-right corner
+    //     (forced in wet climates) ---
+    if (der.forceGutter || (!der.forceFlat && rng.nextf() < 0.85f)) {
         hm.spec.hasGutter = true;
         const fuhgl::math::Vec3 metal{0.55f, 0.57f, 0.60f};
-        const float eaveZ = d * 0.5f + 0.14f;
+        const float eaveZ = d * 0.5f + oh;
         if (hm.spec.roofType == RoofType::Shed) {
-            appendBox(hm.details, {w * 0.5f + 0.18f, 0.06f, 0.07f}, {0.f, wallH + 0.02f, eaveZ}, metal);
-        } else {
-            appendBox(hm.details, {w * 0.5f + 0.18f, 0.06f, 0.07f}, {0.f, wallH - 0.04f, eaveZ}, metal);
-            appendBox(hm.details, {w * 0.5f + 0.18f, 0.06f, 0.07f}, {0.f, wallH - 0.04f, -eaveZ}, metal);
+            appendBox(hm.details, {w * 0.5f + oh + 0.04f, 0.06f, 0.07f}, {0.f, wallH + 0.02f, eaveZ}, metal);
+        } else if (hm.spec.roofType != RoofType::Flat) {
+            appendBox(hm.details, {w * 0.5f + oh + 0.04f, 0.06f, 0.07f}, {0.f, wallH - 0.04f, eaveZ}, metal);
+            appendBox(hm.details, {w * 0.5f + oh + 0.04f, 0.06f, 0.07f}, {0.f, wallH - 0.04f, -eaveZ}, metal);
         }
-        appendBox(hm.details, {0.06f, wallH * 0.5f, 0.06f}, {w * 0.5f + 0.12f, wallH * 0.5f, eaveZ}, metal);
+        if (hm.spec.roofType != RoofType::Flat)
+            appendBox(hm.details, {0.06f, wallH * 0.5f, 0.06f}, {w * 0.5f + oh - 0.02f, wallH * 0.5f, eaveZ}, metal);
     }
 
     // --- Garage: side box with its own lean-to roof and a roller door ---
@@ -397,13 +592,15 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
         hm.spec.hasPorch = true;
         appendBox(hm.roof, {0.9f, 0.05f, 0.55f}, {0.f, 2.35f, d * 0.5f + 0.55f}, pal.roof);
     }
-    if (rng.nextf() < 0.6f) {
+    if (der.forceChimney || rng.nextf() < 0.6f) {
         hm.spec.hasChimney = true;
         appendBox(hm.details, {0.16f, roofH * 0.7f + 0.4f, 0.16f},
                   {w * 0.28f, wallH + roofH * 0.5f, -d * 0.22f}, {0.55f, 0.53f, 0.50f});
     }
-    if (p.style == HouseStyle::Village && rng.nextf() < 0.5f) {
+    if ((p.style == HouseStyle::Village || facade == FacadeMaterial::Wood) &&
+        rng.nextf() < (facade == FacadeMaterial::Wood ? 0.9f : 0.5f)) {
         // Fachwerk: dark timber posts + bands + diagonal braces on the front facade
+        // (almost always for wood construction)
         hm.spec.timberFrame = true;
         const float zf = d * 0.5f + 0.015f;
         for (int f = 0; f <= p.floors; ++f)
@@ -412,6 +609,74 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
             appendBox(hm.details, {0.07f, wallH * 0.5f, 0.02f}, {s * w * 0.5f, wallH * 0.5f, zf}, pal.beam);
         appendBox(hm.details, {0.05f, wallH * 0.35f, 0.02f}, {-w * 0.18f, wallH * 0.5f, zf}, pal.beam);
         appendBox(hm.details, {0.05f, wallH * 0.35f, 0.02f}, {w * 0.18f, wallH * 0.5f, zf}, pal.beam);
+    }
+
+    // --- garden fence (low density / detached house): posts + rails around the front yard ---
+    if (der.fence) {
+        hm.spec.hasFence = true;
+        const fuhgl::math::Vec3 fc = pal.beam;
+        const float fx = w * 0.5f + 1.3f, fz = d * 0.5f + 1.3f;
+        for (int i = 0; i <= 6; ++i) {
+            const float t = static_cast<float>(i) / 6.f;
+            appendBox(hm.details, {0.035f, 0.4f, 0.035f}, {-fx + 2.f * fx * t, 0.4f, fz}, fc);
+            appendBox(hm.details, {0.035f, 0.4f, 0.035f}, {fx, 0.4f, -fz + 2.f * fz * t}, fc);
+            appendBox(hm.details, {0.035f, 0.4f, 0.035f}, {-fx, 0.4f, -fz + 2.f * fz * t}, fc);
+        }
+        appendBox(hm.details, {fx, 0.03f, 0.03f}, {0.f, 0.62f, fz}, fc);   // front top rail
+        appendBox(hm.details, {0.03f, 0.03f, fz}, {fx, 0.62f, 0.f}, fc);   // side top rails
+        appendBox(hm.details, {0.03f, 0.03f, fz}, {-fx, 0.62f, 0.f}, fc);
+        appendBox(hm.details, {fx, 0.025f, 0.025f}, {0.f, 0.3f, fz}, fc); // mid rails
+        appendBox(hm.details, {0.025f, 0.025f, fz}, {fx, 0.3f, 0.f}, fc);
+        appendBox(hm.details, {0.025f, 0.025f, fz}, {-fx, 0.3f, 0.f}, fc);
+    }
+
+    // --- wall patches (low wealth): corrugated-sheet / mixed-material patches on the facade ---
+    if (der.patches) {
+        hm.spec.hasPatches = true;
+        const fuhgl::math::Vec3 patchCol = (rng.nextf() < 0.5f) ? fuhgl::math::Vec3{0.52f, 0.54f, 0.57f}
+                                                              : pal.beam;
+        const int n = 2 + static_cast<int>(rng.next() % 3u);
+        for (int i = 0; i < n; ++i) {
+            const float pw = rng.range(0.5f, 1.2f), ph2 = rng.range(0.4f, 0.9f);
+            const float px = rng.range(-w * 0.35f, w * 0.35f);
+            const float py = rng.range(0.5f, std::max(0.6f, wallH - 0.6f));
+            const int side = (rng.nextf() < 0.7f) ? 1 : -1; // mostly front
+            appendBox(hm.details, {pw * 0.5f, ph2 * 0.5f, 0.02f},
+                      {px, py, side * (d * 0.5f + 0.025f)}, patchCol);
+        }
+    }
+
+    // --- cornice bands per floor (high wealth): ornamental Simse on front + back ---
+    if (der.cornice) {
+        hm.spec.hasCornice = true;
+        const fuhgl::math::Vec3 cc = pal.wall * 1.18f + fuhgl::math::Vec3{0.03f, 0.03f, 0.03f};
+        for (int f = 1; f <= p.floors; ++f)
+            for (int s = -1; s <= 1; s += 2)
+                appendBox(hm.details, {w * 0.5f + 0.035f, 0.06f, 0.035f},
+                          {0.f, f * p.floorHeight + 0.08f, s * (d * 0.5f + 0.035f)}, cc);
+    }
+
+    // --- flood zone / coast: lift the whole house onto posts over a high stone foundation ---
+    if (der.stiltLift > 0.f && p.style != HouseStyle::Highrise) {
+        const float lift = der.stiltLift;
+        const float foundH = lift * 0.55f;
+        shiftY(hm.walls, lift);
+        shiftY(hm.details, lift);
+        shiftY(hm.roof, lift);
+        shiftY(hm.glass, lift);
+        const fuhgl::math::Vec3 stoneCol = p.context.soilColor * 0.8f + fuhgl::math::Vec3{0.05f, 0.05f, 0.05f};
+        fuhgl::render::MeshData found =
+            fuhgl::render::shapes::boxData({w * 0.5f + 0.1f, foundH * 0.5f, d * 0.5f + 0.1f}, stoneCol);
+        shiftY(found, foundH * 0.5f);
+        appendTransformed(hm.walls, found, fuhgl::math::translate({0.f, 0.f, 0.f}));
+        const fuhgl::math::Vec3 postCol = pal.beam * 0.8f;
+        for (int sx = -1; sx <= 1; sx += 2)
+            for (int sz = -1; sz <= 1; sz += 2)
+                appendBox(hm.details, {0.12f, (lift - foundH) * 0.5f, 0.12f},
+                          {sx * (w * 0.5f - 0.18f), foundH + (lift - foundH) * 0.5f,
+                           sz * (d * 0.5f - 0.18f)}, postCol);
+        hm.spec.onStilts = true;
+        hm.spec.stiltHeight = lift;
     }
     return hm;
 }

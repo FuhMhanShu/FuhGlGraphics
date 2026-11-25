@@ -412,6 +412,7 @@ CityWorld generateCityWorld(const CityGenParams& p) {
     }
 
     const float plateauY = w.waterLevelWorld * 1.05f;
+    Noise climate(p.seed ^ 0xC11u); // climate/soil noise for the house BuildingContexts
     HouseGenerator houseGen;
     for (int j = 0; j + 1 < n; ++j)
         for (int i = 0; i + 1 < n; ++i) {
@@ -428,7 +429,10 @@ CityWorld generateCityWorld(const CityGenParams& p) {
             for (Lot& lot : blockLots) {
                 const Obb2 obb = computeObb(lot.poly);
                 if (!lot.park) {
-                    // stage 4: house with the style from the density zone at the lot center
+                    // stage 4: house with the style from the density zone at the lot center.
+                    // BuildingContext: density/wealth from the zone maps, climate from noise
+                    // (latitude + variation), Whittaker biome -> local material, water
+                    // proximity near the lake -> stilts, soil color from noise
                     const float dens = w.densityAt(obb.center.x, obb.center.y);
                     const HouseStyle style = dens < 0.35f ? HouseStyle::Village
                                            : dens < 0.65f ? HouseStyle::Town
@@ -436,7 +440,23 @@ CityWorld generateCityWorld(const CityGenParams& p) {
                     const std::uint32_t lotSeed =
                         p.seed ^ 0xCAFEu ^ static_cast<std::uint32_t>(obb.center.x * 131.f) ^
                         static_cast<std::uint32_t>(obb.center.y * 57.f);
-                    HouseGenerator::Params hp = HouseGenerator::randomParams(style, 8.f, lotSeed);
+                    const float cx = obb.center.x, cz = obb.center.y;
+                    const float lat = std::fabs(cz) / (p.worldSize * 0.5f);
+                    BuildingContext ctx;
+                    ctx.temperature = std::min(1.f, std::max(0.f, 1.f - lat * 0.85f +
+                        climate.fbm2(cx * 0.008f + 51.3f, cz * 0.008f + 17.9f, 3, Noise::Base::Simplex) * 0.3f));
+                    ctx.precipitation = std::min(1.f, std::max(0.f,
+                        climate.fbm2(cx * 0.013f + 3.7f, cz * 0.013f + 9.2f, 4, Noise::Base::Simplex) * 0.5f + 0.45f));
+                    ctx.humidity = std::min(1.f, std::max(0.f,
+                        climate.fbm2(cx * 0.013f + 7.9f, cz * 0.013f + 3.1f, 4, Noise::Base::Simplex) * 0.5f + 0.5f));
+                    ctx.biome = static_cast<int>(biomeFromClimate(ctx.temperature, ctx.humidity));
+                    ctx.density = dens;
+                    ctx.wealth = w.wealthAt(cx, cz);
+                    ctx.waterProximity =
+                        w.heightAt(cx, cz) < w.waterLevelWorld + 0.8f ? 0.85f : 0.f;
+                    ctx.soilColor = fuhgl::math::Vec3{0.36f, 0.29f, 0.21f} *
+                                    (0.85f + 0.3f * climate.value2(cx * 0.09f + 5.5f, cz * 0.09f));
+                    HouseGenerator::Params hp = HouseGenerator::randomParams(style, 8.f, lotSeed, ctx);
                     hp.seed = lotSeed;
                     hp.width = std::max(2.5f, obb.halfU * 2.f * p.houseCoverage);
                     hp.depth = std::max(2.5f, obb.halfV * 2.f * p.houseCoverage);

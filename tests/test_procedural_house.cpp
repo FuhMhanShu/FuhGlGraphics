@@ -1,7 +1,10 @@
 // Unit tests for the class-based house generator (label "unit"): mesh validity (indices in
 // range, finite unit normals), determinism per seed, variant richness (many distinct houses
 // across seeds), roof-type coverage, feature flags (bay/dormer/annex/porch/chimney/timber
-// frame), and style height ordering (village < town < highrise).
+// frame), style height ordering (village < town < highrise), and the BuildingContext rules:
+// climate -> roof pitch/overhang/gutter/flat+parapet/window size/shutters/chimney, flood zone
+// -> stilts, local resources/biome -> facade material, density -> storeys/shop front/fence,
+// wealth -> patches/cornice/wall jitter.
 
 #include "test_framework.hpp"
 
@@ -35,7 +38,9 @@ std::string specSignature(const HouseSpec& s) {
            (s.hasBay ? "B" : "") + (s.hasAnnex ? "A" : "") + (s.hasPorch ? "P" : "") +
            (s.hasDormers ? "D" : "") + (s.hasChimney ? "C" : "") + (s.timberFrame ? "F" : "") +
            (s.hasGutter ? "G" : "") + (s.hasShutters ? "S" : "") + (s.hasGarage ? "X" : "") +
-           (s.hasBalcony ? "K" : "") + (s.wallIrregular ? "I" : "");
+           (s.hasBalcony ? "K" : "") + (s.wallIrregular ? "I" : "") + (s.hasParapet ? "p" : "") +
+           (s.onStilts ? "T" : "") + (s.hasShopFront ? "L" : "") + (s.hasFence ? "Z" : "") +
+           (s.hasPatches ? "W" : "") + (s.hasCornice ? "O" : "");
 }
 
 void testValidityAndDeterminism() {
@@ -151,6 +156,135 @@ void testStyles() {
     CHECK(highriseFlat == 10);
 }
 
+void testClimateRules() {
+    HouseGenerator gen;
+    HouseGenerator::Params p;
+    p.style = HouseStyle::Town;
+    p.width = 6.f; p.depth = 4.5f; p.floors = 2; p.seed = 9u;
+
+    // wet + cold (lots of snow): steep gable/hipped roof, wide eaves, gutter always
+    BuildingContext wet;
+    wet.temperature = 0.1f; wet.precipitation = 0.95f; wet.humidity = 0.9f;
+    p.context = wet;
+    const HouseMesh w = gen.generate(p);
+    CHECK(w.spec.roofType == RoofType::Gable || w.spec.roofType == RoofType::Hipped);
+    CHECK(w.spec.hasGutter);
+    CHECK(w.spec.roofOverhang >= 0.25f);
+    CHECK(w.spec.roofHeight >= 1.2f); // steep
+    CHECK(w.spec.windowScale > 1.1f); // cold: big windows
+    CHECK(w.spec.hasChimney);         // heating
+
+    // arid + hot: flat roof with parapet, small windows, shutters
+    BuildingContext arid;
+    arid.temperature = 0.95f; arid.precipitation = 0.08f; arid.humidity = 0.1f;
+    p.context = arid;
+    const HouseMesh a = gen.generate(p);
+    CHECK(a.spec.roofType == RoofType::Flat);
+    CHECK(a.spec.hasParapet);
+    CHECK(!a.spec.hasGutter);
+    CHECK(a.spec.windowScale < 0.8f);  // hot: small windows keep the heat out
+    CHECK(a.spec.hasShutters);
+
+    // determinism with a context
+    const HouseMesh w2 = gen.generate(p);
+    CHECK(a.walls.vertices == w2.walls.vertices);
+    CHECK(specSignature(a.spec) == specSignature(w2.spec));
+}
+
+void testMaterialRules() {
+    HouseGenerator gen;
+    HouseGenerator::Params p;
+    p.style = HouseStyle::Village;
+    p.width = 6.f; p.depth = 4.5f; p.floors = 2; p.seed = 5u;
+
+    // explicit local material wins
+    BuildingContext wood;
+    wood.localMaterial = LocalMaterial::Wood;
+    p.context = wood;
+    const HouseMesh h = gen.generate(p);
+    CHECK(h.spec.facade == FacadeMaterial::Wood);
+    CHECK(h.spec.timberFrame); // wood construction -> Fachwerk
+
+    // biome-driven Auto resolution (worldgen Biome cast): 2 = desert -> adobe, 8 = rock -> stone
+    BuildingContext desert;
+    desert.biome = 2; desert.temperature = 0.9f; desert.precipitation = 0.1f;
+    p.context = desert;
+    const HouseMesh d = gen.generate(p);
+    CHECK(d.spec.facade == FacadeMaterial::Adobe);
+    CHECK(d.spec.roofType == RoofType::Flat); // arid via climate
+
+    BuildingContext rock;
+    rock.biome = 8; rock.temperature = 0.2f; rock.precipitation = 0.8f;
+    p.context = rock;
+    const HouseMesh r = gen.generate(p);
+    CHECK(r.spec.facade == FacadeMaterial::Stone);
+
+    // metropole override: high density + high wealth -> concrete even in a forest biome
+    BuildingContext metro;
+    metro.biome = 4; metro.density = 0.95f; metro.wealth = 0.85f;
+    p.context = metro;
+    p.style = HouseStyle::Highrise;
+    const HouseMesh m = gen.generate(p);
+    CHECK(m.spec.facade == FacadeMaterial::Concrete);
+}
+
+void testSocioEconomyRules() {
+    HouseGenerator gen;
+    // high density -> many storeys + ground-floor shop front
+    BuildingContext dense;
+    dense.density = 0.9f; dense.wealth = 0.5f; dense.temperature = 0.5f; dense.precipitation = 0.5f;
+    HouseGenerator::Params p = HouseGenerator::randomParams(HouseStyle::Town, 8.f, 77u, dense);
+    CHECK(p.floors >= 4);
+    const HouseMesh h = gen.generate(p);
+    CHECK(h.spec.hasShopFront);
+
+    // low density -> detached house with garden fence
+    BuildingContext sparse;
+    sparse.density = 0.1f; sparse.wealth = 0.5f;
+    p = HouseGenerator::randomParams(HouseStyle::Village, 8.f, 78u, sparse);
+    CHECK(p.floors <= 2);
+    const HouseMesh s = gen.generate(p);
+    CHECK(s.spec.hasFence);
+
+    // low wealth -> patched walls + rougher walls; high wealth -> cornice bands, cleaner walls
+    BuildingContext poor;
+    poor.wealth = 0.1f; poor.density = 0.5f;
+    p = HouseGenerator::randomParams(HouseStyle::Town, 8.f, 79u, poor);
+    p.wallIrregularity = 0.02f;
+    const HouseMesh lo = gen.generate(p);
+    CHECK(lo.spec.hasPatches);
+    BuildingContext rich;
+    rich.wealth = 0.95f; rich.density = 0.5f;
+    p = HouseGenerator::randomParams(HouseStyle::Town, 8.f, 79u, rich);
+    p.wallIrregularity = 0.02f;
+    const HouseMesh hi = gen.generate(p);
+    CHECK(hi.spec.hasCornice);
+    CHECK(!hi.spec.hasPatches);
+}
+
+void testStilts() {
+    HouseGenerator gen;
+    HouseGenerator::Params p;
+    p.style = HouseStyle::Town;
+    p.width = 6.f; p.depth = 4.5f; p.floors = 2; p.seed = 11u;
+    BuildingContext flood;
+    flood.waterProximity = 0.9f; // flood zone / coast
+    p.context = flood;
+    const HouseMesh h = gen.generate(p);
+    CHECK(h.spec.onStilts);
+    CHECK(h.spec.stiltHeight > 1.0f);
+    // the windows/glass are lifted with the house, above the foundation (the stilt posts in
+    // details intentionally reach down to the foundation, so check the glass instead)
+    CHECK(h.glass.vertexCount() > 0);
+    float minGlassY = 1e9f;
+    for (std::size_t i = 0; i < h.glass.vertexCount(); ++i)
+        minGlassY = std::min(minGlassY, h.glass.vertices[i * 11 + 1]);
+    CHECK(minGlassY > h.spec.stiltHeight * 0.9f);
+    checkMeshValid(h.walls);
+    checkMeshValid(h.details);
+    checkMeshValid(h.roof);
+}
+
 } // namespace
 
 void runProceduralHouseTests() {
@@ -158,4 +292,8 @@ void runProceduralHouseTests() {
     testVariantRichness();
     testStyles();
     testWallJitterAndFacade();
+    testClimateRules();
+    testMaterialRules();
+    testSocioEconomyRules();
+    testStilts();
 }

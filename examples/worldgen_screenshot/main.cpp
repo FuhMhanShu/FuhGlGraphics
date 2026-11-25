@@ -547,6 +547,33 @@ void setupRoadEntry(fuhglgraphics::scene::MeshEntry& e, const fuhgl::Texture& al
     e.materialId = 3;
 }
 
+// facade material (HouseSpec.facade cast: 0 brick, 1 plaster, 2 stone, 3 wood, 4 adobe,
+// 5 concrete) -> POM texture set + albedo tint. The context-driven new materials reuse the
+// closest set with a tint: wood = plaster + warm tint (the timber frame itself is geometry in
+// the details mesh), adobe = plaster + sand tint, concrete = stone + light grey.
+const FacadeTexSet* facadeSet(int facade, const FacadeTexSet& plaster, const FacadeTexSet& stone,
+                              fuhgl::math::Vec3& tint) {
+    tint = {1.f, 1.f, 1.f};
+    switch (facade) {
+        case 1: return &plaster;
+        case 2: return &stone;
+        case 3: tint = {0.72f, 0.58f, 0.42f}; return &plaster; // wood
+        case 4: tint = {1.12f, 0.95f, 0.68f}; return &plaster; // adobe
+        case 5: tint = {0.95f, 0.97f, 1.0f};  return &stone;   // concrete
+        default: return nullptr;                               // brick POM set
+    }
+}
+
+// G31 weathering (moss / soil splash / rain streaks) for building material IDs 5..8
+void enableWeathering(fuhglgraphics::scene::Scene& scene, float baseY, float humidity,
+                      const fuhgl::math::Vec3& soil) {
+    scene.root().effects.enable(fuhglgraphics::render::Effect::Weathering);
+    scene.root().effects.params.weatherStrength = 0.85f;
+    scene.root().effects.params.weatherHumidity = humidity;
+    scene.root().effects.params.weatherBaseY = baseY;
+    scene.root().effects.params.weatherSoilColor = soil;
+}
+
 // reflective window glass entry (PlacedMesh::glassMesh) — metallic + near-zero roughness so
 // IBL/SSR produce the sky reflection on the panes
 void setupGlassEntry(fuhglgraphics::scene::MeshEntry& e) {
@@ -965,7 +992,44 @@ int main(int argc, char** argv) {
         addPlant("rock", world.rocks, 32);
 
         // the village: a loose grid of procedural houses (HouseGenerator, Village style) on the
-        // plateau, facade material + roof per house, reflective glass panes
+        // plateau, facade material + roof per house, reflective glass panes. The BuildingContext
+        // comes from the landscape climate maps at the plateau center (climate -> roof/windows,
+        // biome -> local material, low density -> gardens/fences)
+        procedural::BuildingContext vctx;
+        {
+            const auto sampleF = [&](const std::vector<float>& m) -> float {
+                if (m.empty()) return 0.5f;
+                const int gg = world.gridW;
+                const float u = std::min(1.f, std::max(0.f, vc.x / world.sizeX + 0.5f)) * (gg - 1);
+                const float v = std::min(1.f, std::max(0.f, vc.y / world.sizeZ + 0.5f)) * (gg - 1);
+                return m[static_cast<std::size_t>(u) + gg * static_cast<std::size_t>(v)];
+            };
+            vctx.temperature = sampleF(world.temperature);
+            vctx.humidity = sampleF(world.humidity);
+            vctx.precipitation = std::min(1.f, vctx.humidity * 0.95f);
+            vctx.biome = world.biome.empty() ? -1
+                : static_cast<int>(world.biome[static_cast<std::size_t>(
+                      std::min(1.f, std::max(0.f, vc.x / world.sizeX + 0.5f)) * (world.gridW - 1)) +
+                    world.gridW * static_cast<std::size_t>(
+                      std::min(1.f, std::max(0.f, vc.y / world.sizeZ + 0.5f)) * (world.gridH - 1))]);
+            vctx.wealth = 0.55f;
+            vctx.density = 0.25f; // village: detached houses with garden fences
+            fuhgl::math::Vec3 vSoil{0.38f, 0.31f, 0.22f};
+            if (!world.splatmap.empty()) {
+                const int gg = world.gridW;
+                const float u = std::min(1.f, std::max(0.f, vc.x / world.sizeX + 0.5f)) * (gg - 1);
+                const float v = std::min(1.f, std::max(0.f, vc.y / world.sizeZ + 0.5f)) * (gg - 1);
+                const std::size_t si =
+                    (static_cast<std::size_t>(u) + gg * static_cast<std::size_t>(v)) * 4;
+                const float r = world.splatmap[si] / 255.f, g = world.splatmap[si + 1] / 255.f,
+                            b = world.splatmap[si + 2] / 255.f;
+                if (g >= r && g >= b) vSoil = {0.42f, 0.38f, 0.26f};       // grass soil
+                else if (r >= g && r >= b) vSoil = {0.40f, 0.36f, 0.28f};  // meadow
+                if (b > r && b > g) vSoil = {0.72f, 0.62f, 0.44f};         // sand
+                if (g > r && g > b) vSoil = {0.36f, 0.34f, 0.30f};          // rock
+            }
+            vctx.soilColor = vSoil;
+        }
         procedural::HouseGenerator houseGen;
         std::uint32_t hs = args.seed ^ 0x11EAu;
         auto nextr = [&]() {
@@ -980,7 +1044,7 @@ int main(int argc, char** argv) {
                 const float hz = vc.y + gz * 9.f + (nextr() - 0.5f) * 2.f;
                 if (std::hypot(hx - vc.x, hz - vc.y) > vr - 6.f) continue;
                 const std::uint32_t hseed = args.seed ^ (0x5EEDu + static_cast<std::uint32_t>(houseCount) * 7919u);
-                auto hp = procedural::HouseGenerator::randomParams(procedural::HouseStyle::Village, 8.f, hseed);
+                auto hp = procedural::HouseGenerator::randomParams(procedural::HouseStyle::Village, 8.f, hseed, vctx);
                 hp.seed = hseed;
                 hp.width = 5.f + nextr() * 2.5f;
                 hp.depth = 5.f + nextr() * 2.5f;
@@ -989,12 +1053,11 @@ int main(int argc, char** argv) {
                 n.translation = {hx, plateauY, hz};
                 n.rotation = fuhgl::math::fromAxisAngle(nextr() * 2.f * fuhgl::math::kPi, {0.f, 1.f, 0.f});
                 scene::MeshComponent& mc = n.attach<scene::MeshComponent>();
+                fuhgl::math::Vec3 facTint;
                 const FacadeTexSet* ft =
-                    hm.spec.facade == procedural::FacadeMaterial::Plaster ? &plasterTex
-                    : hm.spec.facade == procedural::FacadeMaterial::Stone   ? &stoneTex
-                                                                           : nullptr;
+                    facadeSet(static_cast<int>(hm.spec.facade), plasterTex, stoneTex, facTint);
                 scene::MeshEntry& walls = mc.addMesh(arena.add(hm.walls));
-                walls.albedo = {1.f, 1.f, 1.f};
+                walls.albedo = facTint;
                 walls.albedoTexture = ft ? &ft->albedo : &brickAlbedo;
                 walls.normalMap = ft ? &ft->normal : &brickNormal;
                 walls.heightMap = ft ? &ft->height : &brickHeight; // POM parallax on the facade
@@ -1063,6 +1126,7 @@ int main(int argc, char** argv) {
         if (fxOn("bloom")) scene.root().effects.enable(render::Effect::Bloom);
         if (fxOn("volumetric")) scene.root().effects.enable(render::Effect::VolumetricFog);
         if (fxOn("wetness")) scene.root().effects.enable(render::Effect::Wetness);
+        enableWeathering(scene, plateauY, vctx.humidity, vctx.soilColor);
         std::fprintf(stderr, "worldgen_screenshot: village fx='%s'\n", args.fx.c_str());
         scene.root().effects.params.exposure = 1.1f;
         scene.root().effects.params.shadowCenter = {vc.x, plateauY, vc.y};
@@ -1137,9 +1201,10 @@ int main(int argc, char** argv) {
             n.rotation = fuhgl::math::fromAxisAngle(b.rotY, {0.f, 1.f, 0.f});
             n.scale = {b.scale, b.scale, b.scale};
             scene::MeshComponent& mc = n.attach<scene::MeshComponent>();
-            const FacadeTexSet* ft = b.facade == 1 ? &plasterTex : b.facade == 2 ? &stoneTex : nullptr;
+            fuhgl::math::Vec3 facTint;
+            const FacadeTexSet* ft = facadeSet(b.facade, plasterTex, stoneTex, facTint);
             scene::MeshEntry& walls = mc.addMesh(arena.add(b.mesh));
-            walls.albedo = {1.f, 1.f, 1.f};
+            walls.albedo = facTint;
             walls.albedoTexture = ft ? &ft->albedo : &brickAlbedo;
             walls.normalMap = ft ? &ft->normal : &brickNormal;
             walls.heightMap = ft ? &ft->height : &brickHeight; // POM parallax on the facade
@@ -1183,6 +1248,7 @@ int main(int argc, char** argv) {
         }
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.4f, 0.65f, 0.5f}));
         scene.root().effects.enable(render::Effect::Ssr); // screen-space reflections (wet roads, glass)
+        enableWeathering(scene, 0.05f, 0.55f, {0.36f, 0.29f, 0.21f}); // houses sit on the y=0 plate
 
         // oblique overview of the whole WFC layout
         cam.position = {0.f, 80.f, 100.f};
@@ -1338,6 +1404,7 @@ int main(int argc, char** argv) {
         }
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.3f, 0.55f, 0.6f}));
         scene.root().effects.enable(render::Effect::Ssr); // reflections on wet roads / glass
+        enableWeathering(scene, world.waterLevelWorld * 1.05f, 0.55f, {0.36f, 0.29f, 0.21f}); // city plateau
 
         // overview steeply down onto the plateau, same camera as the (stable) WFC city
         // overview: road grid + houses fill the lower frame, sky above

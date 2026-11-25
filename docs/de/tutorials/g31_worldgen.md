@@ -227,6 +227,32 @@ Rolltor (`hasGarage`), Balkon mit Balkontür (`hasBalcony`) und leicht unregelm�
 ein Material, `randomParams()` wählt eines. Deterministisch pro Seed; Unit-Tests in
 `tests/test_procedural_house.cpp`.
 
+### BuildingContext: Architektur- & Sozioökonomie-Regeln
+
+Übergibt man `randomParams()` bzw. `Params` ein `BuildingContext` (Temperatur, Niederschlag,
+Feuchtigkeit, Wassernähe, Wohlstand, Dichte, Biome, lokales Material, Bodenfarbe), leitet der
+Generator Form, Materialien und Farben automatisch ab:
+
+- **Klima → Form**: viel Regen/Schnee → steiles Sattel-/Walmdach (`spec.roofHeight` erhöht),
+  weite Dachüberstände (`spec.roofOverhang`), Dachrinne immer an; trocken/heiß → Flachdach mit
+  Brüstung (`hasParapet`); heiß → kleine Fenster (`spec.windowScale < 1`), Fensterläden,
+  helle Fassade (hohe Albedo); kühl → große Fenster + Kamin; Überschwemmungsgebiet/Küste
+  (`waterProximity > 0.55`) → Haus auf Stelzen über hohem Steinfundament (`onStilts`,
+  `stiltHeight`).
+- **Lokale Ressourcen → Material** (`resolveFacadeMaterial`): Wald-Biome → `Wood` + Fachwerk,
+  Gebirge/Fels → `Stone` + Schieferdach, Lehm/Flussnähe → `Brick` + rote Tondachziegel, Wüste →
+  `Adobe`, Metropole (Dichte > 0.85 + Wohlstand > 0.6) → `Concrete`.
+- **Sozioökonomie**: niedrige Dichte → 1–2 Stockwerke + Gartenzaun (`hasFence`); hohe Dichte →
+  Blockrandbebauung (Grundfläche füllt das Lot), 4–6+ Stockwerke, Erdgeschoss als Ladenlokal mit
+  Schaufenstern + Schildband (`hasShopFront`); Wohlstand hoch → Gesimse pro Stockwerk
+  (`hasCornice`), saubere Wände; niedrig → Flicken/Patches auf der Wand (`hasPatches`), stärkerer
+  Wall-Jitter.
+- **Weathering im Shader** (`Effect::Weathering`, Lighting-Pass, nur Gebäude-Material-IDs 5..8):
+  Moos/Flechten auf Nord- und Obenflächen (über `params.weatherHumidity`), spritzwasserfarbener
+  Schmutzsockel in den untersten ~2 m über `params.weatherBaseY` in der lokalen Bodenfarbe
+  (`params.weatherSoilColor`), vertikale Regenschlieren an den Wänden (`params.weatherRainStreaks`).
+  `generateWorld`/`generateCityWorld` befüllen den Kontext pro Haus aus den Klima-/Zonen-Maps.
+
 ## PlantGenerator-Klasse (Bäume + Büsche)
 
 `procedural::PlantGenerator` in `procedural/plant.hpp` generiert Pflanzen auf L-System-Basis mit

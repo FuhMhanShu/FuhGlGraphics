@@ -44,10 +44,11 @@ enum class Effect {
     ChromaticAberration, ///< G32 chromatic aberration: radial RGB channel split from the frame center (post pass after upscale)
     Subsurface,     ///< G33 subsurface scattering: wrap diffuse + backlit translucency for thin materials (lighting pass, G-buffer pbr.a)
     Gi,             ///< G34 screen-space global illumination: cone march against the lit HDR buffer (post pass after lighting)
+    Weathering,     ///< G31 building weathering in the lighting pass: moss/lichen on north+up faces (humidity), soil-colored splash stain in the lowest ~2 m, vertical rain streaks on walls (material-ID gated)
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 27;
+constexpr int kEffectCount = 28;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -79,6 +80,7 @@ inline const char* effectName(Effect e) {
         case Effect::ChromaticAberration: return "chromatic aberration";
         case Effect::Subsurface: return "subsurface scattering";
         case Effect::Gi: return "GI";
+        case Effect::Weathering: return "weathering";
     }
     return "unknown";
 }

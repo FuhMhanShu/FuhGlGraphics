@@ -298,6 +298,18 @@ public:
     float wetnessPuddle = 0.7f;    ///< puddle mask strength (0 = flat film, 1 = depressions only)
     float wetnessNoiseScale = 3.5f; ///< world units per puddle-noise cell
 
+    /// @brief G31 building weathering (Effect::Weathering): in the lighting pass, building
+    /// materials (G-buffer material IDs 5..8: walls/roof/details) get moss/lichen on
+    /// north-facing and upward surfaces (scaled by weatherHumidity), a soil-colored splash
+    /// stain in the lowest ~2 m above weatherBaseY, and vertical rain streaks on walls.
+    /// Off by default. Pure CPU twins: procedural/house.hpp (plinth), render/wetness.hpp.
+    float weatherStrength = 0.8f;   ///< global weathering intensity 0..1
+    float weatherHumidity = 0.5f;   ///< local humidity 0..1 -> moss + rain streaks
+    float weatherBaseY = 0.f;        ///< ground level of the buildings (splash reference)
+    float weatherRainStreaks = 0.6f; ///< strength of the vertical dirt streaks on walls 0..1
+    fuhgl::math::Vec3 weatherSoilColor{0.36f, 0.29f, 0.21f}; ///< local soil (splash stain)
+    fuhgl::math::Vec3 weatherMossColor{0.24f, 0.33f, 0.16f}; ///< moss/lichen color
+
     /// @brief G31 HBAO (Effect::Hbao): the "hbao" post pass runs before lighting (next to G15
     /// SSAO) and writes the horizon-based AO factor into the "hbao" resource (RG16F, .r),
     /// sampled by the lighting pass on unit 24 when enabled (preferred over SSAO). Off by
@@ -417,6 +429,7 @@ private:
     bool caEnabled_ = false;         ///< Effect::ChromaticAberration (off by default)
     bool sssEnabled_ = false;        ///< Effect::Subsurface (off by default)
     bool giEnabled_ = false;         ///< Effect::Gi (off by default)
+    bool weatheringEnabled_ = false; ///< Effect::Weathering (off by default)
     const water::WaterSurface* curWater_ = nullptr; ///< G13: active water surface this frame
     fuhgl::math::Mat4 waterModel_{};                 ///< its draw item's model matrix
     fuhgl::math::Vec4 waterClipPlane_{0.f, 1.f, 0.f, 0.f}; ///< world plane (n, d) for clipping
