@@ -122,6 +122,65 @@ float sdfLaplacian(const std::function<float(const Vec3&)>& f, const Vec3& p, fl
     return sum / (h * h);
 }
 
+/// @brief HSV color (h in degrees [0, 360), s/v in [0, 1]) — palettes are computed in HSV so
+/// the harmony rules (analogous/complementary hue shifts) never look artificially bright.
+struct Hsv {
+    float h = 0.f, s = 0.f, v = 0.f;
+};
+
+Hsv rgbToHsv(const Vec3& c) {
+    const float mx = std::fmax(c.x, std::fmax(c.y, c.z));
+    const float mn = std::fmin(c.x, std::fmin(c.y, c.z));
+    const float d = mx - mn;
+    Hsv out;
+    out.v = mx;
+    out.s = mx > 1e-6f ? d / mx : 0.f;
+    if (d < 1e-6f) return out;
+    float h = 0.f;
+    if (mx == c.x) h = 60.f * std::fmod((c.y - c.z) / d, 6.f);
+    else if (mx == c.y) h = 60.f * ((c.z - c.x) / d + 2.f);
+    else h = 60.f * ((c.x - c.y) / d + 4.f);
+    if (h < 0.f) h += 360.f;
+    out.h = h;
+    return out;
+}
+
+Vec3 hsvToRgb(const Hsv& c) {
+    const float hh = std::fmod(c.h, 360.f) / 60.f;
+    const float f = hh - std::floor(hh);
+    const float p = c.v * (1.f - c.s);
+    const float q = c.v * (1.f - c.s * f);
+    const float t = c.v * (1.f - c.s * (1.f - f));
+    switch (static_cast<int>(std::floor(hh)) % 6) {
+        case 0: return {c.v, t, p};
+        case 1: return {q, c.v, p};
+        case 2: return {p, c.v, t};
+        case 3: return {p, q, c.v};
+        case 4: return {t, p, c.v};
+        default: return {c.v, p, q};
+    }
+}
+
+/// @brief Worley ridged (F2 - F1): ~0 at cell borders, larger inside cells — hard cell rims.
+float worleyRidged3(const Vec3& p, unsigned seed) {
+    const int ix = static_cast<int>(std::floor(p.x));
+    const int iy = static_cast<int>(std::floor(p.y));
+    const int iz = static_cast<int>(std::floor(p.z));
+    float f1 = 8.f, f2 = 8.f;
+    for (int dz = -1; dz <= 1; ++dz)
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) {
+                const Vec3 f = cellHash(ix + dx, iy + dy, iz + dz, seed);
+                const Vec3 d{static_cast<float>(dx) + f.x - (p.x - ix),
+                             static_cast<float>(dy) + f.y - (p.y - iy),
+                             static_cast<float>(dz) + f.z - (p.z - iz)};
+                const float dd = fuhgl::math::length(d);
+                if (dd < f1) { f2 = f1; f1 = dd; }
+                else if (dd < f2) f2 = dd;
+            }
+    return f2 - f1;
+}
+
 } // namespace
 
 // --- 1. evolutionary blueprint & allometry -----------------------------------------
@@ -361,6 +420,125 @@ SurfaceMasks extractSurface(const Skeleton& skel, const Anatomy& an, int resolut
 
 // --- 4. UV-free texturing & materiality ---------------------------------------------
 
+BiomeInfo biomeInfo(CreatureBiome b) {
+    switch (b) {
+        // ochre/beige sand, hot + dry, sparse low vegetation
+        case CreatureBiome::Desert:         return {b, {0.76f, 0.62f, 0.40f}, 0.08f, 0.95f, 0.15f, false, false};
+        // dry grassland with tall vertical stalks, hot
+        case CreatureBiome::Savanna:        return {b, {0.72f, 0.60f, 0.35f}, 0.25f, 0.85f, 0.50f, true, false};
+        // moss green / bark brown, temperate + humid, dense canopy
+        case CreatureBiome::TemperateForest:return {b, {0.32f, 0.38f, 0.22f}, 0.65f, 0.50f, 0.80f, false, false};
+        // deep saturated green, hot + very humid, dense dappled vegetation
+        case CreatureBiome::Jungle:         return {b, {0.16f, 0.34f, 0.16f}, 0.95f, 0.95f, 1.00f, false, false};
+        // white/blue-grey snow, cold + dry
+        case CreatureBiome::Tundra:         return {b, {0.82f, 0.84f, 0.86f}, 0.35f, 0.08f, 0.20f, false, false};
+        // grey rock with sharp edges, cold
+        case CreatureBiome::Mountains:      return {b, {0.45f, 0.44f, 0.46f}, 0.40f, 0.25f, 0.30f, false, true};
+        // dark olive water/mud, humid
+        case CreatureBiome::Swamp:          return {b, {0.30f, 0.32f, 0.20f}, 0.90f, 0.70f, 0.60f, false, false};
+        // blue-grey open water, humid, no cover
+        case CreatureBiome::CoastalOcean:   return {b, {0.35f, 0.55f, 0.65f}, 0.90f, 0.70f, 0.00f, false, false};
+    }
+    return {b, {0.5f, 0.5f, 0.5f}, 0.5f, 0.5f, 0.5f, false, false};
+}
+
+Palette derivePalette(const Ecology& eco) {
+    const BiomeInfo bi = biomeInfo(eco.biome);
+    Palette pal;
+    // 1. background matching: base color = dominant color of the spawn biome
+    Hsv base = rgbToHsv(bi.baseColor);
+    // Gloger's rule: the warmer AND more humid, the darker and more saturated the pigments
+    const float gh = clamp01(bi.temperature * bi.humidity);
+    base.s = clamp01(base.s * lerpF(0.65f, 1.30f, gh));
+    base.v = clamp01(base.v * lerpF(1.20f, 0.78f, gh));
+    // 2. aposematism vs. camouflage: small toxic animals invert the camouflage rule
+    const bool toxicSmall = eco.toxic && eco.bodyMassKg < 15.f;
+    const bool largeHerbivore = eco.diet != Diet::Carnivore && eco.bodyMassKg > 100.f;
+    if (toxicSmall) {
+        base.v = 0.08f; // near-black base ...
+        base.s = 0.10f;
+    } else if (largeHerbivore) {
+        base.s *= 0.5f; // ... large herbivores get muted, desaturated earth tones
+        base.v = clamp01(base.v * 0.9f + 0.1f);
+    }
+    // nocturnal: shift into the cool spectrum (blue-grey/violet), much lower brightness
+    if (eco.nocturnal) {
+        base.h = lerpF(base.h, 232.f, 0.55f);
+        base.v *= 0.5f;
+        base.s *= 0.8f;
+    }
+    base.s = clamp01(base.s);
+    base.v = clamp01(base.v);
+    // 3. HSV harmony rules: belly / pattern / accent
+    Hsv belly = base;
+    belly.h = std::fmod(base.h + 5.f, 360.f);
+    belly.s = clamp01(base.s * 0.5f); // half saturation ...
+    belly.v = 0.8f;                   // ... much brighter
+    Hsv pat;
+    pat.h = std::fmod(base.h + 15.f, 360.f); // analogous hue (+10..20 deg)
+    pat.s = clamp01(base.s * 1.1f + 0.05f);
+    pat.v = 0.15f;                       // dark variant (light variant: 0.85)
+    if (toxicSmall) {                    // warning colors: max saturation, hard contrast
+        pat.h = (eco.bodyMassKg < 5.f) ? 5.f : 50.f; // red or yellow
+        pat.s = 1.f;
+        pat.v = 0.95f;
+    }
+    Hsv accent;
+    accent.h = std::fmod(base.h + 180.f, 360.f); // complementary
+    accent.s = 0.9f;
+    accent.v = 0.6f;
+    pal.dorsal = hsvToRgb(base);
+    pal.ventral = hsvToRgb(belly);
+    pal.patternColor = hsvToRgb(pat);
+    pal.accent = hsvToRgb(accent);
+    pal.keratin = hsvToRgb({30.f, 0.15f, 0.8f});
+    // 4. material gloss from humidity: wet (amphibians/reptiles) -> glossy, dry fur -> matte
+    pal.roughness = lerpF(0.9f, 0.3f, clamp01(bi.humidity));
+    switch (eco.climate) {
+        case Climate::Polar:     pal.furDensity = 1.0f; break;
+        case Climate::Temperate: pal.furDensity = 0.5f; break;
+        case Climate::Tropical:  pal.furDensity = 0.15f; break;
+        case Climate::Arid:      pal.furDensity = 0.25f; break;
+    }
+    return pal;
+}
+
+Pattern derivePattern(const Ecology& eco, unsigned seed) {
+    const BiomeInfo bi = biomeInfo(eco.biome);
+    Pattern pt;
+    pt.seed = seed;
+    // body size -> feature size: bigger animals get larger, rarer pattern features
+    pt.frequencyScale =
+        fuhgl::math::clamp(std::pow(50.f / std::fmax(1.f, eco.bodyMassKg), 0.2f), 0.5f, 2.f);
+    if (bi.rocky) {
+        // sharp rock edges -> Voronoi cell pattern with hard contrast (disruptive coloration)
+        pt.mode = PatternMode::VoronoiCells;
+        pt.voronoiFreq = 7.f * pt.frequencyScale;
+        pt.voronoiContrast = 0.06f;
+    } else if (bi.vegetation > 0.75f) {
+        // dense vegetation, leaf-shadow dappling -> spots/rosettes break up the silhouette
+        pt.mode = PatternMode::ReactionDiffusion;
+        pt.feed = 0.035f; pt.kill = 0.065f; // leopard/cheetah spots
+    } else if (bi.verticalStalks) {
+        // tall grass/reeds -> stretch the pattern vertically into stripes
+        pt.mode = PatternMode::ReactionDiffusion;
+        pt.feed = 0.025f; pt.kill = 0.050f; // zebra/tiger stripes
+        pt.anisotropy = 5.f;
+    } else if (bi.vegetation > 0.45f) {
+        pt.mode = PatternMode::ReactionDiffusion;
+        pt.feed = 0.055f; pt.kill = 0.062f; // coral/labyrinth
+    } else if (bi.humidity > 0.6f && bi.vegetation > 0.3f) {
+        pt.mode = PatternMode::ReactionDiffusion;
+        pt.feed = 0.014f; pt.kill = 0.054f; // giraffe networks
+    } else {
+        // open terrain (desert/ocean/tundra): no sharp shadows -> soft countershading + grain
+        pt.mode = PatternMode::CountershadingOnly;
+        pt.strength = 0.f;
+    }
+    pt.murrayCoupling = true; // thin parts (tail) -> rings, wide torso -> spots (Murray's law)
+    return pt;
+}
+
 std::vector<float> reactionDiffusion(const Pattern& pt) {
     const int W = std::max(8, pt.gridU);
     const int H = std::max(8, pt.gridV);
@@ -441,7 +619,8 @@ BakedMaps bakeMaterial(const Skeleton& skel, const Anatomy& an, const Palette& p
     const float midY = 0.5f * (bmn.y + bmx.y);
     const float bodyR = std::fmax(1e-3f, 0.5f * (bmx.x - bmn.x));
     const auto field = [&](const Vec3& p) { return anatomySdfImpl(skel, an, p, nz, midY, bodyR); };
-    const std::vector<float> pat = reactionDiffusion(pt);
+    const bool useRD = pt.mode == PatternMode::ReactionDiffusion;
+    const std::vector<float> pat = useRD ? reactionDiffusion(pt) : std::vector<float>();
     const int PW = std::max(8, pt.gridU), PH = std::max(8, pt.gridV);
 
     const float maxR = std::sqrt(std::fmax(out.bmax.x * out.bmax.x, out.bmin.x * out.bmin.x) +
@@ -476,40 +655,62 @@ BakedMaps bakeMaterial(const Skeleton& skel, const Anatomy& an, const Palette& p
 
     for (int j = 0; j < S; ++j) {
         const float v = (j + 0.5f) / S;
-        const int pj = fuhgl::math::clamp(static_cast<int>(v * PH), 0, PH - 1);
         for (int i = 0; i < S; ++i) {
             const float u = (i + 0.5f) / S;
-            const int pi = fuhgl::math::clamp(static_cast<int>(u * PW), 0, PW - 1);
             Vec3 ps;
             surfacePoint(u, v, ps);
             const float r = std::fmax(1e-3f, std::sqrt(ps.x * ps.x + ps.y * ps.y));
             const float ny = (ps.y - cy) / r; // -1 belly .. +1 back of the cross-section
-            // countershading: dark back, light belly
-            Vec3 col = pt.countershading
-                           ? fuhgl::math::lerp(pal.ventral, pal.dorsal,
-                                               fuhgl::math::smoothstep(-0.1f, 0.35f, ny))
-                           : pal.dorsal;
-            // Turing pattern (spots/stripes) from the reaction-diffusion mask
-            const float m = pat[static_cast<std::size_t>(pj) * PW + pi];
-            col = fuhgl::math::lerp(col, pal.accent, m);
-            // curvature darkening in folds (concave creases darken)
-            const float H = 0.5f * sdfLaplacian(field, ps, h);
-            col = col * fuhgl::math::clamp(1.f - pt.curvatureDarkening *
-                                           std::fmax(0.f, -H) * h, 0.2f, 1.f);
-            // material transition: keratin (horns/claws/hooves/jaw) overrides the palette
+            // nearest prim: material mask + local part radius (Murray's-law coupling)
             float best = 1e9f;
             SurfaceMaterial mat = SurfaceMaterial::Skin;
+            float localR = bodyR;
             for (const Skeleton::Prim& prim : skel.prims()) {
                 const float pd = primDistance(prim, ps);
                 if (pd < best) {
                     best = pd;
                     mat = materialOf(prim.part);
+                    localR = prim.capsule ? 0.5f * (prim.ra + prim.rb) : prim.ra;
                 }
             }
+            // Murray's law: thin parts (tail) sample the pattern faster along the body
+            // axis -> rings; the wide torso keeps the base pattern (spots)
+            const float murrayF = pt.murrayCoupling
+                                      ? 1.f + 2.5f * std::pow(clamp01(1.f - localR / bodyR), 1.5f)
+                                      : 1.f;
+            // pattern mask: Gray-Scott grid (RD), Worley cell rims (Voronoi) or none
+            float m = 0.f;
+            if (pt.mode == PatternMode::ReactionDiffusion) {
+                const float uuw = u * pt.frequencyScale;
+                const float uu = uuw - std::floor(uuw); // seamless wrap in u
+                const float vv = clamp01(v * pt.frequencyScale * murrayF);
+                const int pi = fuhgl::math::clamp(static_cast<int>(uu * PW), 0, PW - 1);
+                const int pj = fuhgl::math::clamp(static_cast<int>(vv * PH), 0, PH - 1);
+                m = pat[static_cast<std::size_t>(pj) * PW + pi];
+            } else if (pt.mode == PatternMode::VoronoiCells) {
+                m = fuhgl::math::smoothstep(0.f, pt.voronoiContrast,
+                                            worleyRidged3(ps * pt.voronoiFreq, an.seed));
+            }
+            m *= pt.strength;
+            // countershading: dark back, light belly
+            Vec3 col = pt.countershading
+                           ? fuhgl::math::lerp(pal.ventral, pal.dorsal,
+                                               fuhgl::math::smoothstep(-0.1f, 0.35f, ny))
+                           : pal.dorsal;
+            // pattern (spots/stripes/cells) blended toward the pattern color
+            col = fuhgl::math::lerp(col, pal.patternColor, m);
+            // curvature darkening in folds (concave creases darken)
+            const float H = 0.5f * sdfLaplacian(field, ps, h);
+            col = col * fuhgl::math::clamp(1.f - pt.curvatureDarkening *
+                                           std::fmax(0.f, -H) * h, 0.2f, 1.f);
             const float var = 0.88f + 0.24f * nz.fbm3(ps.x * 2.f, ps.y * 2.f, ps.z * 2.f, 2,
                                                       Noise::Base::Simplex);
+            // material transitions: keratin (horns/claws/hooves/jaw), accent eyes (the
+            // accent color stays limited to the small eye mask ~ a few % of the surface)
             if (mat == SurfaceMaterial::Keratin)
                 col = pal.keratin * (0.9f + 0.2f * var);
+            else if (mat == SurfaceMaterial::Eye)
+                col = pal.accent * (0.9f + 0.2f * var);
             else
                 col = col * var;
             const float w = worley3(ps * an.scaleFreq, an.seed);

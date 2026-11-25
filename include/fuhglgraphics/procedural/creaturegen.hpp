@@ -18,9 +18,18 @@
 /// 3. `extractSurface()` meshes the field via G25 marching cubes and adds per-vertex analytic
 ///    gradient normals, Laplacian curvature and a material mask (skin/keratin/eye) from the
 ///    nearest primitive's BodyPart.
-/// 4. `reactionDiffusion()` runs a Gray-Scott Turing pattern on the seamless cylindrical
-///    domain (u wraps); `bakeMaterial()` bakes UV-free object-space albedo + normal maps with
-///    countershading, curvature darkening and keratin material transitions.
+/// 4. `biomeInfo()` + `derivePalette()` map ecology -> colors via biological camouflage rules
+///    (background matching to the biome's dominant colors, Gloger's rule: warm+humid ->
+///    darker/saturated, aposematic warning colors for small toxic animals, cool dark shift for
+///    nocturnal ones) in HSV with fixed harmony rules (belly = half saturation at V=0.8,
+///    pattern = analogous hue +15 deg darker, accent = complementary +180 deg);
+///    `derivePattern()` picks the Gray-Scott feed/kill preset from the environment (spots in
+///    dense vegetation, stripes in tall grass, Voronoi disruptive cells on rock, countershading
+///    only in open terrain) and scales feature size with body mass; `reactionDiffusion()` runs
+///    the Gray-Scott Turing pattern on the seamless cylindrical domain (u wraps, Murray's-law
+///    coupling: thin parts sample faster along v -> rings); `bakeMaterial()` bakes UV-free
+///    object-space albedo + normal maps with countershading, curvature darkening, pattern and
+///    material transitions (keratin, accent eyes).
 /// 5. `solveTwoBoneIk()` (analytic, law of cosines) + `creatureGaitPose()` produce per-frame
 ///    poses: footholds on a terrain heightfield, gait phase offsets per leg, a traveling
 ///    wave along spine/tail and a breathing cycle.
@@ -45,12 +54,36 @@ enum class Diet { Herbivore, Carnivore, Omnivore };
 /// @brief Climate zone drives fat thickness, fur density, ear size (Bergmann/Allen rules).
 enum class Climate { Polar, Temperate, Tropical, Arid };
 
+/// @brief Spawn biome — drives the color/pattern mappers (background matching, Gloger's
+/// rule, environment-to-pattern rules).
+enum class CreatureBiome { Desert, Savanna, TemperateForest, Jungle, Tundra, Mountains, Swamp,
+                   CoastalOcean };
+
+/// @brief Derived properties of a biome: dominant ground/vegetation color (for background
+/// matching), humidity + temperature (Gloger's rule, roughness), vegetation density and
+/// structure (spots vs. stripes vs. none), rocky flag (Voronoi disruptive coloration).
+struct BiomeInfo {
+    CreatureBiome biome;
+    fuhgl::math::Vec3 baseColor{0.5f, 0.5f, 0.5f}; ///< dominant color (background matching)
+    float humidity = 0.5f;    ///< 0..1 (Gloger: warm+humid -> darker/saturated; also roughness)
+    float temperature = 0.5f; ///< 0..1 (Gloger)
+    float vegetation = 0.5f;  ///< density 0..1 (pattern choice)
+    bool verticalStalks = false; ///< tall grass/reeds -> vertical stripes
+    bool rocky = false;          ///< sharp rock edges -> Voronoi cell pattern
+};
+
+/// @brief Biome property table (deterministic, hand-tuned per biome).
+BiomeInfo biomeInfo(CreatureBiome b);
+
 /// @brief Ecological input vector: the only free inputs of the generator.
 struct Ecology {
     float bodyMassKg = 20.f;                     ///< body mass M
     Locomotion locomotion = Locomotion::Quadruped;
-    Diet diet = Diet::Omnivore;
+    Diet diet = Diet::Omnivore;                  ///< predator vs. prey
     Climate climate = Climate::Temperate;
+    CreatureBiome biome = CreatureBiome::TemperateForest;        ///< spawn biome (colors + pattern rules)
+    bool nocturnal = false;                      ///< day or night activity
+    bool toxic = false;                          ///< poisonous/defended -> aposematism
 };
 
 /// @brief Coupled proportion vector (allometric output). All lengths in world units.
@@ -134,13 +167,31 @@ SurfaceMasks extractSurface(const Skeleton& skel, const Anatomy& an, int resolut
 struct Palette {
     fuhgl::math::Vec3 dorsal{0.35f, 0.32f, 0.25f};  ///< back color (countershading dark)
     fuhgl::math::Vec3 ventral{0.75f, 0.70f, 0.58f}; ///< belly color (light)
-    fuhgl::math::Vec3 accent{0.50f, 0.20f, 0.12f};  ///< Turing pattern (spots/stripes)
+    fuhgl::math::Vec3 accent{0.50f, 0.20f, 0.12f};  ///< accent regions (eyes/combs, <=5-10% via material mask)
+    fuhgl::math::Vec3 patternColor{0.50f, 0.20f, 0.12f}; ///< Turing/Voronoi pattern (spots/stripes)
     fuhgl::math::Vec3 keratin{0.85f, 0.82f, 0.72f}; ///< horns/claws/hooves
     float roughness = 0.55f;
     float furDensity = 0.5f;     ///< 0..1: bump-only fur in the baked height field
 };
 
-/// @brief Gray-Scott reaction-diffusion (Turing) parameters on the cylindrical domain
+/// @brief Ecology -> palette via biological camouflage rules, computed in HSV with fixed
+/// harmony rules: background matching (base = biome dominant color), Gloger's rule
+/// (warm+humid -> darker + more saturated pigments, dry/cold -> lighter/paler), aposematism
+/// (small toxic -> max saturation + hard contrast warning colors; large herbivores -> muted
+/// desaturated earth tones), nocturnal (cool blue/violet shift, much lower value), then
+/// belly = same hue +5 deg, half saturation, V=0.8; pattern = hue +15 deg, darker V=0.15;
+/// accent = complementary hue +180 deg, high saturation (applied only to masked regions);
+/// roughness from biome humidity (wet -> glossy, dry -> matte).
+Palette derivePalette(const Ecology& eco);
+
+/// @brief Which pattern generator `bakeMaterial()` uses.
+enum class PatternMode {
+    ReactionDiffusion,  ///< Gray-Scott Turing pattern (spots/stripes/labyrinth/networks)
+    VoronoiCells,       ///< Worley cell borders with hard contrast (disruptive, rocky terrain)
+    CountershadingOnly  ///< no hard pattern — soft countershading + fine grain (open terrain)
+};
+
+/// @brief Pattern parameters on the cylindrical domain
 /// (u = angle around the body axis, periodic/seamless; v = along +Z, clamped).
 struct Pattern {
     unsigned seed = 1u;
@@ -157,7 +208,22 @@ struct Pattern {
     bool countershading = true;   ///< dark back / light belly from the up/down position
     float curvatureDarkening = 4.f; ///< darken concave creases by the curvature mask
     float bumpStrength = 1.5f;    ///< normal-map strength of the baked height field
+    PatternMode mode = PatternMode::ReactionDiffusion;
+    float strength = 1.f;         ///< 0 = no hard pattern (open terrain: countershading only)
+    float frequencyScale = 1.f;   ///< <1 = larger, rarer features (bigger animals)
+    bool murrayCoupling = true;   ///< thin parts (tail) -> rings via faster sampling along v
+    float voronoiFreq = 7.f;      ///< VoronoiCells: cell frequency in object space
+    float voronoiContrast = 0.06f;///< VoronoiCells: hard cell-border contrast
 };
+
+/// @brief Ecology -> pattern parameters: environment-to-pattern rules (dense vegetation ->
+/// Gray-Scott leopard spots f=0.035/k=0.065, tall grass -> zebra stripes f=0.025/k=0.050
+/// with vertical anisotropy, mixed cover -> labyrinth f=0.055/k=0.062, swamp -> giraffe
+/// networks f=0.014/k=0.054, rocky mountains -> Voronoi disruptive cells, open terrain ->
+/// countershading only). Feature size scales with body mass (bigger animal -> larger,
+/// rarer features via `frequencyScale`). `murrayCoupling` on: thin body parts (tail) sample
+/// the pattern faster along the body axis -> rings (Murray's law).
+Pattern derivePattern(const Ecology& eco, unsigned seed);
 
 /// @brief Runs the Gray-Scott reaction-diffusion on the cylindrical grid. Returns the
 /// pattern mask `m(u,v)` in [0,1] (size gridU*gridV, index i + gridU*j), deterministic per
