@@ -7,6 +7,7 @@
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
 #include <QOpenGLFunctions_3_0>
+#include <QOpenGLVersionFunctionsFactory>
 #include <QVBoxLayout>
 
 namespace assetcreator {
