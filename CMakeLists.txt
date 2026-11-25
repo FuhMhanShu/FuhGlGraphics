@@ -59,6 +59,7 @@ add_library(fuhglgraphics STATIC
     src/procedural/voronoi.cpp
     src/procedural/sdf.cpp
     src/procedural/creature.cpp
+    src/procedural/creaturegen.cpp
     src/procedural/worldgen.cpp
     src/procedural/house.cpp
     src/procedural/citygen.cpp

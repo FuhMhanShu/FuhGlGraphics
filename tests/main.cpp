@@ -30,6 +30,7 @@ int main() {
     runProceduralVoronoiTests();
     runProceduralSdfTests();
     runProceduralCreatureTests();
+    runProceduralCreaturegenTests();
     runProceduralWorldgenTests();
     runProceduralHouseTests();
     runProceduralCitygenTests();

@@ -22,7 +22,7 @@
 namespace fuhglgraphics::procedural {
 
 /// @brief Body-part classification (drives blend strength / texturing accents).
-enum class BodyPart { Torso, Neck, Head, Jaw, LegUpper, LegLower, Foot, Tail, Horn, Fin };
+enum class BodyPart { Torso, Neck, Head, Jaw, LegUpper, LegLower, Foot, Tail, Horn, Fin, Eye };
 
 /// @brief One skeleton node. Body axis = +Z (head forward), up = +Y. `offset` is relative to
 /// the parent node (translation only, parents accumulate).

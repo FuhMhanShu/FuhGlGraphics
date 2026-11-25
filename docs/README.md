@@ -10,6 +10,7 @@ and REQUIREMENTS.md at this level are English-only)
 
 🇬🇧 **English:** [Tutorials](en/tutorials/README.md) · [User guide](USER_GUIDE.md) ·
 [Development](DEVELOPMENT.md) · [Requirements](REQUIREMENTS.md) ·
-[Asset creator design (G12)](ASSET_CREATOR.md)
+[Asset creator design (G12)](ASSET_CREATOR.md) ·
+[Creature generation design (G32)](CREATURE_GENERATION.md)
 
 🇩🇪 **Deutsch:** [Tutorials](de/tutorials/README.md) · [README.de.md](../README.de.md)
