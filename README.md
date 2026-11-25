@@ -61,7 +61,7 @@ so far — one row per requirement, with tutorial and screenshot (all screenshot
 | G28 | Voronoi diagrams `procedural::voronoi2d` cells + F1/F2 + `extrudeCells` prisms → cracked plates, crystal shards | [G28](docs/en/tutorials/g28_voronoi.md) | [g28_voronoi_shattered.png](docs/images/g28_voronoi_shattered.png) |
 | G29 | SDF / 3D fractals: `procedural::sdf` primitives + `smoothMin` + `mandelbulb` DE; `procedural::meshFromSdf` meshes any SDF via G25 marching cubes | [G29](docs/en/tutorials/g29_mandelbulb.md) | [g29_mandelbulb_wide.png](docs/images/g29_mandelbulb_wide.png) |
 | G30 | Procedural creatures: `procedural::Skeleton` graph + `creatureSdf` smooth-min SDF + simplex detail; `meshCreature` via G25 with curvature in the vertex color; `bakeCreatureMaps` object-space noise skin maps | [G30](docs/en/tutorials/g30_creature.md) | [g30_creature_wide.png](docs/images/g30_creature_wide.png) |
-| G31 | World generator helper `procedural::generateWorld(WorldGenParams)`: one call builds a noise heightmap landscape with L-system trees or a WFC city with voronoi district plates; deterministic per seed | [G31](docs/en/tutorials/g31_worldgen.md) | [g31_worldgen_city.png](docs/images/g31_worldgen_city.png) |
+| G31 | World generator helper `procedural::generateWorld(WorldGenParams)`: landscape (spline relief, terracing, rivers, Whittaker biomes, PlantGenerator) or WFC city (procedural houses, selectable/wet roads); deterministic per seed | [G31](docs/en/tutorials/g31_worldgen.md) | [g31_worldgen_city.png](docs/images/g31_worldgen_city.png) |
 
 Next: **G11** (engine infrastructure: asset cache, JSON config, minimal Qt editor) or **G2**
 (Qt editor) — see [REQUIREMENTS.md](docs/REQUIREMENTS.md); **G12** (asset creator) is in

@@ -59,7 +59,7 @@ umgesetzt — eine Zeile pro Anforderung, mit Tutorial und Screenshot (alle Scre
 | G28 | Voronoi-Diagramme `procedural::voronoi2d` Zellen + F1/F2 + `extrudeCells`-Prismen → gerissene Platten, Kristall-Splitter | [G28](docs/de/tutorials/g28_voronoi.md) | [g28_voronoi_shattered.png](docs/images/g28_voronoi_shattered.png) |
 | G29 | SDF / 3D-Fraktale: `procedural::sdf`-Primitive + `smoothMin` + `mandelbulb` DE; `procedural::meshFromSdf` mesht jedes SDF via G25 Marching Cubes | [G29](docs/de/tutorials/g29_mandelbulb.md) | [g29_mandelbulb_wide.png](docs/images/g29_mandelbulb_wide.png) |
 | G30 | Prozedurale Kreaturen: `procedural::Skeleton`-Graph + `creatureSdf` smooth-min SDF + Simplex-Detail; `meshCreature` via G25 mit Krümmung im Vertex-Color; `bakeCreatureMaps` Objektraum-Noise-Haut | [G30](docs/de/tutorials/g30_creature.md) | [g30_creature_wide.png](docs/images/g30_creature_wide.png) |
-| G31 | World-Generator-Hilfsfunktion `procedural::generateWorld(WorldGenParams)`: ein Aufruf baut eine Noise-Höhenfeld-Landschaft mit L-System-Bäumen oder eine WFC-Stadt mit Voronoi-Stadtteilplatten; deterministisch pro Seed | [G31](docs/de/tutorials/g31_worldgen.md) | [g31_worldgen_city.png](docs/images/g31_worldgen_city.png) |
+| G31 | World-Generator-Hilfsfunktion `procedural::generateWorld(WorldGenParams)`: Landschaft (Spline-Relief, Terracing, Flüsse, Whittaker-Biome, PlantGenerator) oder WFC-Stadt (prozedurale Häuser, wählbare/nasse Straßen); deterministisch pro Seed | [G31](docs/de/tutorials/g31_worldgen.md) | [g31_worldgen_city.png](docs/images/g31_worldgen_city.png) |
 
 Als Nächstes: **G11** (Engine-Infrastruktur: Asset-Cache, JSON-Config, minimaler Qt-Editor)
 oder **G2** (Qt-Editor) — siehe [REQUIREMENTS.md](docs/REQUIREMENTS.md); **G12**
