@@ -195,11 +195,15 @@ void repairRoadConnectivity(std::vector<WfcCell>& cells, const std::vector<WfcTi
 }
 
 // --- landscape pipeline -------------------------------------------------------------------
-// 1. macro relief: domain-warped coords + continentalness mask (low-freq simplex decides
-//    plains vs. mountains) combining plain fBm (plains) with ridged multifractal (mountains)
-// 2. hydraulic erosion (droplet particle sim, also produces the flow map) + thermal erosion
-// 3. splatmap: R grass / G rock (slope) / B sand (shore + flow channels) / A snow (altitude)
-// 4. vegetation & rocks scattered by poisson-disk sampling weighted by the splatmap
+// 1. macro relief: domain-warped coords + three spline/noise layers — continentalness mapped
+//    through a Spline1D curve (ocean/coast/plains/mountains), an erosion map that blends smooth
+//    fBm (meadows) with ridged multifractal (rugged), and a peaks&valleys ridged detail layer
+// 2. hydraulic erosion (droplet particle sim, also produces the flow map) + thermal erosion,
+//    optional terracing (quantized steps on high ground) + rivers (gradient descent from
+//    mountain sources, V-carved channels, sinks filled to their spill point as ponds)
+// 3. splatmap: R grass / G rock (slope) / B sand (shore + flow channels) / A snow (altitude),
+//    plus climate maps (temperature/humidity) and a Whittaker biome lookup per cell
+// 4. vegetation & rocks scattered by poisson-disk sampling weighted by splatmap + biome
 
 float cellWorld(const WorldGenParams& p, int g) { return p.worldSize / static_cast<float>(g - 1); }
 
@@ -280,6 +284,114 @@ void thermalErode(std::vector<float>& h, int g, float talus, int passes) {
             }
 }
 
+/// @brief Rivers: gradient descent from mountain source cells (h >= riverSourceMinH) down to
+/// the water level. Each path cell carves a V-shaped channel (riverDepth at the center, fading
+/// over riverWidth cells) into the heightmap and adds to the flow map. When the path gets stuck
+/// in a sink above the water level, the connected basin is filled up to its spill point
+/// (mountain lake, marked in `ponds`) and the river continues over the spill cell.
+void carveRivers(std::vector<float>& h, int g, const WorldGenParams& p, Rng& rng,
+                 std::vector<float>& flow, std::vector<unsigned char>& ponds) {
+    ponds.assign(h.size(), 0);
+    if (p.riverCount <= 0) return;
+    auto at = [&](int x, int z) -> float& { return h[static_cast<std::size_t>(x) + g * z]; };
+    // source candidates: high cells away from the border, highest first
+    std::vector<std::pair<float, int>> cand;
+    const int margin = std::max(2, g / 12);
+    for (int a = 0; a < p.riverCount * 60 && static_cast<int>(cand.size()) < p.riverCount * 4; ++a) {
+        const int x = margin + static_cast<int>(rng.nextf() * (g - 2 * margin));
+        const int z = margin + static_cast<int>(rng.nextf() * (g - 2 * margin));
+        const float hv = at(x, z);
+        if (hv >= p.riverSourceMinH) cand.push_back({hv, x + g * z});
+    }
+    std::sort(cand.begin(), cand.end(),
+              [](const std::pair<float, int>& a, const std::pair<float, int>& b) { return a.first > b.first; });
+    const int rivers = std::min(p.riverCount, static_cast<int>(cand.size()));
+    const float waterN = p.waterLevel;
+    const float rw = std::max(0.6f, p.riverWidth);
+    for (int r = 0; r < rivers; ++r) {
+        int cx = cand[static_cast<std::size_t>(r)].second % g;
+        int cz = cand[static_cast<std::size_t>(r)].second / g;
+        std::vector<char> seen(h.size(), 0);
+        for (int step = 0; step < g * 3; ++step) {
+            // carve a V cross-section around the current cell
+            const int cr = static_cast<int>(std::ceil(rw));
+            for (int dz = -cr; dz <= cr; ++dz)
+                for (int dx = -cr; dx <= cr; ++dx) {
+                    const int x = cx + dx, z = cz + dz;
+                    if (x < 1 || z < 1 || x >= g - 1 || z >= g - 1) continue;
+                    const float d = std::sqrt(static_cast<float>(dx * dx + dz * dz));
+                    if (d > rw) continue;
+                    const float prof = 1.f - d / rw; // V profile across the channel
+                    at(x, z) = std::max(0.f, at(x, z) - p.riverDepth * prof * prof);
+                    // max-based accumulation: a cell counts as channel once, no matter how
+                    // often the path loops over it (keeps the normalized flow map readable)
+                    flow[static_cast<std::size_t>(x) + g * z] =
+                        std::max(flow[static_cast<std::size_t>(x) + g * z], prof);
+                }
+            seen[static_cast<std::size_t>(cx) + g * cz] = 1;
+            if (at(cx, cz) <= waterN + 0.001f) break; // reached the lake/sea
+            // steepest descent over the 8 neighbors (tiny random jitter breaks ties/loops)
+            int bx = cx, bz = cz;
+            float bh = at(cx, cz) + rng.nextf() * 1e-4f;
+            for (int dz = -1; dz <= 1; ++dz)
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (!dx && !dz) continue;
+                    const int x = cx + dx, z = cz + dz;
+                    if (x < 1 || z < 1 || x >= g - 1 || z >= g - 1) continue;
+                    const float hv = at(x, z) + rng.nextf() * 1e-4f;
+                    if (hv < bh) { bh = hv; bx = x; bz = z; }
+                }
+            if (bx == cx && bz == cz) {
+                // local sink above the water level: fill the basin to its spill point (pond)
+                float spill = 1e9f;
+                int sx = cx, sz = cz;
+                for (int dz = -1; dz <= 1; ++dz)
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        const int x = cx + dx, z = cz + dz;
+                        if (x < 1 || z < 1 || x >= g - 1 || z >= g - 1) continue;
+                        const float hv = at(x, z);
+                        if (hv > at(cx, cz) && hv < spill) { spill = hv; sx = x; sz = z; }
+                    }
+                if (spill < 1e9f) {
+                    const float level = spill - 0.002f;
+                    std::vector<int> stack{cx + g * cz};
+                    seen[static_cast<std::size_t>(cx) + g * cz] = 1;
+                    while (!stack.empty()) {
+                        const int cur = stack.back();
+                        stack.pop_back();
+                        const int ux = cur % g, uz = cur / g;
+                        if (at(ux, uz) >= level) continue;
+                        at(ux, uz) = level;
+                        ponds[static_cast<std::size_t>(cur)] = 1;
+                        for (int dz = -1; dz <= 1; ++dz)
+                            for (int dx = -1; dx <= 1; ++dx) {
+                                const int x = ux + dx, z = uz + dz;
+                                if (x < 1 || z < 1 || x >= g - 1 || z >= g - 1) continue;
+                                const std::size_t ni = static_cast<std::size_t>(x) + g * z;
+                                if (!seen[ni] && at(x, z) < level) {
+                                    seen[ni] = 1;
+                                    stack.push_back(static_cast<int>(ni));
+                                }
+                            }
+                    }
+                    cx = sx;
+                    cz = sz; // continue over the spill cell
+                    continue;
+                }
+                break; // border sink: stop this river
+            }
+            if (seen[static_cast<std::size_t>(bx) + g * bz]) break; // loop guard
+            cx = bx;
+            cz = bz;
+        }
+    }
+    // re-normalize the combined flow map
+    float maxFlow = 0.f;
+    for (const float f : flow) maxFlow = std::max(maxFlow, f);
+    if (maxFlow > 0.f)
+        for (float& f : flow) f /= maxFlow;
+}
+
 /// @brief Poisson-disk-ish scatter (dart throwing with a spatial hash): random points with a
 /// guaranteed min distance, accepted with probability `weight(x,z)` (density mask).
 std::vector<fuhgl::math::Vec2> poissonScatter(float half, float minDist, int maxPoints,
@@ -330,6 +442,11 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
     w.heightmap.resize(static_cast<std::size_t>(g) * g);
     const float expo = std::max(0.05f, p.heightExponent);
     const float waterN = p.waterLevel; // normalized water level for masks
+    // continentalness spline (Minecraft-style): deep ocean < contOcean, coast band up to
+    // contCoast, plains up to contPlains, above that the curve rises steeply to mountains
+    Spline1D contSpline;
+    contSpline.pts = {{p.contOcean - 0.25f, 0.f}, {p.contOcean, 0.f}, {p.contCoast, 0.03f},
+                      {p.contPlains, 0.38f}, {1.0f, 1.0f}};
     for (int j = 0; j < g; ++j)
         for (int i = 0; i < g; ++i) {
             const float u = static_cast<float>(i) / static_cast<float>(g - 1);
@@ -342,12 +459,22 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
                 nx = wp.x;
                 nz = wp.y;
             }
-            // continentalness: very low-frequency simplex decides plains vs. mountain ranges
+            // 1a. continentalness layer mapped through the spline curve
             const float cont = noise.simplex2(nx * 0.22f + 7.3f, nz * 0.22f + 2.9f); // ~[-1,1]
-            const float mountainMask = smoothstep(0.15f, 0.75f, cont);
+            const float cu = std::min(1.f, std::max(0.f, cont * 0.5f + 0.5f));
+            const float base = contSpline.eval(cu);
+            // 1b. erosion map: high value = smooth (meadows, lake flats), low = rugged ridges
+            const float ero =
+                noise.fbm2(x * p.erosionScale + 31.7f, z * p.erosionScale + 11.2f, 3,
+                           Noise::Base::Simplex) * 0.5f + 0.5f;
             const float plains = noise.fbm2(nx, nz, 5, Noise::Base::Simplex) * 0.5f + 0.5f;
             const float ridge = noise.ridged2(nx, nz, p.octaves, Noise::Base::Simplex); // sharp crests
-            float h = plains * (1.f - mountainMask) + ridge * mountainMask;
+            const float detail = plains * ero + ridge * (1.f - ero);
+            // 1c. peaks & valleys: higher-frequency ridged detail scaled by the continental
+            //     base, so oceans stay flat next to dramatic ridges
+            const float pv =
+                noise.ridged2(x * p.pvScale + 3.1f, z * p.pvScale + 8.7f, 4, Noise::Base::Simplex);
+            float h = base * (0.55f + 0.45f * detail) + pv * p.pvWeight * base;
             h = std::pow(std::min(1.f, std::max(0.f, h)), expo);
             if (p.lakeRadius > 0.f) { // explicit round lake basin around the center
                 const float d = std::hypot(x, z);
@@ -371,6 +498,22 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
     else
         w.flowmap.assign(w.heightmap.size(), 0.f);
     if (p.thermalPasses > 0) thermalErode(w.heightmap, g, p.talus, p.thermalPasses);
+
+    // 2b. terracing: quantize high terrain into steps (mesa / canyon / rice-terrace look),
+    //     blended by terraceStrength on high ground only
+    if (p.terraceSteps > 0) {
+        const float steps = static_cast<float>(p.terraceSteps);
+        const float strength = std::min(1.f, p.terraceStrength);
+        for (float& hv : w.heightmap) {
+            const float q = std::floor(hv * steps + 0.5f) / steps;
+            const float t = smoothstep(0.5f, 0.85f, hv) * strength;
+            hv = hv * (1.f - t) + q * t;
+        }
+    }
+
+    // 2c. rivers: gradient descent from mountain sources carves V channels into the heightmap
+    //     and the flow map; sinks above the water level become filled ponds (mountain lakes)
+    carveRivers(w.heightmap, g, p, rng, w.flowmap, w.pondMask);
 
     // 3. splatmap: per-cell material weights from height, slope and the erosion flow map.
     // Slope is measured in world units (dh_world/dx); the rock band is relative to the
@@ -411,8 +554,62 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
             w.splatmap[idx + 3] = static_cast<unsigned char>(snow * 255.f);
         }
 
-    // 4. poisson-disk scatter weighted by the splatmap: trees on grass, rocks on rock/steep
+    // 3b. climate maps + Whittaker biome lookup. The continuous temperature/humidity fields
+    //     are what an app blends biome colors with (soft borders, no hard edges); the biome id
+    //     per cell is for introspection + scatter species.
+    if (p.climateMaps) {
+        const std::size_t n = static_cast<std::size_t>(g) * g;
+        w.temperature.assign(n, 0.f);
+        w.humidity.assign(n, 0.f);
+        w.biome.assign(n, 0);
+        for (int j = 0; j < g; ++j)
+            for (int i = 0; i < g; ++i) {
+                const float x = (static_cast<float>(i) / (g - 1) - 0.5f) * p.worldSize;
+                const float z = (static_cast<float>(j) / (g - 1) - 0.5f) * p.worldSize;
+                const std::size_t idx = static_cast<std::size_t>(i) + g * j;
+                const float h = w.heightmap[idx];
+                // temperature: latitude (equator at the map center) + variation noise - altitude
+                const float lat = std::fabs(z) / (p.worldSize * 0.5f);
+                float temp = 1.f - lat * 0.85f +
+                             noise.fbm2(x * p.tempNoiseScale + 51.3f, z * p.tempNoiseScale + 17.9f, 3,
+                                        Noise::Base::Simplex) * 0.3f -
+                             h * p.lapseRate;
+                temp = std::min(1.f, std::max(0.f, temp));
+                // humidity: noise + boost near water + boost along rivers (flow map)
+                float hum = noise.fbm2(x * p.humidityNoiseScale + 7.9f, z * p.humidityNoiseScale + 3.1f, 4,
+                                       Noise::Base::Simplex) * 0.5f + 0.5f;
+                if (h < waterN + 0.03f) hum += 0.35f;
+                hum += w.flowmap[idx] * p.humidityRiverBoost;
+                hum = std::min(1.f, std::max(0.f, hum));
+                w.temperature[idx] = temp;
+                w.humidity[idx] = hum;
+                // Whittaker lookup: x = humidity, y = temperature
+                Biome b;
+                if (h < waterN) b = Biome::Ocean;
+                else if (std::fabs(h - waterN) < 0.035f) b = Biome::Shore;
+                else if (temp < 0.25f) b = hum < 0.5f ? Biome::Tundra : Biome::Taiga;
+                else if (temp < 0.55f) b = hum < 0.35f ? Biome::Grassland : Biome::Forest;
+                else b = hum < 0.4f ? Biome::Desert : Biome::Jungle;
+                // overrides: steep slopes = rock, high altitude = snow
+                if (slopeMap[idx] > rockHi) b = Biome::Rock;
+                else if (h > 0.8f) b = Biome::Snow;
+                w.biome[idx] = static_cast<unsigned char>(b);
+            }
+    } else {
+        w.temperature.clear();
+        w.humidity.clear();
+        w.biome.clear();
+    }
+
+    // 4. poisson-disk scatter weighted by the splatmap (+ biome density): trees on grass,
+    //    rocks on rock/steep
     const float half = p.worldSize * 0.5f;
+    auto biomeAt = [&](float x, float z) -> int {
+        if (w.biome.empty()) return -1;
+        const float u = std::min(1.f, std::max(0.f, x / w.sizeX + 0.5f)) * (g - 1);
+        const float v = std::min(1.f, std::max(0.f, z / w.sizeZ + 0.5f)) * (g - 1);
+        return w.biome[static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v)];
+    };
     auto grassWeight = [&](float x, float z) {
         if (w.heightAt(x, z) < w.waterLevelWorld + 0.3f) return 0.f;
         const float u = std::min(1.f, std::max(0.f, x / w.sizeX + 0.5f)) * (g - 1);
@@ -420,7 +617,12 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
         const std::size_t idx = (static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v)) * 4;
         const float grass = w.splatmap[idx + 0] / 255.f;
         const float rock = w.splatmap[idx + 1] / 255.f;
-        return grass * (1.f - rock);
+        float wgt = grass * (1.f - rock);
+        const int b = biomeAt(x, z); // biome density: deserts/tundra/snow/rock are sparse
+        if (b == static_cast<int>(Biome::Desert)) wgt *= 0.12f;
+        else if (b == static_cast<int>(Biome::Tundra)) wgt *= 0.45f;
+        else if (b == static_cast<int>(Biome::Snow) || b == static_cast<int>(Biome::Rock)) wgt *= 0.05f;
+        return wgt;
     };
     auto rockWeight = [&](float x, float z) {
         const float u = std::min(1.f, std::max(0.f, x / w.sizeX + 0.5f)) * (g - 1);
@@ -433,10 +635,19 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
     for (const auto& s : poissonScatter(half, p.treeMinDist, p.treeCount, grassWeight, rng)) {
         PlantParams pp;
         pp.seed = p.seed ^ (rng.next() * 2654435761u);
-        const float kindRoll = rng.nextf();
-        pp.kind = kindRoll < 0.5f ? PlantKind::Deciduous
-                 : kindRoll < 0.75f ? PlantKind::Fir
-                                   : PlantKind::Birch;
+        // species follows the biome: taiga/tundra -> firs, jungle -> deciduous,
+        // otherwise a mixed deciduous/fir/birch roll
+        const int tb = biomeAt(s.x, s.y);
+        PlantKind kind = PlantKind::Deciduous;
+        if (tb == static_cast<int>(Biome::Taiga) || tb == static_cast<int>(Biome::Tundra))
+            kind = PlantKind::Fir;
+        else {
+            const float kindRoll = rng.nextf();
+            kind = kindRoll < 0.5f ? PlantKind::Deciduous
+                  : kindRoll < 0.75f ? PlantKind::Fir
+                                     : PlantKind::Birch;
+        }
+        pp.kind = kind;
         pp.scale = 0.45f + 0.5f * rng.nextf();
         PlacedMesh pm;
         pm.mesh = plantGen.generate(pp).mesh;

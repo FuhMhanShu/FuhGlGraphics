@@ -76,7 +76,22 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   `PlacedMesh` carries `glassMesh` + `facade`; the demo wires per-facade POM walls, a reflective
   glass entry, the selectable road surface (`--surface`, asphalt default; CI also renders a gated
   cobble+wet showcase) and wet reflective streets (`--wet`, SSR + roughness 0.12/metallic 0.4). Unit tests
-  `tests/test_procedural_{worldgen,house,citygen,plant}.cpp`.
+  `tests/test_procedural_{worldgen,house,citygen,plant}.cpp`. Landscape upgrade: Minecraft-style
+  three-layer relief — continentalness mapped through a new `Spline1D` curve
+  (`contOcean`/`contCoast`/`contPlains` knots), an erosion map blending smooth fBm with ridged
+  multifractal, and a peaks&valleys ridged layer (`pvScale`/`pvWeight`) — plus optional
+  terracing (`terraceSteps`/`terraceStrength`), rivers (`riverCount`: gradient descent from
+  mountain sources, V-carved channels into heightmap+flowmap, sinks above the water level filled
+  to their spill point as mountain lakes in `pondMask`), and climate/biome maps
+  (`temperature`/`humidity`/`biome` via a Whittaker lookup with `lapseRate`; scatter species and
+  density follow the biome). The demo colors the vegetation splat channel with a soft Whittaker
+  blend and adds strata bands to rock; new tests: Spline1D, climate/rivers, terracing
+  (1,648,832 checks, 0 failures). New `--mode village` demo scene: big landscape + a small
+  procedural village (HouseGenerator houses on a flattened lake-shore plateau) rendered with
+  water, CSM shadows, IBL, HBAO, SSR, bloom, volumetric fog and wetness — CI-gated ref
+  `docs/images/g31_worldgen_village.png`; the landscape shot keeps the low lake-shore vantage
+  (sky + mountains + lake band + shore) with scatter cleared around the camera so no tree can
+  cross the near plane (that rendered as a green star blob in earlier refs).
 - **G30 — procedural creatures** (`include/fuhglgraphics/procedural/creature.hpp`,
   `src/procedural/creature.cpp`): `Skeleton` graph (nodes with position/radius/`BodyPart`,
   `finalize()` bakes world-space ellipsoid + tapered-capsule prims with broadphase AABBs, linear

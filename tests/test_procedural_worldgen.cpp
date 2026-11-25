@@ -5,6 +5,7 @@
 
 #include "test_framework.hpp"
 
+#include <fuhglgraphics/procedural/noise.hpp>
 #include <fuhglgraphics/procedural/worldgen.hpp>
 
 #include <algorithm>
@@ -316,6 +317,110 @@ void testDeterminismAndModes() {
     CHECK(generateWorld(cp).districts.vertexCount() == 0);
 }
 
+void testSpline1D() {
+    Spline1D sp;
+    sp.pts = {{0.f, 0.f}, {0.4f, 0.f}, {0.45f, 0.03f}, {0.7f, 0.38f}, {1.f, 1.f}};
+    CHECK_NEAR(sp.eval(-1.f), 0.f, 1e-6f); // clamped left
+    CHECK_NEAR(sp.eval(2.f), 1.f, 1e-6f);  // clamped right
+    CHECK_NEAR(sp.eval(0.4f), 0.f, 1e-6f); // exact knot
+    CHECK_NEAR(sp.eval(1.f), 1.f, 1e-6f);
+    const float mid = sp.eval(0.575f);     // between the 0.45 and 0.7 knots
+    CHECK(mid > 0.03f && mid < 0.38f);
+    float prev = sp.eval(0.f);             // monotonic non-decreasing sweep
+    for (int i = 1; i <= 100; ++i) {
+        const float v = sp.eval(i / 100.f);
+        CHECK(v >= prev - 1e-6f);
+        prev = v;
+    }
+    Spline1D empty;
+    CHECK_NEAR(empty.eval(0.5f), 0.5f, 1e-6f); // identity fallback
+}
+
+void testLandscapeClimateAndRivers() {
+    WorldGenParams p = landscapeParams();
+    p.erosionDroplets = 0; // isolate the river flow from the droplet flow
+    const GeneratedWorld w = generateWorld(p);
+    const std::size_t n = w.heightmap.size();
+    // climate maps present, sized and in range; biome ids valid
+    CHECK(w.temperature.size() == n && w.humidity.size() == n && w.biome.size() == n);
+    CHECK(w.pondMask.size() == n);
+    int ocean = 0, land = 0;
+    for (float t : w.temperature) CHECK(t >= 0.f && t <= 1.f);
+    for (float h : w.humidity) CHECK(h >= 0.f && h <= 1.f);
+    for (std::size_t i = 0; i < n; ++i) {
+        const unsigned char b = w.biome[i];
+        CHECK(b <= static_cast<unsigned char>(Biome::Snow));
+        if (b == static_cast<unsigned char>(Biome::Ocean)) ++ocean;
+        if (w.heightmap[i] >= p.waterLevel) ++land;
+    }
+    CHECK(ocean > 0 && land > 0);
+    // lapse rate: low cells are warmer on average than high cells
+    double tLow = 0, tHigh = 0;
+    int nLow = 0, nHigh = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (w.heightmap[i] < 0.4f) { tLow += w.temperature[i]; ++nLow; }
+        if (w.heightmap[i] > 0.75f) { tHigh += w.temperature[i]; ++nHigh; }
+    }
+    CHECK(nLow > 0 && nHigh > 0);
+    CHECK(tLow / nLow > tHigh / nHigh);
+    // humidity: near-water cells are wetter on average than high inland cells
+    double hWater = 0, hInland = 0;
+    int nW = 0, nI = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (w.heightmap[i] < p.waterLevel + 0.03f) { hWater += w.humidity[i]; ++nW; }
+        if (w.heightmap[i] > 0.6f) { hInland += w.humidity[i]; ++nI; }
+    }
+    CHECK(nW > 0 && nI > 0);
+    CHECK(hWater / nW > hInland / nI);
+    // rivers: strong flow channels exist and the carving removed material
+    float maxFlow = 0.f;
+    int strongFlow = 0;
+    double sumH = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        maxFlow = std::max(maxFlow, w.flowmap[i]);
+        if (w.flowmap[i] > 0.4f) ++strongFlow;
+        sumH += w.heightmap[i];
+    }
+    CHECK(maxFlow > 0.9f);   // flow map is normalized
+    CHECK(strongFlow > 20);  // river channels carved
+    WorldGenParams pn = p;
+    pn.riverCount = 0;
+    const GeneratedWorld wn = generateWorld(pn);
+    double sumN = 0;
+    for (float h : wn.heightmap) sumN += h;
+    CHECK(sumH < sumN); // carving lowers the total terrain volume
+    // climateMaps off -> maps empty
+    WorldGenParams pc = landscapeParams();
+    pc.climateMaps = false;
+    const GeneratedWorld wc = generateWorld(pc);
+    CHECK(wc.temperature.empty() && wc.humidity.empty() && wc.biome.empty());
+    CHECK(wc.pondMask.size() == wc.heightmap.size());
+}
+
+void testLandscapeTerracing() {
+    WorldGenParams p = landscapeParams();
+    p.terraceSteps = 10;
+    p.terraceStrength = 1.f;
+    p.erosionDroplets = 0; // keep the peaks high so the quantized zone is populated
+    p.thermalPasses = 0;
+    p.riverCount = 0;
+    const GeneratedWorld w = generateWorld(p);
+    for (float h : w.heightmap) CHECK(h >= 0.f && h <= 1.f);
+    // high terrain is quantized to the step grid (blend reaches 1 at h=0.85)
+    int checked = 0;
+    for (float h : w.heightmap)
+        if (h > 0.84f) {
+            const float frac = std::fabs(h * 10.f - std::round(h * 10.f));
+            CHECK(frac < 0.05f);
+            ++checked;
+        }
+    CHECK(checked > 0);
+    // terracing changes the terrain vs off
+    WorldGenParams p0 = p;
+    p0.terraceSteps = 0;
+    CHECK(generateWorld(p0).heightmap != w.heightmap);
+}
+
 void testCityRoads() {
     // default: plaza (path) tiles are dropped from the tile set, so paths can never
     // interrupt the road network; the solved road cells form one connected component
@@ -401,4 +506,7 @@ void runProceduralWorldgenTests() {
     testCityTilesSolvable();
     testDeterminismAndModes();
     testCityRoads();
+    testSpline1D();
+    testLandscapeClimateAndRivers();
+    testLandscapeTerracing();
 }
