@@ -62,12 +62,15 @@ jobs:
             '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"procedural_wfc","arguments":{"preset":"dungeon","width":4,"height":4,"seed":2}}}' \
             | ./build/tools/mcp_server/fuhglgraphics_mcp_server)
           echo "$OUT"
+          # initialize + tools/list answers are top-level JSON; tools/call payloads are
+          # pretty-printed+escaped inside content[].text — match unquoted tokens there
           echo "$OUT" | grep -q '"protocolVersion"'
           echo "$OUT" | grep -q '"procedural_worldgen"'
           echo "$OUT" | grep -q '"render_set_effect"'
           echo "$OUT" | grep -q '"water_set_params"'
-          echo "$OUT" | grep -q '"value":2.5'
-          echo "$OUT" | grep -q '"cells"'
+          echo "$OUT" | grep -q 'bloomThreshold'
+          echo "$OUT" | grep -q '2\.5'
+          echo "$OUT" | grep -q 'cells'
 
       # G12 asset creator Qt tool smoke: build + --version under xvfb (Linux, WITH_QT only)
       - name: Asset creator tool smoke (build + --version under xvfb)
