@@ -172,6 +172,11 @@ target_link_libraries(fuhglgraphics_creature_screenshot PRIVATE fuhglgraphics)
 # TAA + upscale + ACES — landscape overview, city overview + street level, headless to PNG.
 add_executable(fuhglgraphics_worldgen_screenshot worldgen_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_worldgen_screenshot PRIVATE fuhglgraphics)
+# -rdynamic: symbol names in the SIGSEGV backtrace printed by main.cpp (debug aid for
+# headless llvmpipe crashes in CI)
+if (UNIX AND NOT APPLE)
+    target_link_options(fuhglgraphics_worldgen_screenshot PRIVATE -rdynamic)
+endif()
 # G32/G33/G34 post-effect showcase: chromatic aberration (dusk lamps, on/off), subsurface
 # scattering (backlit thin panel, on/off) and screen-space GI (red-wall bounce on a box,
 # on/off) — headless to PNG.

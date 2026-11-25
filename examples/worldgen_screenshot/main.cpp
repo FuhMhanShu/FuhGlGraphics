@@ -44,6 +44,20 @@
 #include <string>
 #include <vector>
 
+#ifndef _WIN32
+#include <csignal>
+#include <execinfo.h>
+#include <signal.h>
+#include <unistd.h>
+// debug aid: print a symbolized backtrace when the headless llvmpipe render segfaults in CI
+static void segvHandler(int) {
+    void* bt[64];
+    const int n = backtrace(bt, 64);
+    backtrace_symbols_fd(bt, n, STDERR_FILENO);
+    _exit(139);
+}
+#endif
+
 namespace {
 
 struct Args {
@@ -582,6 +596,9 @@ void addSunAndSky(fuhglgraphics::scene::Scene& scene, fuhgl::FirstPersonCamera& 
 
 int main(int argc, char** argv) {
     using namespace fuhglgraphics;
+#ifndef _WIN32
+    std::signal(SIGSEGV, segvHandler);
+#endif
     const Args args = parseArgs(argc, argv);
 #ifndef _WIN32
     if (!std::getenv("FUHGL_BACKEND")) setenv("FUHGL_BACKEND", "surfaceless", 0);
@@ -647,11 +664,51 @@ int main(int argc, char** argv) {
         p.riverCount = 14;        // rivers carved from mountain sources down to the lake
         p.terraceSteps = 8;       // mild terracing on high ground (mesa/canyon steps)
         p.terraceStrength = 0.5f;
-        const procedural::GeneratedWorld world = procedural::generateWorld(p);
+        procedural::GeneratedWorld world = procedural::generateWorld(p);
         std::fprintf(stderr,
                      "worldgen_screenshot: landscape seed %u: grid %d, %zu trees, %zu bushes, %zu rocks\n",
                      args.seed, world.gridW, world.trees.size(), world.bushes.size(),
                      world.rocks.size());
+
+        // composition derived from the heightmap: camera on the south rim of the lake,
+        // looking NW across the water toward the far shore with the mountains behind —
+        // this guarantees the lake is always in frame. Scatter is removed around the camera
+        // so no tree can cross the near plane (that renders as a green star blob).
+        float lakeCx = 0.f, lakeCz = 0.f, lakeSouthZ = -1e9f;
+        int lakeN = 0;
+        // only the central basin counts as "lake" (the island falloff puts the whole
+        // border ring below the water level — that is the outer sea, not the lake)
+        const float lakeSearchR =
+            p.lakeRadius > 0.f ? p.lakeRadius * 1.25f : p.worldSize * 0.38f;
+        for (int j = 0; j < world.gridH; ++j)
+            for (int i = 0; i < world.gridW; ++i) {
+                if (world.heightmap[static_cast<std::size_t>(i) + world.gridW * j] < p.waterLevel) {
+                    const float x = (static_cast<float>(i) / (world.gridW - 1) - 0.5f) * world.sizeX;
+                    const float z = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
+                    if (std::hypot(x, z) > lakeSearchR) continue;
+                    lakeCx += x;
+                    lakeCz += z;
+                    ++lakeN;
+                    lakeSouthZ = std::max(lakeSouthZ, z);
+                }
+            }
+        if (lakeN > 0) {
+            lakeCx /= lakeN;
+            lakeCz /= lakeN;
+        } else {
+            lakeSouthZ = world.sizeZ * 0.25f;
+        }
+        const float camX = lakeCx + 30.f, camZ = lakeSouthZ + 14.f;
+        const float camY = std::max(world.heightAt(camX, camZ), world.waterLevelWorld) + 18.f;
+        const auto nearCam = [&](const procedural::PlacedMesh& pm) {
+            return std::hypot(pm.position.x - camX, pm.position.z - camZ) < 14.f;
+        };
+        world.trees.erase(std::remove_if(world.trees.begin(), world.trees.end(), nearCam),
+                          world.trees.end());
+        world.bushes.erase(std::remove_if(world.bushes.begin(), world.bushes.end(), nearCam),
+                           world.bushes.end());
+        world.rocks.erase(std::remove_if(world.rocks.begin(), world.rocks.end(), nearCam),
+                          world.rocks.end());
 
         scene::Scene scene;
         MeshArena arena;
@@ -745,39 +802,10 @@ int main(int argc, char** argv) {
         // warm sun in the south (behind the shore camera) so the seen slopes are lit
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.30f, 0.50f, 0.85f}));
 
-        // composition derived from the heightmap: camera on the south rim of the lake,
-        // looking across the water toward the far shore with the mountains behind —
-        // this guarantees the lake is always in frame
-        float lakeCx = 0.f, lakeCz = 0.f, lakeSouthZ = -1e9f;
-        int lakeN = 0;
-        // only the central basin counts as "lake" (the island falloff puts the whole
-        // border ring below the water level — that is the outer sea, not the lake)
-        const float lakeSearchR =
-            p.lakeRadius > 0.f ? p.lakeRadius * 1.25f : p.worldSize * 0.38f;
-        for (int j = 0; j < world.gridH; ++j)
-            for (int i = 0; i < world.gridW; ++i) {
-                if (world.heightmap[static_cast<std::size_t>(i) + world.gridW * j] < p.waterLevel) {
-                    const float x = (static_cast<float>(i) / (world.gridW - 1) - 0.5f) * world.sizeX;
-                    const float z = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
-                    if (std::hypot(x, z) > lakeSearchR) continue;
-                    lakeCx += x;
-                    lakeCz += z;
-                    ++lakeN;
-                    lakeSouthZ = std::max(lakeSouthZ, z);
-                }
-            }
-        if (lakeN > 0) {
-            lakeCx /= lakeN;
-            lakeCz /= lakeN;
-        } else {
-            lakeSouthZ = world.sizeZ * 0.25f;
-        }
-        // high vantage SE of the lake, looking NW across the water: sky + mountains on top,
-        // lake band in the middle, shore with trees/grass in the foreground. The camera sits
-        // well above the terrain so the composition is robust against relief changes.
-        const float camX = lakeCx + p.worldSize * 0.24f, camZ = lakeSouthZ + p.worldSize * 0.18f;
-        cam.position = {camX, std::max(world.heightAt(camX, camZ), world.waterLevelWorld) + 34.f, camZ};
-        aimAt(cam, {lakeCx - p.worldSize * 0.12f, world.waterLevelWorld + 6.f, lakeCz - p.worldSize * 0.22f});
+        // low vantage on the south shore looking NW: sky + mountains on top, lake band in
+        // the middle, shore with trees/grass in the foreground (camX/camY/camZ above)
+        cam.position = {camX, camY, camZ};
+        aimAt(cam, {lakeCx - 20.f, world.waterLevelWorld + 8.f, lakeCz - 35.f});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
                          water ? &water->surface : nullptr, &env)) {
@@ -857,6 +885,13 @@ int main(int argc, char** argv) {
                            world.bushes.end());
         world.rocks.erase(std::remove_if(world.rocks.begin(), world.rocks.end(), notInVillage),
                           world.rocks.end());
+        // keep the village camera itself clear of trees (a tree crossing the near plane
+        // renders as a green star blob)
+        const auto nearVillageCam = [&](const procedural::PlacedMesh& pm) {
+            return std::hypot(pm.position.x - (vc.x + 26.f), pm.position.z - (vc.y + 30.f)) < 10.f;
+        };
+        world.trees.erase(std::remove_if(world.trees.begin(), world.trees.end(), nearVillageCam),
+                          world.trees.end());
 
         scene::Scene scene;
         MeshArena arena;
