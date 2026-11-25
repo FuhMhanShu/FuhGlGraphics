@@ -96,6 +96,36 @@ limbs and torso:
 
 ![G30 creatures: closeup](../../images/g30_creature_closeup.png)
 
+## G32 showcase — creatures on Corinthian columns, torch-lit
+
+The G32 pipeline (`procedural/creaturegen.hpp`, design doc:
+[docs/CREATURE_GENERATION.md](../../CREATURE_GENERATION.md)) extends G30: the allometric
+`deriveBlueprint()` maps ecological inputs (body mass, locomotion, diet, climate) to coupled
+proportions (bone radius ~ M^0.36, predator vs. prey eye position, climate fat/fur rules),
+`buildBlueprintSkeleton()` adds bilateral symmetry + micro-asymmetry, `anatomySdf()` layers
+bone/muscle/skin anchors (+ gravity sag), `extractSurface()` adds curvature and material
+masks, `bakeMaterial()` bakes the Gray-Scott Turing pattern + countershading UV-free, and
+`solveTwoBoneIk()` / `creatureGaitPose()` drive locomotion. `examples/creature_showcase`
+renders three different G32 creatures side by side on procedural Corinthian columns in a
+pitch-dark hall, lit only by flickering torch point lights with G35 flame particles:
+
+```bash
+cmake --build build --target fuhglgraphics_creature_showcase
+FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_creature_showcase \
+    --prefix g32_creature_showcase --width 1280 --height 720 --frames 16
+```
+
+Wide — horned herbivore, frontal-eyed carnivore and striped serpentine on their columns:
+
+![G32 showcase: wide](../../images/g32_creature_showcase_wide.png)
+
+Closeup of the carnivore in profile — Turing spots and countershading in torchlight:
+
+![G32 showcase: closeup](../../images/g32_creature_showcase_closeup.png)
+
+- CI: `docs-screenshots` renders `docs/images/ci/g32_creature_showcase_{wide,closeup}.png`,
+  PSNR-gated against the checked-in references above.
+
 ## Tests
 
 - `tests/test_procedural_creature.cpp` (unit): skeleton finalize (world positions accumulate,

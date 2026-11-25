@@ -96,6 +96,37 @@ zwischen Gliedmaßen und Torso:
 
 ![G30 Kreaturen: Nahaufnahme](../../images/g30_creature_closeup.png)
 
+## G32 Showcase — Kreaturen auf korinthischen Säulen, fackelbeleuchtet
+
+Die G32-Pipeline (`procedural/creaturegen.hpp`, Design-Dokument:
+[docs/CREATURE_GENERATION.md](../../CREATURE_GENERATION.md)) erweitert G30: die allometrische
+`deriveBlueprint()` bildet ökologische Eingaben (Körpermasse, Fortbewegung, Ernährung, Klima)
+auf gekoppelte Proportionen ab (Knochenradius ~ M^0.36, Augenposition Jäger vs. Beute,
+Klima-Regeln für Fett/Fell), `buildBlueprintSkeleton()` ergänzt bilaterale Symmetrie +
+Mikro-Asymmetrie, `anatomySdf()` schichtet Knochen/Muskel/Haut (+ Schwerkraft-Sag),
+`extractSurface()` liefert Krümmungs- und Material-Masken, `bakeMaterial()` backt das
+Gray-Scott-Turing-Muster + Countershading UV-frei, und `solveTwoBoneIk()` /
+`creatureGaitPose()` treiben die Lokomotion. `examples/creature_showcase` rendert drei
+verschiedene G32-Kreaturen nebeneinander auf prozeduralen korinthischen Säulen in einer
+stockdunklen Halle, beleuchtet nur von flackernden Fackel-Punktlichtern mit G35-Flammpartikeln:
+
+```bash
+cmake --build build --target fuhglgraphics_creature_showcase
+FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_creature_showcase \
+    --prefix g32_creature_showcase --width 1280 --height 720 --frames 16
+```
+
+Weitwinkel — gehörnter Herbivore, Carnivore mit Frontalaugen und gestreifte Serpentine auf ihren Säulen:
+
+![G32 Showcase: Weitwinkel](../../images/g32_creature_showcase_wide.png)
+
+Nahaufnahme des Carnivoren im Profil — Turing-Flecken und Countershading im Fackellicht:
+
+![G32 Showcase: Nahaufnahme](../../images/g32_creature_showcase_closeup.png)
+
+- CI: `docs-screenshots` rendert `docs/images/ci/g32_creature_showcase_{wide,closeup}.png`,
+  per PSNR gegen die eingecheckten Referenzen oben gegated.
+
 ## Tests
 
 - `tests/test_procedural_creature.cpp` (Unit): Skeleton-finalize (Welt-Positionen akkumulieren,
