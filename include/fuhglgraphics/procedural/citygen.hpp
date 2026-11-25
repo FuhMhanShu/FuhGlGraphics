@@ -46,6 +46,12 @@ struct CityGenParams {
     float lotMaxSize = 13.f;       ///< OBB split stops when lots are smaller than this
     float lotMinSize = 5.f;        ///< lots smaller than this are merged away (become park)
     float houseCoverage = 0.8f;    ///< house footprint as a fraction of the lot
+    RoadSurface roadSurface = RoadSurface::Asphalt; ///< street material (texture app-side; cobble gets POM)
+    float roadIrregularity = 0.08f; ///< edge jitter of the street quads in world units (0 = straight)
+    float roadDamage = 0.25f;      ///< probability of a pothole (dark patch) per road edge
+    bool wetRoads = false;         ///< wet streets: render with low roughness + reflections
+    bool allowPathCuts = false;    ///< false: interior park lots never touch the road graph (roads
+                                   ///< stay uninterrupted); true: parks may reach the street edge
 };
 
 /// @brief Planar road graph: nodes are intersections (XZ), edges are street segments.
@@ -75,7 +81,10 @@ struct CityWorld {
 
     // stage 2: roads
     RoadGraph roads;
-    fuhgl::render::MeshData roadMesh;   ///< street quads (per edge) + intersection squares
+    fuhgl::render::MeshData roadMesh;   ///< sidewalk underlay + street quads (irregular edges,
+                                        ///< chosen surface, pothole patches) + intersection squares
+    RoadSurface roadSurface = RoadSurface::Asphalt; ///< echo of CityGenParams::roadSurface
+    bool wetRoads = false;                 ///< echo of CityGenParams::wetRoads
 
     // stage 3: blocks -> lots
     std::vector<Lot> lots;

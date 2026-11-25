@@ -309,6 +309,79 @@ void testDeterminismAndModes() {
     CHECK(generateWorld(cp).districts.vertexCount() == 0);
 }
 
+void testCityRoads() {
+    // default: plaza (path) tiles are dropped from the tile set, so paths can never
+    // interrupt the road network; the solved road cells form one connected component
+    WorldGenParams p = cityParams();
+    const GeneratedWorld w = generateWorld(p);
+    CHECK(w.roadSurface == p.roadSurface);
+    CHECK(w.wetRoads == p.wetRoads);
+    for (const auto& t : w.tiles) CHECK(t.name != "plaza");
+    CHECK(wfcRoadsConnected(w.cells, w.tiles, w.cityW, w.cityH));
+
+    // allowPathCuts=true keeps plaza tiles in the set and skips the connectivity repair, so
+    // the raw solve (possibly fragmented roads) is accepted as-is
+    WorldGenParams pc = cityParams();
+    pc.allowPathCuts = true;
+    const GeneratedWorld wc = generateWorld(pc);
+    bool hasPlazaTile = false;
+    for (const auto& t : wc.tiles)
+        if (t.name == "plaza") hasPlazaTile = true;
+    CHECK(hasPlazaTile);
+    for (const auto& c : wc.cells) CHECK(c.tile >= 0);
+
+    // synthetic connectivity checks: two streetH cells side by side share an "r" edge and are
+    // connected; two streetV cells side by side touch via "s" edges and are not
+    const std::vector<WfcTile> tiles = {
+        {"streetH", 1.f, {"r", "s", "r", "s"}},
+        {"streetV", 1.f, {"s", "r", "s", "r"}},
+    };
+    const std::vector<WfcCell> hh = {{0, 0}, {0, 0}};
+    CHECK(wfcRoadsConnected(hh, tiles, 2, 1));
+    const std::vector<WfcCell> vv = {{1, 0}, {1, 0}};
+    CHECK(!wfcRoadsConnected(vv, tiles, 2, 1));
+
+    // road damage: damage=1 adds a pothole quad on every street cell -> strictly more vertices
+    WorldGenParams pd = cityParams();
+    pd.roadDamage = 0.f;
+    const GeneratedWorld w0 = generateWorld(pd);
+    pd.roadDamage = 1.f;
+    const GeneratedWorld w1 = generateWorld(pd);
+    CHECK(w1.roads.vertexCount() > w0.roads.vertexCount());
+
+    // irregular street edges change the slab geometry
+    WorldGenParams pi = cityParams();
+    pi.roadIrregularity = 0.f;
+    const GeneratedWorld wi0 = generateWorld(pi);
+    pi.roadIrregularity = 0.06f;
+    const GeneratedWorld wi1 = generateWorld(pi);
+    CHECK(wi0.roads.vertices != wi1.roads.vertices);
+
+    // surface + wet flags are echoed and change the slab colors stored per vertex
+    WorldGenParams ps = cityParams();
+    ps.roadSurface = RoadSurface::Cobble;
+    ps.wetRoads = true;
+    const GeneratedWorld ws = generateWorld(ps);
+    CHECK(ws.roadSurface == RoadSurface::Cobble && ws.wetRoads);
+    const GeneratedWorld wa = generateWorld(cityParams()); // asphalt, dry
+    CHECK(ws.roads.vertices != wa.roads.vertices);
+
+    // roadSurfaceStyle: uv scale per surface, wet darkens the slab color
+    fuhgl::math::Vec3 cA, cW;
+    float uvA = 0.f, uvW = 0.f;
+    roadSurfaceStyle(RoadSurface::Asphalt, false, cA, uvA);
+    roadSurfaceStyle(RoadSurface::Asphalt, true, cW, uvW);
+    CHECK_NEAR(uvA, uvW, 1e-6f);
+    CHECK(cW.x < cA.x && cW.y < cA.y && cW.z < cA.z);
+    fuhgl::math::Vec3 cc, cp, cd;
+    float uvC = 0.f, uvP = 0.f, uvD = 0.f;
+    roadSurfaceStyle(RoadSurface::Cobble, false, cc, uvC);
+    roadSurfaceStyle(RoadSurface::Paving, false, cp, uvP);
+    roadSurfaceStyle(RoadSurface::Dirt, false, cd, uvD);
+    CHECK(uvA > 0.f && uvC > 0.f && uvP > 0.f && uvD > 0.f);
+    CHECK(uvC != uvA && uvP != uvA && uvD != uvA);
+}
+
 } // namespace
 
 void runProceduralWorldgenTests() {
@@ -320,4 +393,5 @@ void runProceduralWorldgenTests() {
     testHouseStyles();
     testCityTilesSolvable();
     testDeterminismAndModes();
+    testCityRoads();
 }

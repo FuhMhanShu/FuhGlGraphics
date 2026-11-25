@@ -58,11 +58,11 @@ float distPointSeg(const fuhgl::math::Vec2& p, const fuhgl::math::Vec2& a, const
 }
 
 void pushFlatVertex(fuhgl::render::MeshData& md, float x, float y, float z,
-                    const fuhgl::math::Vec3& c) {
+                    const fuhgl::math::Vec3& c, float uvScale = 1.f) {
     md.vertices.push_back(x); md.vertices.push_back(y); md.vertices.push_back(z);
     md.vertices.push_back(0.f); md.vertices.push_back(1.f); md.vertices.push_back(0.f);
     md.vertices.push_back(c.x); md.vertices.push_back(c.y); md.vertices.push_back(c.z);
-    md.vertices.push_back(x); md.vertices.push_back(z);
+    md.vertices.push_back(x * uvScale); md.vertices.push_back(z * uvScale);
 }
 
 // --- stage 1: terrain + zones --------------------------------------------------------------
@@ -142,29 +142,52 @@ RoadGraph buildRoads(const CityGenParams& p, const CityWorld& w, fuhgl::render::
             if (j + 1 < n) edge(i, j, i, j + 1);
         }
 
-    // road mesh: per edge a street quad (asphalt) on a wider sidewalk quad; per node a square
-    const fuhgl::math::Vec3 asphalt{0.09f, 0.09f, 0.10f}, walk{0.55f, 0.55f, 0.52f};
+    // road mesh: per edge a street quad on a wider sidewalk quad; per node a square.
+    // Street quads get irregular (jittered) edges, the chosen surface material with
+    // world-space uv, and occasional pothole patches (small dark quads).
+    fuhgl::math::Vec3 surfCol;
+    float uvScale = 0.25f;
+    roadSurfaceStyle(p.roadSurface, p.wetRoads, surfCol, uvScale);
+    const fuhgl::math::Vec3 walk{0.55f, 0.55f, 0.52f};
+    Rng rng(p.seed ^ 0xB0A2u);
     auto addQuad = [&](const fuhgl::math::Vec2& a, const fuhgl::math::Vec2& b, float width, float y,
-                       const fuhgl::math::Vec3& col) {
+                       const fuhgl::math::Vec3& col, float uvs, float jitter) {
         const fuhgl::math::Vec2 dir = b - a;
         const float len = std::sqrt(dot2(dir, dir));
         if (len < 1e-4f) return;
         const fuhgl::math::Vec2 side{-dir.y / len, dir.x / len}; // perpendicular
         const float hw = width * 0.5f;
-        const fuhgl::math::Vec2 p0 = a + side * hw, p1 = a - side * hw;
-        const fuhgl::math::Vec2 p2 = b - side * hw, p3 = b + side * hw;
+        const float j = jitter;
+        const fuhgl::math::Vec2 p0 = a + side * hw + fuhgl::math::Vec2{(rng.nextf() - 0.5f) * 2.f * j, (rng.nextf() - 0.5f) * 2.f * j};
+        const fuhgl::math::Vec2 p1 = a - side * hw + fuhgl::math::Vec2{(rng.nextf() - 0.5f) * 2.f * j, (rng.nextf() - 0.5f) * 2.f * j};
+        const fuhgl::math::Vec2 p2 = b - side * hw + fuhgl::math::Vec2{(rng.nextf() - 0.5f) * 2.f * j, (rng.nextf() - 0.5f) * 2.f * j};
+        const fuhgl::math::Vec2 p3 = b + side * hw + fuhgl::math::Vec2{(rng.nextf() - 0.5f) * 2.f * j, (rng.nextf() - 0.5f) * 2.f * j};
         const std::uint32_t base = static_cast<std::uint32_t>(roadMesh.vertexCount());
-        pushFlatVertex(roadMesh, p0.x, y, p0.y, col);
-        pushFlatVertex(roadMesh, p1.x, y, p1.y, col);
-        pushFlatVertex(roadMesh, p2.x, y, p2.y, col);
-        pushFlatVertex(roadMesh, p3.x, y, p3.y, col);
+        pushFlatVertex(roadMesh, p0.x, y, p0.y, col, uvs);
+        pushFlatVertex(roadMesh, p1.x, y, p1.y, col, uvs);
+        pushFlatVertex(roadMesh, p2.x, y, p2.y, col, uvs);
+        pushFlatVertex(roadMesh, p3.x, y, p3.y, col, uvs);
         roadMesh.indices.push_back(base); roadMesh.indices.push_back(base + 2); roadMesh.indices.push_back(base + 1);
         roadMesh.indices.push_back(base); roadMesh.indices.push_back(base + 3); roadMesh.indices.push_back(base + 2);
     };
     for (const auto& e : graph.edges) {
         const fuhgl::math::Vec2 a = graph.nodes[e.first], b = graph.nodes[e.second];
-        addQuad(a, b, p.roadWidth + 1.6f, plateauY + 0.02f, walk);   // sidewalk underlay
-        addQuad(a, b, p.roadWidth, plateauY + 0.05f, asphalt);       // asphalt
+        addQuad(a, b, p.roadWidth + 1.6f, plateauY + 0.02f, walk, 1.f, 0.f);   // sidewalk underlay
+        addQuad(a, b, p.roadWidth, plateauY + 0.05f, surfCol, uvScale, p.roadIrregularity);
+        if (rng.nextf() < p.roadDamage) {
+            // pothole: small dark square somewhere along the street segment
+            const float t = 0.25f + 0.5f * rng.nextf();
+            const fuhgl::math::Vec2 c = a + (b - a) * t;
+            const float hs = 0.25f + 0.3f * rng.nextf();
+            const std::uint32_t base = static_cast<std::uint32_t>(roadMesh.vertexCount());
+            const fuhgl::math::Vec3 dark{0.05f, 0.05f, 0.06f};
+            pushFlatVertex(roadMesh, c.x - hs, plateauY + 0.055f, c.y - hs, dark, uvScale);
+            pushFlatVertex(roadMesh, c.x + hs, plateauY + 0.055f, c.y - hs, dark, uvScale);
+            pushFlatVertex(roadMesh, c.x + hs, plateauY + 0.055f, c.y + hs, dark, uvScale);
+            pushFlatVertex(roadMesh, c.x - hs, plateauY + 0.055f, c.y + hs, dark, uvScale);
+            roadMesh.indices.push_back(base); roadMesh.indices.push_back(base + 2); roadMesh.indices.push_back(base + 1);
+            roadMesh.indices.push_back(base); roadMesh.indices.push_back(base + 3); roadMesh.indices.push_back(base + 2);
+        }
     }
     for (const auto& nd : graph.nodes) {
         const float h = p.roadWidth * 0.5f + 0.8f;
@@ -201,7 +224,10 @@ void splitIntoLots(const std::vector<fuhgl::math::Vec2>& block, const CityGenPar
             }
             if (lot.hasAccess) break;
         }
-        if (!lot.hasAccess || area < p.lotMinSize * p.lotMinSize * 0.6f) lot.park = true;
+        // interior lots become parks; tiny lots with road access become "path" lots reaching
+        // the street ONLY when allowPathCuts is set — otherwise roads stay uninterrupted
+        const bool tiny = area < p.lotMinSize * p.lotMinSize * 0.6f;
+        if (!lot.hasAccess || (tiny && p.allowPathCuts)) lot.park = true;
         out.push_back(std::move(lot));
         return;
     }
@@ -360,6 +386,8 @@ float CityWorld::wealthAt(float x, float z) const { return bilinear(wealth, grid
 CityWorld generateCityWorld(const CityGenParams& p) {
     CityWorld w;
     buildTerrainAndZones(p, w);
+    w.roadSurface = p.roadSurface;
+    w.wetRoads = p.wetRoads;
     w.roads = buildRoads(p, w, w.roadMesh);
 
     // blocks = grid cells whose four corner nodes survived the water mask; rebuild the
