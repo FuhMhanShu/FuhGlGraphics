@@ -168,6 +168,7 @@ HouseGenerator::Params HouseGenerator::randomParams(HouseStyle style, float cell
     Params p;
     p.style = style;
     p.seed = seed;
+    p.facade = static_cast<FacadeMaterial>(rng.next() % 3u); // brick / plaster / stone
     const float foot = cellSize * 0.62f;
     p.width = foot * rng.range(0.75f, 1.0f);
     p.depth = foot * rng.range(0.75f, 1.0f);
@@ -195,9 +196,31 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
     hm.spec.wallHeight = wallH;
     const Palette pal = pickPalette(p.style, rng);
 
-    // --- walls ---
+    // --- walls (with a slight per-vertex jitter = bump-like relief on the facade) ---
     hm.walls = fuhgl::render::shapes::boxData({w * 0.5f, wallH * 0.5f, d * 0.5f}, pal.wall);
     shiftY(hm.walls, wallH * 0.5f);
+    hm.spec.facade = p.facade;
+    if (p.wallIrregularity > 0.f) {
+        hm.spec.wallIrregular = true;
+        for (std::size_t i = 0; i < hm.walls.vertexCount(); ++i) {
+            float* v = &hm.walls.vertices[i * 11];
+            v[0] += (rng.nextf() - 0.5f) * 2.f * p.wallIrregularity;
+            v[2] += (rng.nextf() - 0.5f) * 2.f * p.wallIrregularity;
+        }
+    }
+    // facade material detail: stone gets relief courses, plaster a plinth band (brick relies
+    // on the app-side POM brick set)
+    if (p.facade == FacadeMaterial::Stone) {
+        const fuhgl::math::Vec3 stoneDark = pal.wall * 0.82f;
+        for (float y = 0.35f; y < wallH; y += 0.55f)
+            for (int s = -1; s <= 1; s += 2) // front + back
+                appendBox(hm.details, {w * 0.5f + 0.014f, 0.07f, 0.014f},
+                          {0.f, y, s * (d * 0.5f + 0.014f)}, stoneDark);
+    } else if (p.facade == FacadeMaterial::Plaster) {
+        const fuhgl::math::Vec3 plinth = pal.wall * 0.7f;
+        appendBox(hm.details, {w * 0.5f + 0.02f, 0.28f, 0.02f}, {0.f, 0.28f, d * 0.5f + 0.02f}, plinth);
+        appendBox(hm.details, {w * 0.5f + 0.02f, 0.28f, 0.02f}, {0.f, 0.28f, -d * 0.5f - 0.02f}, plinth);
+    }
 
     // --- door (front = +z) ---
     appendBox(hm.details, {0.45f, 0.95f, 0.04f}, {0.f, 0.95f, d * 0.5f + 0.03f}, pal.door);
@@ -212,6 +235,9 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
                 const float y = 1.4f + static_cast<float>(r) * p.floorHeight * 0.72f;
                 appendBox(hm.details, {0.42f, 0.62f, 0.03f}, {x, y, d * 0.5f + 0.02f}, pal.window);
                 appendBox(hm.details, {0.42f, 0.62f, 0.03f}, {x, y, -d * 0.5f - 0.02f}, pal.window);
+                // glass panes in their own mesh -> the app attaches a reflective material
+                appendBox(hm.glass, {0.36f, 0.56f, 0.015f}, {x, y, d * 0.5f + 0.035f}, pal.window);
+                appendBox(hm.glass, {0.36f, 0.56f, 0.015f}, {x, y, -d * 0.5f - 0.035f}, pal.window);
             }
         float top = wallH;
         if (rng.nextf() < 0.5f) { // setback: smaller upper box
@@ -231,13 +257,28 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
         return hm;
     }
 
-    // --- windows per floor, front + back ---
+    // --- windows per floor, front + back: frame in details, glass pane in hm.glass,
+    //     optional shutters (Fensterläden) flanking each window ---
+    const bool shutters = p.style != HouseStyle::Highrise && rng.nextf() < 0.5f;
+    hm.spec.hasShutters = shutters;
     for (int f = 0; f < p.floors; ++f) {
         const float y = p.floorHeight * (0.45f + f * 1.0f);
         if (y > wallH - 0.7f) break;
         for (int s = -1; s <= 1; s += 2) {
-            appendBox(hm.details, {0.30f, 0.42f, 0.03f}, {s * w * 0.24f, y, d * 0.5f + 0.02f}, pal.window);
-            appendBox(hm.details, {0.30f, 0.42f, 0.03f}, {s * w * 0.24f, y, -d * 0.5f - 0.02f}, pal.window);
+            const float wx = s * w * 0.24f;
+            appendBox(hm.details, {0.30f, 0.42f, 0.03f}, {wx, y, d * 0.5f + 0.02f}, pal.window);
+            appendBox(hm.details, {0.30f, 0.42f, 0.03f}, {wx, y, -d * 0.5f - 0.02f}, pal.window);
+            appendBox(hm.glass, {0.25f, 0.36f, 0.015f}, {wx, y, d * 0.5f + 0.045f}, pal.window);
+            appendBox(hm.glass, {0.25f, 0.36f, 0.015f}, {wx, y, -d * 0.5f - 0.045f}, pal.window);
+            if (shutters) {
+                const fuhgl::math::Vec3 shutterCol = pal.beam * 1.15f + fuhgl::math::Vec3{0.1f, 0.12f, 0.1f};
+                for (int side = -1; side <= 1; side += 2) {
+                    appendBox(hm.details, {0.09f, 0.42f, 0.02f},
+                              {wx + side * 0.42f, y, d * 0.5f + 0.03f}, shutterCol);
+                    appendBox(hm.details, {0.09f, 0.42f, 0.02f},
+                              {wx + side * 0.42f, y, -d * 0.5f - 0.03f}, shutterCol);
+                }
+            }
         }
     }
 
@@ -255,6 +296,66 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
         hm.spec.roofType = RoofType::Hipped;
     }
     shiftY(hm.roof, wallH);
+
+    // --- Dachrinne: gutter along the eaves + one downpipe at the front-right corner ---
+    if (rng.nextf() < 0.85f) {
+        hm.spec.hasGutter = true;
+        const fuhgl::math::Vec3 metal{0.55f, 0.57f, 0.60f};
+        const float eaveZ = d * 0.5f + 0.14f;
+        if (hm.spec.roofType == RoofType::Shed) {
+            appendBox(hm.details, {w * 0.5f + 0.18f, 0.06f, 0.07f}, {0.f, wallH + 0.02f, eaveZ}, metal);
+        } else {
+            appendBox(hm.details, {w * 0.5f + 0.18f, 0.06f, 0.07f}, {0.f, wallH - 0.04f, eaveZ}, metal);
+            appendBox(hm.details, {w * 0.5f + 0.18f, 0.06f, 0.07f}, {0.f, wallH - 0.04f, -eaveZ}, metal);
+        }
+        appendBox(hm.details, {0.06f, wallH * 0.5f, 0.06f}, {w * 0.5f + 0.12f, wallH * 0.5f, eaveZ}, metal);
+    }
+
+    // --- Garage: side box with its own lean-to roof and a roller door ---
+    if (p.style != HouseStyle::Highrise && rng.nextf() < 0.35f) {
+        hm.spec.hasGarage = true;
+        const float gw2 = std::min(3.4f, w * 0.6f), gd = d * 0.9f, gh = 2.5f;
+        const float gx = w * 0.5f + gw2 * 0.5f - 0.05f;
+        fuhgl::render::MeshData garage = fuhgl::render::shapes::boxData({gw2 * 0.5f, gh * 0.5f, gd * 0.5f}, pal.wall);
+        shiftY(garage, gh * 0.5f);
+        appendTransformed(hm.walls, garage, fuhgl::math::translate({gx, 0.f, 0.f}));
+        fuhgl::render::MeshData gr = shedRoof(gw2, gd, 0.7f, pal.roof);
+        shiftY(gr, gh);
+        appendTransformed(hm.roof, gr, fuhgl::math::translate({gx, 0.f, 0.f}));
+        // roller door on the garage front (facing -x toward the street side is fine visually)
+        appendBox(hm.details, {0.03f, 1.05f, gw2 * 0.42f}, {gx - gw2 * 0.5f - 0.02f, 1.05f, 0.f},
+                  pal.door);
+        for (int l = 0; l < 5; ++l) // door slats
+            appendBox(hm.details, {0.045f, 0.05f, gw2 * 0.42f},
+                      {gx - gw2 * 0.5f - 0.035f, 0.35f + l * 0.4f, 0.f}, pal.beam);
+    }
+
+    // --- balcony with balcony door on an upper floor (front = +z) ---
+    if (p.floors >= 2 && p.style != HouseStyle::Highrise && rng.nextf() < 0.4f) {
+        hm.spec.hasBalcony = true;
+        const float by = p.floorHeight * 1.05f; // first upper floor
+        const float bx = rng.range(-w * 0.15f, w * 0.15f);
+        const float bw2 = std::min(1.7f, w * 0.4f), bd2 = 0.85f;
+        appendBox(hm.details, {bw2 * 0.5f, 0.05f, bd2 * 0.5f}, {bx, by, d * 0.5f + bd2 * 0.5f},
+                  pal.wall * 0.9f); // slab
+        // railing: bars + top rail on the three open sides
+        const fuhgl::math::Vec3 railCol = pal.beam;
+        for (int i = 0; i <= 4; ++i) {
+            const float rx = bx - bw2 * 0.5f + (bw2 * i / 4.f);
+            appendBox(hm.details, {0.015f, 0.45f, 0.015f}, {rx, by + 0.5f, d * 0.5f + bd2}, railCol);
+        }
+        appendBox(hm.details, {bw2 * 0.5f, 0.03f, 0.02f}, {bx, by + 0.95f, d * 0.5f + bd2}, railCol);
+        for (int i = 0; i <= 2; ++i) {
+            const float rz = d * 0.5f + bd2 * i / 2.f;
+            appendBox(hm.details, {0.015f, 0.45f, 0.015f}, {bx - bw2 * 0.5f, by + 0.5f, rz}, railCol);
+            appendBox(hm.details, {0.015f, 0.45f, 0.015f}, {bx + bw2 * 0.5f, by + 0.5f, rz}, railCol);
+        }
+        appendBox(hm.details, {0.02f, 0.03f, bd2 * 0.5f}, {bx - bw2 * 0.5f, by + 0.95f, d * 0.5f + bd2 * 0.5f}, railCol);
+        appendBox(hm.details, {0.02f, 0.03f, bd2 * 0.5f}, {bx + bw2 * 0.5f, by + 0.95f, d * 0.5f + bd2 * 0.5f}, railCol);
+        // balcony door (taller than a window) + its glass
+        appendBox(hm.details, {0.22f, 0.52f, 0.03f}, {bx, by + 0.42f, d * 0.5f + 0.02f}, pal.door);
+        appendBox(hm.glass, {0.18f, 0.46f, 0.015f}, {bx, by + 0.46f, d * 0.5f + 0.045f}, pal.window);
+    }
 
     // --- features ---
     if (p.style == HouseStyle::Village && rng.nextf() < 0.45f) {
