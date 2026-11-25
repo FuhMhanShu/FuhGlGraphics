@@ -105,9 +105,15 @@ proportions (bone radius ~ M^0.36, predator vs. prey eye position, climate fat/f
 `buildBlueprintSkeleton()` adds bilateral symmetry + micro-asymmetry, `anatomySdf()` layers
 bone/muscle/skin anchors (+ gravity sag), `extractSurface()` adds curvature and material
 masks, `bakeMaterial()` bakes the Gray-Scott Turing pattern + countershading UV-free, and
-`solveTwoBoneIk()` / `creatureGaitPose()` drive locomotion. `examples/creature_showcase`
-renders three different G32 creatures side by side on procedural Corinthian columns in a
-pitch-dark hall, lit only by flickering torch point lights with G35 flame particles:
+`solveTwoBoneIk()` / `creatureGaitPose()` drive locomotion. Colors and patterns are derived
+from the ecology by `derivePalette()` (biome background matching + Gloger's rule +
+aposematism/nocturnal shifts, HSV harmony: belly/pattern/accent) and `derivePattern()`
+(Gray-Scott feed/kill preset picked by the vegetation structure, Voronoi cells on rock,
+countershading only in open terrain, Murray's-law rings on thin parts).
+`examples/creature_showcase` renders three different G32 creatures (savanna herbivore with
+stripes, nocturnal forest carnivore with spots, desert serpentine with countershading) side
+by side on procedural Corinthian columns in a pitch-dark hall, lit only by flickering torch
+point lights with G35 flame particles:
 
 ```bash
 cmake --build build --target fuhglgraphics_creature_showcase

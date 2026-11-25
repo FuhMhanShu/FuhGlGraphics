@@ -106,9 +106,15 @@ Klima-Regeln für Fett/Fell), `buildBlueprintSkeleton()` ergänzt bilaterale Sym
 Mikro-Asymmetrie, `anatomySdf()` schichtet Knochen/Muskel/Haut (+ Schwerkraft-Sag),
 `extractSurface()` liefert Krümmungs- und Material-Masken, `bakeMaterial()` backt das
 Gray-Scott-Turing-Muster + Countershading UV-frei, und `solveTwoBoneIk()` /
-`creatureGaitPose()` treiben die Lokomotion. `examples/creature_showcase` rendert drei
-verschiedene G32-Kreaturen nebeneinander auf prozeduralen korinthischen Säulen in einer
-stockdunklen Halle, beleuchtet nur von flackernden Fackel-Punktlichtern mit G35-Flammpartikeln:
+`creatureGaitPose()` treiben die Lokomotion. Farben und Muster kommen aus der Ökologie über
+`derivePalette()` (Biom-Hintergrundabgleich + Glogersche Regel + Aposematismus/Nachtaktiv-Shift,
+HSV-Harmonie: Bauch/Muster/Akzent) und `derivePattern()` (Gray-Scott-Feed/Kill-Preset je nach
+Vegetationsstruktur, Voronoi-Zellen auf Fels, nur Countershading im offenen Gelände,
+Murray-Ringe an dünnen Teilen). `examples/creature_showcase` rendert drei verschiedene
+G32-Kreaturen (Savannen-Herbivore mit Streifen, nachtaktiver Wald-Carnivore mit Flecken,
+Wüsten-Serpentine mit Countershading) nebeneinander auf prozeduralen korinthischen Säulen in
+einer stockdunklen Halle, beleuchtet nur von flackernden Fackel-Punktlichtern mit
+G35-Flammpartikeln:
 
 ```bash
 cmake --build build --target fuhglgraphics_creature_showcase

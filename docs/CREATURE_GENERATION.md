@@ -253,9 +253,68 @@ The result `m(p) ∈ [0,1]` blends two palette colors (e.g. dark spots on a ligh
 - **Curvature darkening in folds**: multiply by `1 − c_dark · max(0, −H(p))` using the
   curvature mask from §3.3 — creases and scale grooves darken automatically.
 - **Material transitions**: where the material mask is keratin, override with a pale,
-  low-saturation color and lower roughness (hard, smooth horn/claw vs. skin/fur); fur is
-  expressed as high-frequency bump only (no color change) with density from the blueprint.
+  low-saturation color and lower roughness (hard, smooth horn/claw vs. skin/fur); the accent
+  color is applied only to small masked regions (eyes, combs — a few % of the surface); fur
+  is expressed as high-frequency bump only (no color change) with density from the blueprint.
 - Low-frequency fBm variation multiplies everything to break up uniformity.
+
+### 4.3 Ecology → color mapper (biological camouflage rules)
+
+Animal colors follow strict evolutionary rules, not chance. The mapper takes the ecological
+input (`biome, mass, predator/prey, day/night, toxic`) and derives the palette:
+
+- **Background matching**: the base color is the dominant color of the spawn biome
+  (ochre/beige desert, moss-green/bark-brown forest, white/blue-grey tundra, blue-grey ocean).
+- **Gloger's rule** (humidity × temperature): the warmer *and* more humid the biome, the
+  darker and more saturated the pigments (melanin rise in tropical forests); dry, cold
+  regions get lighter, paler colors.
+- **Aposematism vs. camouflage**: large animals / herbivores get muted, desaturated earth
+  tones (low saturation, medium contrast); small toxic/defended animals (`toxic = true`,
+  small mass) invert the rule — maximal saturation and hard contrast (black + yellow/red).
+- **Nocturnal** (`nocturnal = true`): shift into the cool spectrum (blue-grey, deep black,
+  violet tint) with clearly lower brightness.
+
+### 4.4 Gray–Scott presets & Murray's-law coupling
+
+The same reaction–diffusion algorithm produces biologically exact patterns from just the
+feed/kill rates `(f, k)`:
+
+| f | k | pattern | like |
+|---|---|---|---|
+| 0.055 | 0.062 | coral / labyrinth | pufferfish |
+| 0.035 | 0.065 | spots | leopard / cheetah |
+| 0.025 | 0.050 | stripes | zebra / tiger |
+| 0.014 | 0.054 | networks | giraffe |
+
+**Murray's law** (pattern depends on body-part thickness): the pattern domain is sampled
+faster along the body axis where the local part radius is small — a thin tail automatically
+gets rings (raccoon), the wide torso keeps spots. Feature size also scales with body mass
+(bigger animal → larger, rarer features).
+
+### 4.5 Environment → pattern rules
+
+- Dense vegetation (jungle/forest, leaf-shadow dappling) → spots/rosettes to dissolve the
+  silhouette in the light/shadow play.
+- Tall grass / reeds (savanna/steppe) → pattern coordinates stretched vertically → stripes.
+- Open terrain (desert/ocean/tundra, no sharp shadows) → no hard pattern; soft
+  countershading + fine grain only.
+- Rocky mountains (sharp rock edges) → Voronoi/cell pattern with hard color contrast
+  (disruptive coloration).
+
+### 4.6 Harmonic palettes in HSV
+
+All palette math happens in HSV (never raw RGB), with fixed harmony rules so colors never
+look artificially bright:
+
+1. **Base**: from the biome (background matching + Gloger + aposematism/nocturnal shifts).
+2. **Belly**: same/slightly warmer hue (+5°), saturation halved, value ≈ 0.8.
+3. **Pattern**: hue +10…20° (analogous), slightly higher saturation, value 0.15 (dark) or
+   0.85 (light variant).
+4. **Accent** (eyes, combs, display traits): complementary hue (+180°), high saturation,
+   limited to ≤ 5–10 % of the body surface via the vertex material mask.
+
+Material gloss follows humidity: wet (amphibians/reptiles) → glossy low roughness, dry
+fur/desert → matte.
 
 Output: baked RGBA8 **albedo** and tangent-space **normal map** (from a height field =
 fBm + Worley groove term, gradient via central differences on the `(u,v)` grid, wrapping
@@ -327,19 +386,23 @@ parameters (cycle frequency, stride length, lift) scale with body mass
 
 | Structure | Content |
 |---|---|
-| `Ecology` | mass, locomotion, diet, climate, seed |
+| `Ecology` | mass, locomotion, diet, climate, biome, nocturnal, toxic, seed |
+| `BiomeInfo` | biome base color, humidity, temperature, vegetation, structure flags |
 | `Blueprint` | coupled proportion vector `B` (allometry output) |
 | `SkeletonNode` / `Skeleton` | joint tree: parent, local offset, radius, ellipsoid, body part, blend |
 | `Anatomy` | layer blend radii, sag, detail amplitudes/frequencies, seed |
 | `SurfaceMasks` | mesh + per-vertex normal, curvature, material id |
-| `Palette` / `Pattern` / `BakedMaps` | colors, Turing parameters, baked albedo/normal/material |
+| `Palette` | dorsal/ventral/pattern/accent/keratin (HSV-derived) + roughness, fur |
+| `Pattern` | Gray-Scott f/k, mode (RD/Voronoi/countershading), strength, frequency scale, Murray coupling |
+| `BakedMaps` | baked albedo/normal/material maps |
 | `Gait` / `Pose` | phases, stride, wave/breath params; per-frame joint positions |
 
 ## 7. Mapping to this library (implementation notes)
 
 - `procedural/creaturegen.hpp` implements §1–§5 as pure CPU functions on top of G24
   (`Noise`), G25 (`sampleField`/`marchingCubes`), G29 (`sdf::smoothMin`) and the G30
-  `Skeleton` type; deterministic per seed, no GL required.
+  `Skeleton` type; deterministic per seed, no GL required. §4.3–§4.6 are
+  `biomeInfo()` / `derivePalette()` / `derivePattern()` feeding `bakeMaterial()`.
 - Unit tests (`tests/test_procedural_creaturegen.cpp`): allometry monotonicity, bilateral
   symmetry of the generated skeleton, SDF sign inside/outside + determinism, mesh validity
   + unit normals + keratin mask, Turing pattern range/determinism, countershading

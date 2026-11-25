@@ -18,7 +18,10 @@ namespace {
 
 using fuhglgraphics::procedural::Anatomy;
 using fuhglgraphics::procedural::BakedMaps;
+using fuhglgraphics::procedural::CreatureBiome;
+using fuhglgraphics::procedural::BiomeInfo;
 using fuhglgraphics::procedural::Blueprint;
+using fuhglgraphics::procedural::PatternMode;
 using fuhglgraphics::procedural::Climate;
 using fuhglgraphics::procedural::Diet;
 using fuhglgraphics::procedural::Ecology;
@@ -30,7 +33,10 @@ using fuhglgraphics::procedural::Skeleton;
 using fuhglgraphics::procedural::SurfaceMaterial;
 using fuhglgraphics::procedural::anatomySdf;
 using fuhglgraphics::procedural::bakeMaterial;
+using fuhglgraphics::procedural::biomeInfo;
 using fuhglgraphics::procedural::buildBlueprintSkeleton;
+using fuhglgraphics::procedural::derivePalette;
+using fuhglgraphics::procedural::derivePattern;
 using fuhglgraphics::procedural::creatureGaitPose;
 using fuhglgraphics::procedural::deriveBlueprint;
 using fuhglgraphics::procedural::extractSurface;
@@ -40,6 +46,31 @@ using fuhgl::math::Vec3;
 
 float lum(const unsigned char* p) {
     return 0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2];
+}
+
+float lum(const Vec3& c) { return 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z; }
+
+float satOf(const Vec3& c) {
+    const float mx = std::fmax(c.x, std::fmax(c.y, c.z));
+    const float mn = std::fmin(c.x, std::fmin(c.y, c.z));
+    return mx > 1e-6f ? (mx - mn) / mx : 0.f;
+}
+
+float hueOf(const Vec3& c) {
+    const float mx = std::fmax(c.x, std::fmax(c.y, c.z));
+    const float mn = std::fmin(c.x, std::fmin(c.y, c.z));
+    const float d = mx - mn;
+    if (d < 1e-6f) return 0.f;
+    float h = 0.f;
+    if (mx == c.x) h = 60.f * std::fmod((c.y - c.z) / d, 6.f);
+    else if (mx == c.y) h = 60.f * ((c.z - c.x) / d + 2.f);
+    else h = 60.f * ((c.x - c.y) / d + 4.f);
+    return h < 0.f ? h + 360.f : h;
+}
+
+float hueDist(float a, float b) {
+    float d = std::fabs(a - b);
+    return d > 180.f ? 360.f - d : d;
 }
 
 Skeleton demoSkeleton() {
@@ -327,6 +358,152 @@ void testGaitPose() {
             CHECK(p4[i].y >= -1e-4f && p4[i].y <= gait.liftHeight + 1e-4f);
 }
 
+void testBiomeAndPalette() {
+    // biome dominant colors: desert ochre (r>g>b), jungle green (g dominant), tundra pale
+    const BiomeInfo desert = biomeInfo(CreatureBiome::Desert);
+    CHECK(desert.baseColor.x > desert.baseColor.y && desert.baseColor.y > desert.baseColor.z);
+    const BiomeInfo jungle = biomeInfo(CreatureBiome::Jungle);
+    CHECK(jungle.baseColor.y > jungle.baseColor.x && jungle.baseColor.y > jungle.baseColor.z);
+    const BiomeInfo tundra = biomeInfo(CreatureBiome::Tundra);
+    CHECK(lum(tundra.baseColor) > 0.7f && satOf(tundra.baseColor) < 0.2f);
+    CHECK(biomeInfo(CreatureBiome::Savanna).verticalStalks);
+    CHECK(biomeInfo(CreatureBiome::Mountains).rocky);
+
+    // background matching: the palette base starts at the biome color
+    Ecology eco;
+    eco.biome = CreatureBiome::Desert;
+    eco.bodyMassKg = 20.f;
+    const fuhglgraphics::procedural::Palette pDesert = derivePalette(eco);
+    CHECK(hueDist(hueOf(pDesert.dorsal), hueOf(desert.baseColor)) < 25.f);
+
+    // Gloger's rule: jungle (warm+humid) darker and more saturated than tundra (cold+dry)
+    eco.biome = CreatureBiome::Jungle;
+    const fuhglgraphics::procedural::Palette pJungle = derivePalette(eco);
+    eco.biome = CreatureBiome::Tundra;
+    const fuhglgraphics::procedural::Palette pTundra = derivePalette(eco);
+    CHECK(lum(pJungle.dorsal) < lum(pTundra.dorsal));
+    CHECK(satOf(pJungle.dorsal) > satOf(pTundra.dorsal));
+
+    // nocturnal: cool shift (blue channel >= red) and clearly darker than diurnal
+    eco.biome = CreatureBiome::TemperateForest;
+    const fuhglgraphics::procedural::Palette pDay = derivePalette(eco);
+    eco.nocturnal = true;
+    const fuhglgraphics::procedural::Palette pNight = derivePalette(eco);
+    CHECK(pNight.dorsal.z >= pNight.dorsal.x);
+    CHECK(lum(pNight.dorsal) < lum(pDay.dorsal) * 0.8f);
+
+    // aposematism: small toxic -> max-saturation pattern color, hard contrast to the base
+    eco = Ecology{};
+    eco.bodyMassKg = 2.f;
+    eco.toxic = true;
+    const fuhglgraphics::procedural::Palette pTox = derivePalette(eco);
+    CHECK(satOf(pTox.patternColor) > 0.8f);
+    const Vec3 dc = pTox.patternColor - pTox.dorsal;
+    CHECK(fuhgl::math::length(dc) > 0.4f); // hard contrast in RGB space
+    // large herbivore -> muted, desaturated earth tones (lower saturation than a small one)
+    eco.toxic = false;
+    eco.bodyMassKg = 500.f;
+    eco.diet = Diet::Herbivore;
+    const fuhglgraphics::procedural::Palette pBig = derivePalette(eco);
+    eco.bodyMassKg = 2.f;
+    eco.diet = Diet::Omnivore;
+    const fuhglgraphics::procedural::Palette pSmall = derivePalette(eco);
+    CHECK(satOf(pBig.dorsal) < satOf(pSmall.dorsal));
+
+    // HSV harmony: belly = brighter (V~0.8) at ~half saturation; accent ~ complementary (+180)
+    CHECK(lum(pDesert.ventral) > 0.7f);
+    CHECK(satOf(pDesert.ventral) <= satOf(pDesert.dorsal) * 0.6f + 0.05f);
+    CHECK_NEAR(hueDist(hueOf(pDesert.accent), hueOf(pDesert.dorsal)), 180.f, 30.f);
+    CHECK_NEAR(hueDist(hueOf(pDesert.patternColor), hueOf(pDesert.dorsal)), 15.f, 8.f);
+
+    // roughness from humidity: humid jungle glossier than dry desert
+    CHECK(derivePalette([] { Ecology e; e.biome = CreatureBiome::Jungle; return e; }()).roughness <
+          pDesert.roughness);
+}
+
+void testDerivePattern() {
+    Ecology eco;
+    eco.bodyMassKg = 20.f;
+    // dense vegetation -> leopard spots preset
+    eco.biome = CreatureBiome::Jungle;
+    fuhglgraphics::procedural::Pattern pt = derivePattern(eco, 1u);
+    CHECK(pt.mode == PatternMode::ReactionDiffusion);
+    CHECK_NEAR(pt.feed, 0.035f, 1e-5f);
+    CHECK_NEAR(pt.kill, 0.065f, 1e-5f);
+    // tall grass -> zebra/tiger stripes preset + vertical anisotropy
+    eco.biome = CreatureBiome::Savanna;
+    pt = derivePattern(eco, 1u);
+    CHECK_NEAR(pt.feed, 0.025f, 1e-5f);
+    CHECK_NEAR(pt.kill, 0.050f, 1e-5f);
+    CHECK(pt.anisotropy >= 3.f);
+    // rocky mountains -> Voronoi disruptive cells
+    eco.biome = CreatureBiome::Mountains;
+    pt = derivePattern(eco, 1u);
+    CHECK(pt.mode == PatternMode::VoronoiCells);
+    // open terrain -> countershading only (no hard pattern)
+    eco.biome = CreatureBiome::Desert;
+    pt = derivePattern(eco, 1u);
+    CHECK(pt.mode == PatternMode::CountershadingOnly);
+    CHECK(pt.strength == 0.f);
+    // body size -> feature size: heavier animal -> smaller frequencyScale (larger features)
+    eco.biome = CreatureBiome::Jungle;
+    const float fsSmall = derivePattern(eco, 1u).frequencyScale;
+    eco.bodyMassKg = 500.f;
+    const float fsBig = derivePattern(eco, 1u).frequencyScale;
+    CHECK(fsBig < fsSmall);
+    // Murray coupling on by default
+    CHECK(derivePattern(eco, 1u).murrayCoupling);
+    // the presets really produce different Turing masks
+    fuhglgraphics::procedural::Pattern a, b;
+    a.feed = 0.035f; a.kill = 0.065f; a.iterations = 300;
+    b.feed = 0.025f; b.kill = 0.050f; b.iterations = 300;
+    CHECK(reactionDiffusion(a) != reactionDiffusion(b));
+}
+
+void testBakeModes() {
+    const Skeleton s = demoSkeleton();
+    Anatomy an;
+    an.seed = 5u;
+    Ecology eco;
+    eco.bodyMassKg = 80.f;
+    eco.diet = Diet::Herbivore;
+    eco.biome = CreatureBiome::Mountains;
+    const Palette pal = derivePalette(eco);
+    const int S = 64;
+    // Voronoi mode: hard cell pattern -> strong albedo variation
+    Pattern pt = derivePattern(eco, 3u);
+    const BakedMaps mv = bakeMaterial(s, an, pal, pt, S);
+    CHECK(mv.material.size() == static_cast<std::size_t>(S) * S);
+    double mean = 0.0, var = 0.0;
+    for (std::size_t i = 0; i < mv.albedo.size(); i += 4) mean += mv.albedo[i];
+    mean /= mv.albedo.size() / 4;
+    for (std::size_t i = 0; i < mv.albedo.size(); i += 4) {
+        const double d = mv.albedo[i] - mean;
+        var += d * d;
+    }
+    var /= mv.albedo.size() / 4;
+    CHECK(var > 25.0); // real pattern, not a flat fill
+    // countershading-only mode (desert): still dorsal-darker-than-ventral, deterministic
+    eco.biome = CreatureBiome::Desert;
+    const Palette palD = derivePalette(eco);
+    Pattern ptD = derivePattern(eco, 3u);
+    CHECK(ptD.mode == PatternMode::CountershadingOnly);
+    const BakedMaps md = bakeMaterial(s, an, palD, ptD, S);
+    const BakedMaps md2 = bakeMaterial(s, an, palD, ptD, S);
+    CHECK(md.albedo == md2.albedo);
+    double backSum = 0.0, bellySum = 0.0;
+    int cnt = 0;
+    for (int j = 0; j < S; ++j)
+        for (int i = 0; i < S; ++i) {
+            const float u = (i + 0.5f) / S;
+            const std::size_t idx = (static_cast<std::size_t>(j) * S + i) * 4;
+            if (u > 0.70f && u < 0.80f) backSum += lum(&md.albedo[idx]);
+            if (u > 0.20f && u < 0.30f) bellySum += lum(&md.albedo[idx]);
+            ++cnt;
+        }
+    CHECK(backSum / (cnt / 8.0) < bellySum / (cnt / 8.0));
+}
+
 } // namespace
 
 void runProceduralCreaturegenTests() {
@@ -336,6 +513,9 @@ void runProceduralCreaturegenTests() {
     testExtractSurface();
     testReactionDiffusion();
     testBakeMaterial();
+    testBiomeAndPalette();
+    testDerivePattern();
+    testBakeModes();
     testIk();
     testGaitPose();
 }

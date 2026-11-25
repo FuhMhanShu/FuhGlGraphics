@@ -119,16 +119,18 @@ fuhgl::Texture makeNightSky(int size, const fuhglgraphics::procedural::Noise& no
     return cube;
 }
 
-// one G32 creature: ecology -> blueprint -> skeleton -> layered SDF -> surface + baked maps
+// one G32 creature: ecology -> blueprint -> skeleton -> layered SDF -> surface; palette and
+// pattern come from the ecology mappers (biome colors + Gloger/aposematism/nocturnal rules,
+// Gray-Scott preset by vegetation structure) -> baked UV-free maps
 struct CreatureActor {
     fuhgl::render::Mesh mesh;
     fuhgl::Texture albedoTex, normalTex;
     Vec3 headLocal{0.f, 0.f, 0.f};
+    float roughness = 0.55f;
 };
 
 CreatureActor buildG32Creature(const fuhglgraphics::procedural::Ecology& eco, unsigned seed,
-                               const fuhglgraphics::procedural::Palette& pal, int meshRes,
-                               int mapSize, float stripeAnisotropy) {
+                               int meshRes, int mapSize) {
     using namespace fuhglgraphics::procedural;
     const Blueprint bp = deriveBlueprint(eco, seed);
     const Skeleton skel = buildBlueprintSkeleton(bp);
@@ -137,22 +139,23 @@ CreatureActor buildG32Creature(const fuhglgraphics::procedural::Ecology& eco, un
     an.detailAmp = 0.012f;
     an.scaleAmp = 0.010f;
     an.scaleFreq = 10.f;
+    const Palette pal = derivePalette(eco);
+    Pattern pt = derivePattern(eco, seed * 7u + 1u);
+    pt.iterations = 350;
     const SurfaceMasks surf = extractSurface(skel, an, meshRes, {1.f, 1.f, 1.f});
     CreatureActor a;
     a.mesh.setMeshData(surf.mesh);
-    Pattern pt;
-    pt.seed = seed * 7u + 1u;
-    pt.iterations = 350;
-    pt.anisotropy = stripeAnisotropy;
+    a.roughness = pal.roughness;
     const BakedMaps maps = bakeMaterial(skel, an, pal, pt, mapSize);
     a.albedoTex = uploadMap(maps.size, maps.albedo, true);
     a.normalTex = uploadMap(maps.size, maps.normal, true);
     for (int i = 0; i < static_cast<int>(skel.nodes.size()); ++i)
         if (skel.nodes[i].name == "head") a.headLocal = skel.worldPos(i);
-    std::fprintf(stderr, "creature_showcase: %s seed=%u -> %zu tris, maps %dx%d\n",
+    std::fprintf(stderr, "creature_showcase: %s seed=%u biome=%d -> %zu tris, maps %dx%d\n",
                  eco.diet == Diet::Carnivore ? "carnivore"
                  : eco.diet == Diet::Herbivore ? "herbivore" : "omnivore",
-                 seed, surf.mesh.indices.size() / 3, maps.size, maps.size);
+                 seed, static_cast<int>(eco.biome), surf.mesh.indices.size() / 3, maps.size,
+                 maps.size);
     return a;
 }
 
@@ -250,38 +253,28 @@ int main(int argc, char** argv) {
         e.roughness = 0.9f;
     }
 
-    // --- three different G32 creatures on the columns ---
-    procedural::Palette palHerb;
-    palHerb.dorsal = {0.45f, 0.36f, 0.24f};
-    palHerb.ventral = {0.80f, 0.72f, 0.58f};
-    palHerb.accent = {0.25f, 0.14f, 0.08f};
-    procedural::Palette palCarn;
-    palCarn.dorsal = {0.16f, 0.17f, 0.19f};
-    palCarn.ventral = {0.40f, 0.40f, 0.42f};
-    palCarn.accent = {0.50f, 0.20f, 0.10f};
-    palCarn.roughness = 0.4f;
-    procedural::Palette palSerp;
-    palSerp.dorsal = {0.55f, 0.47f, 0.32f};
-    palSerp.ventral = {0.85f, 0.80f, 0.66f};
-    palSerp.accent = {0.30f, 0.18f, 0.10f};
-
+    // --- three different G32 creatures on the columns, palettes/patterns from their biomes ---
     procedural::Ecology ecoHerb;
     ecoHerb.bodyMassKg = 80.f;
     ecoHerb.locomotion = procedural::Locomotion::Quadruped;
     ecoHerb.diet = procedural::Diet::Herbivore; // horns
     ecoHerb.climate = procedural::Climate::Temperate;
+    ecoHerb.biome = procedural::CreatureBiome::Savanna; // tall grass -> stripe pattern
     procedural::Ecology ecoCarn = ecoHerb;
     ecoCarn.bodyMassKg = 12.f;
     ecoCarn.diet = procedural::Diet::Carnivore; // frontal eyes
+    ecoCarn.biome = procedural::CreatureBiome::TemperateForest; // dappled -> spots
+    ecoCarn.nocturnal = true;                           // cool dark shift
     procedural::Ecology ecoSerp;
     ecoSerp.bodyMassKg = 25.f;
     ecoSerp.locomotion = procedural::Locomotion::Serpentine;
     ecoSerp.diet = procedural::Diet::Carnivore;
     ecoSerp.climate = procedural::Climate::Arid;
+    ecoSerp.biome = procedural::CreatureBiome::Desert; // open terrain -> countershading only
 
-    CreatureActor herb = buildG32Creature(ecoHerb, 42u, palHerb, 72, 192, 1.f);
-    CreatureActor carn = buildG32Creature(ecoCarn, 7u, palCarn, 72, 192, 2.5f);
-    CreatureActor serp = buildG32Creature(ecoSerp, 99u, palSerp, 72, 192, 6.f); // stripes
+    CreatureActor herb = buildG32Creature(ecoHerb, 42u, 72, 192);
+    CreatureActor carn = buildG32Creature(ecoCarn, 7u, 72, 192);
+    CreatureActor serp = buildG32Creature(ecoSerp, 99u, 72, 192);
 
     CreatureActor* actors[3] = {&herb, &carn, &serp};
     const float yaws[3] = {fuhgl::math::radians(-18.f), fuhgl::math::radians(38.f),
@@ -294,7 +287,7 @@ int main(int argc, char** argv) {
         e.albedo = {1.f, 1.f, 1.f}; // vertex color (curvature shade) * baked albedo texture
         e.albedoTexture = &actors[i]->albedoTex;
         e.normalMap = &actors[i]->normalTex;
-        e.roughness = 0.55f;
+        e.roughness = actors[i]->roughness; // from biome humidity
         e.metallic = 0.05f;
         e.castShadow = false;
     }
