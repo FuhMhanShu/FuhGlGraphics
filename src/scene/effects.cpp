@@ -69,6 +69,7 @@ void Effects::applyTo(render::DeferredRenderer& renderer) const {
     renderer.weatherRainStreaks = params.weatherRainStreaks;
     renderer.weatherSoilColor = params.weatherSoilColor;
     renderer.weatherMossColor = params.weatherMossColor;
+    renderer.weatherBrickColor = params.weatherBrickColor;
     // G23 tonemap operator
     renderer.tonemapOperator = static_cast<render::TonemapOperator>(params.tonemapOperator);
     // G30 lens flare + anamorphic streaks

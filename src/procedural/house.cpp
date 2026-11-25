@@ -1,11 +1,21 @@
 // HouseGenerator implementation: winding-safe mesh helpers (shading normal derived from the
 // triangle winding, CCW seen from outside -> nothing is culled), four roof solids (gable /
 // lean-to / hipped / flat) and the feature set (bay, dormers, annex, porch, chimney, timber
-// frame, highrise window grid + setback). Deterministic per seed via splitmix32.
+// frame, highrise window grid + setback). Organic-architecture layer: additive building
+// history (overhanging upper floor on struts, stair tower with CSG cone roof), bevelled wall
+// edges, low-freq vertex warp with sagging ridge, micro-jitter (shutters/chimney), plinth +
+// pilasters + lintels/reveals, human clutter props (CSG flower boxes/dish/firewood, AC,
+// clothesline) and humidity-driven ivy; CSG solids via FuhGLCore render/solid.hpp.
+// BuildingContext rules (climate -> form, local resources -> material, wealth/density ->
+// storeys/shop/fence/patches, flood zone -> stilts) derive form+materials automatically.
+// Deterministic per seed via splitmix32.
 
 #include <fuhglgraphics/procedural/house.hpp>
 
+#include <fuhglgraphics/procedural/noise.hpp>
+
 #include <fuhgl/render.hpp>
+#include <fuhgl/render/solid.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -249,6 +259,148 @@ void applyMaterialPalette(Palette& pal, FacadeMaterial mat, const BuildingContex
         pal.wall = pal.wall * (1.f - 0.28f) + fuhgl::math::Vec3{0.28f, 0.28f, 0.28f};
 }
 
+// --- controlled imperfection: outward-oriented primitives, chamfered box, vertex warp ----
+
+/// @brief Quad a,b,c,d wound so its normal points along `outward` (flips when needed).
+void addQuadOut(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& a, const fuhgl::math::Vec3& b,
+                const fuhgl::math::Vec3& c, const fuhgl::math::Vec3& d,
+                const fuhgl::math::Vec3& outward, const fuhgl::math::Vec3& col) {
+    if (fuhgl::math::dot(fuhgl::math::cross(b - a, d - a), outward) < 0.f)
+        addQuad(md, d, c, b, a, col);
+    else
+        addQuad(md, a, b, c, d, col);
+}
+
+/// @brief Triangle a,b,c wound so its normal points along `outward`.
+void addTriOut(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& a, const fuhgl::math::Vec3& b,
+               const fuhgl::math::Vec3& c, const fuhgl::math::Vec3& outward,
+               const fuhgl::math::Vec3& col) {
+    if (fuhgl::math::dot(fuhgl::math::cross(b - a, c - a), outward) < 0.f)
+        addTri(md, a, c, b, col);
+    else
+        addTri(md, a, b, c, col);
+}
+
+/// @brief Box with all 12 edges chamfered by `b` (6 inset faces + 12 edge quads + 8 corner
+/// tris) — no razor-sharp 90° edges, so specular highlights break up realistically.
+fuhgl::render::MeshData bevelBox(const fuhgl::math::Vec3& half, float b,
+                                 const fuhgl::math::Vec3& col) {
+    const float h[3] = {half.x, half.y, half.z};
+    b = std::min(b, std::min(half.x, std::min(half.y, half.z)) * 0.45f);
+    fuhgl::render::MeshData md;
+    const fuhgl::math::Vec3 e[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    // 6 inset faces
+    for (int axis = 0; axis < 3; ++axis) {
+        const int u = (axis + 1) % 3, v = (axis + 2) % 3;
+        for (int s = -1; s <= 1; s += 2) {
+            const fuhgl::math::Vec3 c = e[axis] * (s * h[axis]);
+            const float hu = h[u] - b, hv = h[v] - b;
+            addQuadOut(md, c - e[u] * hu - e[v] * hv, c + e[u] * hu - e[v] * hv,
+                       c + e[u] * hu + e[v] * hv, c - e[u] * hu + e[v] * hv,
+                       e[axis] * static_cast<float>(s), col);
+        }
+    }
+    // 12 chamfer edge quads (edge along axis a, at sign su on u / sv on v)
+    for (int a = 0; a < 3; ++a) {
+        const int u = (a + 1) % 3, v = (a + 2) % 3;
+        const float ha = h[a] - b;
+        for (int su = -1; su <= 1; su += 2)
+            for (int sv = -1; sv <= 1; sv += 2) {
+                const fuhgl::math::Vec3 out =
+                    fuhgl::math::normalize(e[u] * (float)su + e[v] * (float)sv);
+                addQuadOut(md,
+                           e[a] * (-ha) + e[u] * (su * h[u]) + e[v] * (sv * (h[v] - b)),
+                           e[a] * ha + e[u] * (su * h[u]) + e[v] * (sv * (h[v] - b)),
+                           e[a] * ha + e[u] * (su * (h[u] - b)) + e[v] * (sv * h[v]),
+                           e[a] * (-ha) + e[u] * (su * (h[u] - b)) + e[v] * (sv * h[v]),
+                           out, col);
+            }
+    }
+    // 8 corner triangles
+    for (int sx = -1; sx <= 1; sx += 2)
+        for (int sy = -1; sy <= 1; sy += 2)
+            for (int sz = -1; sz <= 1; sz += 2) {
+                const fuhgl::math::Vec3 out =
+                    fuhgl::math::normalize(fuhgl::math::Vec3{(float)sx, (float)sy, (float)sz});
+                addTriOut(md, {sx * (h[0] - b), sy * h[1], sz * h[2]},
+                          {sx * h[0], sy * (h[1] - b), sz * h[2]},
+                          {sx * h[0], sy * h[1], sz * (h[2] - b)}, out, col);
+            }
+    return md;
+}
+
+/// @brief Low-frequency vertex warp: displaces vertices by fbm3 noise — walls bow slightly,
+/// roofs get uneven. `horizontalOnly` keeps the floor plane intact (walls only).
+void warpMesh(fuhgl::render::MeshData& md, const Noise& noise, float amp, unsigned seed,
+              bool horizontalOnly) {
+    if (amp <= 0.f) return;
+    const float f = 1.7f;
+    const float ox = seed * 0.731f, oy = seed * 0.373f;
+    for (std::size_t i = 0; i < md.vertexCount(); ++i) {
+        float* v = &md.vertices[i * 11];
+        const float nx = noise.fbm3(v[0] * f + ox, v[1] * f, v[2] * f + oy, 2, Noise::Base::Simplex) - 0.5f;
+        const float ny = noise.fbm3(v[0] * f, v[1] * f + ox, v[2] * f + oy, 2, Noise::Base::Simplex) - 0.5f;
+        const float nz = noise.fbm3(v[0] * f + oy, v[1] * f + ox, v[2] * f, 2, Noise::Base::Simplex) - 0.5f;
+        v[0] += nx * 2.f * amp;
+        v[2] += nz * 2.f * amp;
+        if (!horizontalOnly) v[1] += ny * 2.f * amp * 0.6f;
+    }
+}
+
+/// @brief Lets the roof ridge sag slightly in the middle (gravity) — only top verts (|z| small
+/// on a gable/hipped roof) move down by a sine over the width.
+void sagRoof(fuhgl::render::MeshData& md, float halfW, float sag) {
+    if (sag <= 0.f) return;
+    float maxY = -1e9f;
+    for (std::size_t i = 0; i < md.vertexCount(); ++i)
+        maxY = std::max(maxY, md.vertices[i * 11 + 1]);
+    for (std::size_t i = 0; i < md.vertexCount(); ++i) {
+        float* v = &md.vertices[i * 11];
+        if (v[1] > maxY - 0.05f) { // ridge line
+            const float t = std::min(1.f, std::max(0.f, (v[0] + halfW) / (2.f * halfW)));
+            v[1] -= sag * std::sin(fuhgl::math::kPi * t);
+        }
+    }
+}
+
+/// @brief Appends a CSG solid (FuhGLCore render::Solid, marching-tetrahedra mesh) transformed.
+void appendSolid(fuhgl::render::MeshData& dst, const fuhgl::render::SolidPtr& s, int res,
+                 const fuhgl::math::Vec3& col, const fuhgl::math::Mat4& m) {
+    appendTransformed(dst, s->buildMeshData(res, col), m);
+}
+
+/// @brief Ivy/vines growing up the front wall from the ground (2D random walk with upward
+/// bias + branching, hugging the facade). Density follows the humidity.
+void addIvy(fuhgl::render::MeshData& md, float w, float d, float wallH, Rng& rng, const Noise& noise,
+            float density, unsigned seed) {
+    struct Vine { float x, y; };
+    std::vector<Vine> vines;
+    const int n = 1 + static_cast<int>(density * 6.f);
+    for (int i = 0; i < n; ++i) vines.push_back({rng.range(-w * 0.45f, w * 0.45f), 0.12f});
+    const float z = d * 0.5f + 0.014f;
+    int quads = 0;
+    for (int step = 0; step < 30 && !vines.empty() && quads < 90; ++step) {
+        for (std::size_t vi = 0; vi < vines.size();) {
+            Vine& vn = vines[vi];
+            if (vn.y > wallH * 0.92f) { vines.erase(vines.begin() + vi); continue; }
+            const float g = 0.55f + 0.45f * noise.fbm3(vn.x * 3.f + seed * 0.11f, vn.y * 3.f, 7.7f, 2,
+                                                       Noise::Base::Simplex);
+            const fuhgl::math::Vec3 col{0.16f * g + 0.06f, 0.30f * g + 0.10f, 0.10f * g + 0.04f};
+            const float hw = rng.range(0.025f, 0.05f), hh = rng.range(0.05f, 0.09f);
+            const float zz = z + (rng.nextf() - 0.5f) * 0.02f;
+            addQuadOut(md, {vn.x - hw, vn.y, zz}, {vn.x + hw, vn.y, zz},
+                       {vn.x + hw * 0.8f, vn.y + hh, zz + 0.01f}, {vn.x - hw * 0.8f, vn.y + hh, zz + 0.01f},
+                       {0.f, 0.f, 1.f}, col);
+            vn.y += rng.range(0.10f, 0.20f);
+            vn.x += (rng.nextf() - 0.5f) * 0.24f;
+            ++quads;
+            if (rng.nextf() < 0.2f && vn.y < wallH * 0.8f && vines.size() < 10) // branch
+                vines.push_back({vn.x + (rng.nextf() - 0.5f) * 0.3f, vn.y});
+            ++vi;
+        }
+    }
+}
+
 } // namespace
 
 FacadeMaterial HouseGenerator::resolveFacadeMaterial(const BuildingContext& ctx, unsigned seed) {
@@ -346,9 +498,18 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
     applyMaterialPalette(pal, facade, p.context);
     const float irr = p.wallIrregularity * der.irregularMul;
 
-    // --- walls (with a slight per-vertex jitter = bump-like relief on the facade) ---
-    hm.walls = fuhgl::render::shapes::boxData({w * 0.5f, wallH * 0.5f, d * 0.5f}, pal.wall);
+    // --- walls: chamfered edges (bevel) + low-freq vertex warp (bowed walls) + slight
+    //     per-vertex jitter = bump-like relief on the facade ---
+    hm.walls = p.bevelEdges
+                   ? bevelBox({w * 0.5f, wallH * 0.5f, d * 0.5f}, 0.035f, pal.wall)
+                   : fuhgl::render::shapes::boxData({w * 0.5f, wallH * 0.5f, d * 0.5f}, pal.wall);
     shiftY(hm.walls, wallH * 0.5f);
+    hm.spec.beveled = p.bevelEdges;
+    if (p.warpAmount > 0.f) {
+        Noise warpN(p.seed ^ 0xA17u);
+        warpMesh(hm.walls, warpN, p.warpAmount, p.seed, true); // horizontalOnly: floor stays flat
+        hm.spec.warped = true;
+    }
     if (irr > 0.f) {
         hm.spec.wallIrregular = true;
         for (std::size_t i = 0; i < hm.walls.vertexCount(); ++i) {
@@ -357,28 +518,39 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
             v[2] += (rng.nextf() - 0.5f) * 2.f * irr;
         }
     }
-    // facade material detail: stone gets relief courses, plaster a plinth band (brick relies
-    // on the app-side POM brick set); adobe/wood/concrete get a soil-colored plinth
-    if (facade == FacadeMaterial::Adobe || facade == FacadeMaterial::Wood ||
-        facade == FacadeMaterial::Concrete) {
-        const fuhgl::math::Vec3 plinth = p.context.soilColor * 0.85f;
-        appendBox(hm.details, {w * 0.5f + 0.02f, 0.30f, 0.02f}, {0.f, 0.30f, d * 0.5f + 0.02f}, plinth);
-        appendBox(hm.details, {w * 0.5f + 0.02f, 0.30f, 0.02f}, {0.f, 0.30f, -d * 0.5f - 0.02f}, plinth);
-    }
+    // facade material detail: stone gets relief courses (brick relies on the app-side POM set)
     if (facade == FacadeMaterial::Stone) {
         const fuhgl::math::Vec3 stoneDark = pal.wall * 0.82f;
         for (float y = 0.35f; y < wallH; y += 0.55f)
             for (int s = -1; s <= 1; s += 2) // front + back
                 appendBox(hm.details, {w * 0.5f + 0.014f, 0.07f, 0.014f},
                           {0.f, y, s * (d * 0.5f + 0.014f)}, stoneDark);
-    } else if (facade == FacadeMaterial::Plaster) {
-        const fuhgl::math::Vec3 plinth = pal.wall * 0.7f;
-        appendBox(hm.details, {w * 0.5f + 0.02f, 0.28f, 0.02f}, {0.f, 0.28f, d * 0.5f + 0.02f}, plinth);
-        appendBox(hm.details, {w * 0.5f + 0.02f, 0.28f, 0.02f}, {0.f, 0.28f, -d * 0.5f - 0.02f}, plinth);
+    }
+    // massive protruding plinth (Sockel) around the whole base in the local soil/stone color —
+    // carries the walls and levels small terrain unevenness
+    {
+        const fuhgl::math::Vec3 plinthCol =
+            p.context.soilColor * 0.8f + fuhgl::math::Vec3{0.07f, 0.065f, 0.06f};
+        appendBox(hm.details, {w * 0.5f + 0.035f, 0.19f, d * 0.5f + 0.035f}, {0.f, 0.19f, 0.f},
+                  plinthCol);
+        hm.spec.hasPlinth = true;
+        // corner pilasters (Lisenen) on richer houses / stone facades
+        if (p.context.wealth > 0.4f || facade == FacadeMaterial::Stone)
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sz = -1; sz <= 1; sz += 2)
+                    appendBox(hm.details, {0.06f, wallH * 0.5f, 0.06f},
+                              {sx * (w * 0.5f + 0.02f), wallH * 0.5f, sz * (d * 0.5f + 0.02f)},
+                              plinthCol * 1.15f + fuhgl::math::Vec3{0.04f, 0.04f, 0.04f});
     }
 
-    // --- door (front = +z) ---
+    // --- door (front = +z) with load-bearing lintel (Sturz) above it ---
     appendBox(hm.details, {0.45f, 0.95f, 0.04f}, {0.f, 0.95f, d * 0.5f + 0.03f}, pal.door);
+    {
+        const fuhgl::math::Vec3 lintelCol =
+            facade == FacadeMaterial::Wood ? pal.beam : fuhgl::math::Vec3{0.62f, 0.60f, 0.57f};
+        appendBox(hm.details, {0.56f, 0.09f, 0.05f}, {0.f, 1.94f, d * 0.5f + 0.035f}, lintelCol);
+        hm.spec.hasLintels = true;
+    }
 
     if (p.style == HouseStyle::Highrise) {
         // window grid on front + back, optional setback, flat roof
@@ -420,23 +592,46 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
         p.style != HouseStyle::Highrise && (der.forceShutters || rng.nextf() < 0.5f);
     hm.spec.hasShutters = shutters;
     const float ws = der.windowScale;
+    const fuhgl::math::Vec3 lintelCol =
+        facade == FacadeMaterial::Wood ? pal.beam : fuhgl::math::Vec3{0.62f, 0.60f, 0.57f};
+    const fuhgl::math::Vec3 revealCol = pal.wall * 0.72f;
     for (int f = 0; f < p.floors; ++f) {
         if (der.shopFront && f == 0) continue; // ground floor = shop front
         const float y = p.floorHeight * (0.45f + f * 1.0f);
         if (y > wallH - 0.7f) break;
         for (int s = -1; s <= 1; s += 2) {
             const float wx = s * w * 0.24f;
+            // recessed reveal (Laibung) on the front: frame rim around the opening -> real depth
+            for (int side = -1; side <= 1; side += 2) {
+                appendBox(hm.details, {0.035f, 0.42f * ws + 0.07f, 0.025f},
+                          {wx + side * (0.15f * ws + 0.035f), y, d * 0.5f + 0.012f}, revealCol);
+                appendBox(hm.details, {0.30f * ws + 0.07f, 0.035f, 0.025f},
+                          {wx, y + (0.21f * ws + 0.035f), d * 0.5f + 0.012f}, revealCol);
+            }
+            appendBox(hm.details, {0.30f * ws + 0.07f, 0.035f, 0.025f},
+                      {wx, y - (0.21f * ws + 0.035f), d * 0.5f + 0.012f}, revealCol);
             appendBox(hm.details, {0.30f * ws, 0.42f * ws, 0.03f}, {wx, y, d * 0.5f + 0.02f}, pal.window);
             appendBox(hm.details, {0.30f * ws, 0.42f * ws, 0.03f}, {wx, y, -d * 0.5f - 0.02f}, pal.window);
             appendBox(hm.glass, {0.25f * ws, 0.36f * ws, 0.015f}, {wx, y, d * 0.5f + 0.045f}, pal.window);
             appendBox(hm.glass, {0.25f * ws, 0.36f * ws, 0.015f}, {wx, y, -d * 0.5f - 0.045f}, pal.window);
+            // lintel (Sturz) above each window (front)
+            appendBox(hm.details, {0.30f * ws + 0.1f, 0.08f, 0.04f},
+                      {wx, y + 0.21f * ws + 0.08f, d * 0.5f + 0.03f}, lintelCol);
+            hm.spec.hasLintels = true;
             if (shutters) {
                 const fuhgl::math::Vec3 shutterCol = pal.beam * 1.15f + fuhgl::math::Vec3{0.1f, 0.12f, 0.1f};
                 for (int side = -1; side <= 1; side += 2) {
-                    appendBox(hm.details, {0.09f * ws, 0.42f * ws, 0.02f},
-                              {wx + side * 0.42f * ws, y, d * 0.5f + 0.03f}, shutterCol);
-                    appendBox(hm.details, {0.09f * ws, 0.42f * ws, 0.02f},
-                              {wx + side * 0.42f * ws, y, -d * 0.5f - 0.03f}, shutterCol);
+                    // micro-jitter: each shutter hangs at a slightly different angle/offset
+                    for (int fz = -1; fz <= 1; fz += 2) {
+                        fuhgl::render::MeshData sh =
+                            fuhgl::render::shapes::boxData({0.09f * ws, 0.21f * ws, 0.02f}, shutterCol);
+                        const float jr = (rng.nextf() - 0.5f) * 0.14f;  // ~±4°
+                        const float jo = (rng.nextf() - 0.5f) * 0.025f;
+                        appendTransformed(hm.details, sh,
+                            fuhgl::math::translate({wx + side * 0.42f * ws, y,
+                                                    fz * (d * 0.5f + 0.03f) + jo}) *
+                            fuhgl::math::rotateY(jr * fz));
+                    }
                 }
             }
         }
@@ -488,6 +683,36 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
         hm.roof = hippedRoof(w, d, roofH, pal.roof, oh);
         hm.spec.roofType = RoofType::Hipped;
         shiftY(hm.roof, wallH);
+    }
+    // controlled imperfection on the roof: sagging ridge (gravity) + uneven slopes
+    if (hm.spec.roofType != RoofType::Flat && p.warpAmount > 0.f) {
+        sagRoof(hm.roof, w * 0.5f + oh, p.warpAmount * 1.8f);
+        Noise warpN(p.seed ^ 0xA18u);
+        warpMesh(hm.roof, warpN, p.warpAmount * 0.6f, p.seed + 7u, false);
+    }
+    // roof penetrations per "structural rules": solar panels + flush roof windows on the slopes
+    if ((hm.spec.roofType == RoofType::Gable || hm.spec.roofType == RoofType::Hipped)) {
+        const float hd = d * 0.5f + oh;
+        const float slope = std::atan2(roofH, hd);
+        if (rng.nextf() < 0.15f + 0.4f * p.clutter) { // solar panels (dark blue, tilted on the slope)
+            hm.spec.hasSolar = true;
+            for (int k = 0; k < 2; ++k) {
+                const float f = 0.35f + 0.25f * k; // fraction ridge->eave
+                fuhgl::render::MeshData panel =
+                    fuhgl::render::shapes::boxData({0.55f, 0.02f, 0.4f}, {0.07f, 0.11f, 0.24f});
+                appendTransformed(hm.roof, panel,
+                    fuhgl::math::translate({(k - 0.5f) * 1.25f, wallH + roofH * f, hd * (1.f - f)}) *
+                    fuhgl::math::rotateX(slope));
+            }
+        }
+        if (rng.nextf() < 0.35f) { // flush roof window (Dachfenster) in the front slope
+            hm.spec.hasRoofWindow = true;
+            fuhgl::render::MeshData rw =
+                fuhgl::render::shapes::boxData({0.16f, 0.015f, 0.24f}, pal.window);
+            appendTransformed(hm.glass, rw,
+                fuhgl::math::translate({w * 0.18f, wallH + roofH * 0.55f, hd * 0.45f}) *
+                fuhgl::math::rotateX(slope));
+        }
     }
 
     // --- Dachrinne: gutter along the eaves + one downpipe at the front-right corner
@@ -592,10 +817,48 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
         hm.spec.hasPorch = true;
         appendBox(hm.roof, {0.9f, 0.05f, 0.55f}, {0.f, 2.35f, d * 0.5f + 0.55f}, pal.roof);
     }
+    // --- additive building history: a later phase docks volumes onto the core ---
+    if (p.floors >= 2 && p.style != HouseStyle::Highrise && rng.nextf() < 0.3f) {
+        // overhanging upper floor (Fachwerk-Obergeschoss) carried by diagonal struts (Konsolen)
+        hm.spec.hasOverhang = true;
+        const float ow = w * 0.6f, oy0 = p.floorHeight, oh2 = wallH - oy0, pz = 0.22f;
+        fuhgl::render::MeshData up =
+            fuhgl::render::shapes::boxData({ow * 0.5f, oh2 * 0.5f, d * 0.5f + pz}, pal.wall * 0.96f);
+        shiftY(up, oy0 + oh2 * 0.5f);
+        appendTransformed(hm.walls, up, fuhgl::math::translate({0.f, 0.f, pz * 0.5f}));
+        for (int k = -1; k <= 1; ++k) {
+            fuhgl::render::MeshData strut =
+                fuhgl::render::shapes::boxData({0.05f, 0.36f, 0.05f}, pal.beam);
+            appendTransformed(hm.details, strut,
+                fuhgl::math::translate({k * ow * 0.32f, oy0 + 0.18f, d * 0.5f + pz * 0.5f + 0.2f}) *
+                fuhgl::math::rotateX(0.75f));
+        }
+        // window in the overhang (slightly different material = later construction phase)
+        appendBox(hm.details, {0.30f, 0.40f, 0.03f}, {-ow * 0.18f, oy0 + oh2 * 0.5f,
+                  d * 0.5f + pz + 0.02f}, pal.window);
+        appendBox(hm.glass, {0.25f, 0.34f, 0.015f}, {-ow * 0.18f, oy0 + oh2 * 0.5f,
+                  d * 0.5f + pz + 0.045f}, pal.window);
+    }
+    if (p.style != HouseStyle::Highrise && rng.nextf() < 0.18f) {
+        // stair tower (Treppenturm) at the back corner with a cone roof (CSG cone)
+        const float tx = -w * 0.5f - 0.25f, tz = -d * 0.5f - 0.25f, th = wallH + 0.7f;
+        fuhgl::render::MeshData tower =
+            fuhgl::render::shapes::boxData({0.45f, th * 0.5f, 0.45f}, pal.wall);
+        shiftY(tower, th * 0.5f);
+        appendTransformed(hm.walls, tower, fuhgl::math::translate({tx, 0.f, tz}));
+        appendSolid(hm.roof, fuhgl::render::makeCone(0.62f, 0.9f), 10, pal.roof,
+                    fuhgl::math::translate({tx, th + 0.45f, tz}));
+    }
     if (der.forceChimney || rng.nextf() < 0.6f) {
         hm.spec.hasChimney = true;
-        appendBox(hm.details, {0.16f, roofH * 0.7f + 0.4f, 0.16f},
-                  {w * 0.28f, wallH + roofH * 0.5f, -d * 0.22f}, {0.55f, 0.53f, 0.50f});
+        // slightly tilted chimney (micro-jitter, ~±2°)
+        fuhgl::render::MeshData ch =
+            fuhgl::render::shapes::boxData({0.16f, (roofH * 0.7f + 0.4f) * 0.5f, 0.16f},
+                                           {0.55f, 0.53f, 0.50f});
+        const float tilt = (rng.nextf() - 0.5f) * 0.07f;
+        appendTransformed(hm.details, ch,
+            fuhgl::math::translate({w * 0.28f, wallH + roofH * 0.5f, -d * 0.22f}) *
+            fuhgl::math::rotateZ(tilt));
     }
     if ((p.style == HouseStyle::Village || facade == FacadeMaterial::Wood) &&
         rng.nextf() < (facade == FacadeMaterial::Wood ? 0.9f : 0.5f)) {
@@ -654,6 +917,87 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
             for (int s = -1; s <= 1; s += 2)
                 appendBox(hm.details, {w * 0.5f + 0.035f, 0.06f, 0.035f},
                           {0.f, f * p.floorHeight + 0.08f, s * (d * 0.5f + 0.035f)}, cc);
+    }
+
+    // --- human traces / clutter (props anchored at facade points; CSG solids where organic) ---
+    if (p.clutter > 0.f && p.style != HouseStyle::Highrise) {
+        const float cl = p.clutter;
+        // flower boxes under the ground-floor front windows: hollow CSG box + flower spheres
+        if (rng.nextf() < 0.55f * cl) {
+            for (int s = -1; s <= 1; s += 2) {
+                const float wx = s * w * 0.24f, wy = p.floorHeight * 0.45f - 0.26f * ws;
+                fuhgl::render::SolidPtr box =
+                    fuhgl::render::translated(fuhgl::render::makeCube({0.17f, 0.08f, 0.055f}),
+                                               {0.f, 0.08f, 0.f}) -
+                    fuhgl::render::translated(fuhgl::render::makeCube({0.14f, 0.07f, 0.05f}),
+                                               {0.f, 0.10f, 0.f});
+                appendSolid(hm.details, box, 8, pal.beam * 1.2f,
+                            fuhgl::math::translate({wx, wy, d * 0.5f + 0.075f}));
+                for (int k = 0; k < 2; ++k)
+                    appendSolid(hm.details, fuhgl::render::makeSphere(0.05f), 5,
+                                {0.75f, 0.25f + 0.25f * rng.nextf(), 0.3f},
+                                fuhgl::math::translate({wx + (rng.nextf() - 0.5f) * 0.22f, wy + 0.17f,
+                                                        d * 0.5f + 0.09f}));
+            }
+            ++hm.spec.props;
+        }
+        // AC unit on a side wall
+        if (rng.nextf() < 0.3f * cl) {
+            const float az = rng.range(-d * 0.2f, d * 0.2f), ay = p.floorHeight * 0.8f;
+            appendBox(hm.details, {0.05f, 0.22f, 0.35f}, {w * 0.5f + 0.05f, ay, az},
+                      {0.80f, 0.82f, 0.85f});
+            appendBox(hm.details, {0.055f, 0.15f, 0.28f}, {w * 0.5f + 0.055f, ay, az},
+                      {0.25f, 0.27f, 0.30f});
+            ++hm.spec.props;
+        }
+        // satellite dish on the front wall (CSG sphere cap), tilted toward the sky
+        if (rng.nextf() < 0.35f * cl) {
+            fuhgl::render::SolidPtr dish =
+                fuhgl::render::makeSphere(0.17f) &
+                fuhgl::render::translated(fuhgl::render::makeCube({1.f, 0.1f, 1.f}), {0.f, 0.07f, 0.f});
+            const float dx = w * 0.35f, dy = wallH * 0.55f;
+            appendBox(hm.details, {0.03f, 0.26f, 0.03f}, {dx, dy, d * 0.5f + 0.02f},
+                      {0.60f, 0.60f, 0.62f});
+            appendSolid(hm.details, dish, 8, {0.85f, 0.87f, 0.90f},
+                        fuhgl::math::translate({dx, dy + 0.29f, d * 0.5f + 0.05f}) *
+                        fuhgl::math::rotateX(-0.7f));
+            ++hm.spec.props;
+        }
+        // stacked firewood under the front eave (CSG union of lying cylinders)
+        if (rng.nextf() < 0.45f * cl) {
+            fuhgl::render::SolidPtr wood = fuhgl::render::makeCylinder(0.055f, 0.6f);
+            for (int l = 0; l < 3; ++l)
+                wood = wood | fuhgl::render::translated(fuhgl::render::makeCylinder(0.055f, 0.6f),
+                                                        {-0.14f + l * 0.14f, 0.06f, 0.f});
+            wood = wood | fuhgl::render::translated(fuhgl::render::makeCylinder(0.055f, 0.6f),
+                                                    {0.f, 0.17f, 0.f});
+            appendSolid(hm.details, wood, 8, pal.beam * 1.35f,
+                        fuhgl::math::translate({-w * 0.32f, 0.06f, d * 0.5f + 0.45f}) *
+                        fuhgl::math::rotateZ(fuhgl::math::kPi * 0.5f));
+            ++hm.spec.props;
+        }
+        // clothesline in the front garden (only when there is a fence)
+        if (der.fence && rng.nextf() < 0.6f * cl) {
+            const float lx = (w * 0.5f + 1.3f) * 0.7f, lz = d * 0.5f + 0.9f;
+            for (int s = -1; s <= 1; s += 2)
+                appendBox(hm.details, {0.03f, 0.75f, 0.03f}, {s * lx, 0.75f, lz}, pal.beam);
+            appendBox(hm.details, {lx, 0.012f, 0.012f}, {0.f, 1.48f, lz}, {0.8f, 0.8f, 0.78f});
+            for (int c2 = 0; c2 < 2; ++c2) {
+                fuhgl::render::MeshData cloth =
+                    fuhgl::render::shapes::boxData({0.16f, 0.22f, 0.008f}, {0.9f, 0.9f, 0.92f});
+                appendTransformed(hm.details, cloth,
+                    fuhgl::math::translate({(c2 - 0.5f) * lx * 1.2f, 1.27f, lz}) *
+                    fuhgl::math::rotateY((rng.nextf() - 0.5f) * 0.3f));
+            }
+            ++hm.spec.props;
+        }
+    }
+
+    // --- ivy/vines climbing the front wall from the ground (humidity-driven growth) ---
+    if (p.ivy && p.context.humidity > 0.55f && p.style != HouseStyle::Highrise) {
+        Noise ivyN(p.seed ^ 0x1B7u);
+        addIvy(hm.details, w, d, wallH, rng, ivyN, p.context.humidity, p.seed);
+        hm.spec.hasIvy = true;
     }
 
     // --- flood zone / coast: lift the whole house onto posts over a high stone foundation ---

@@ -250,6 +250,23 @@ generator derive form, materials and colors automatically:
   (`params.weatherSoilColor`), vertical rain streaks on walls (`params.weatherRainStreaks`).
   `generateWorld`/`generateCityWorld` fill the context per house from the climate/zone maps.
 
+### Organic architecture (building history, imperfection, statics, clutter)
+
+So houses don't look like sterile Lego bricks, the generator deliberately simulates time and
+human use (`Params`): **additive building history** — core volume + later docked volumes
+(overhanging timber upper floor on struts `hasOverhang`, stair tower with a CSG cone roof,
+annex/garage/bay) plus roof penetrations (solar panels `hasSolar`, flush roof windows
+`hasRoofWindow`). **Controlled imperfection**: chamfered edges (`bevelEdges`, chamfer box instead
+of razor-sharp 90° edges → realistic specular highlights), low-frequency fbm3 vertex warp
+(`warpAmount`: walls bow slightly, the ridge sags in the middle), micro-jitter (shutters hang at
+slightly different angles, chimneys tilted). **Statics**: massive protruding plinth in the local
+soil color (`hasPlinth`), corner pilasters, lintel beams above door/windows + recessed reveals
+(`hasLintels`). **Human traces** (`clutter`): CSG flower boxes with sphere flowers, AC unit, CSG
+satellite dish, CSG firewood stack, clothesline at the fence — CSG solids come from FuhGLCore
+(`fuhgl/render/solid.hpp`, marching tetrahedra). **Ivy** (`ivy`): vines climb the sunny/damp facade
+from the ground up (density follows `context.humidity`). In the shader, plaster additionally chips
+off near the ground on walls (`Effect::Weathering`, material ID 5) exposing brick masonry
+(`weatherBrickColor`).
 ## PlantGenerator class (trees + bushes)
 
 `procedural::PlantGenerator` in `procedural/plant.hpp` generates plants on an L-system basis with

@@ -72,6 +72,15 @@ struct HouseSpec {
     bool hasFence = false;     ///< low garden fence (low density / detached house)
     bool hasPatches = false;   ///< patched walls (corrugated sheets / mixed materials, low wealth)
     bool hasCornice = false;   ///< ornamental cornice bands per floor (high wealth)
+    bool beveled = false;      ///< wall body edges are chamfered (no razor-sharp 90° edges)
+    bool warped = false;       ///< walls/roof got low-freq vertex noise (bowed walls, sagging ridge)
+    bool hasPlinth = false;    ///< massive protruding stone plinth at the base (levels terrain)
+    bool hasLintels = false;   ///< load-bearing lintel beams above windows/door + recessed reveals
+    bool hasOverhang = false;  ///< upper floor overhangs (timber frame) on brackets/struts
+    bool hasSolar = false;     ///< solar panels on a roof slope
+    bool hasRoofWindow = false;///< flush roof windows (Dachfenster) in a slope
+    bool hasIvy = false;       ///< vines growing up a facade (humidity-driven)
+    int props = 0;             ///< number of human clutter props (flower boxes, AC, dish, firewood...)
     float roofHeight = 0.f;    ///< roof rise (steep when wet/snowy)
     float roofOverhang = 0.14f;///< eave overhang (wide when rainy — keeps the facade dry)
     float windowScale = 1.f;   ///< window size factor (small when hot, large when cold)
@@ -105,6 +114,10 @@ public:
         unsigned seed = 1;        ///< variant seed (roof type, features, palette)
         float wallIrregularity = 0.012f; ///< per-vertex wall jitter amplitude (bump-like relief; 0 = flat)
         BuildingContext context;  ///< environment + socio-economy -> derived architecture rules
+        float warpAmount = 0.045f;///< low-freq vertex warp of walls/roof (bowed walls, sagging ridge; 0 = straight)
+        bool bevelEdges = true;   ///< chamfer the 90° edges of the wall body (realistic specular highlights)
+        float clutter = 0.6f;     ///< 0..1 probability scale for human props (flower boxes, AC, dish, firewood)
+        bool ivy = true;          ///< vines growing up the facade (density follows context.humidity)
     };
 
     /// @brief Generates one house. Local space, base at y = 0 (stilt houses: base at the

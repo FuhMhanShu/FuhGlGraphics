@@ -1183,6 +1183,7 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
         p.setUniform("uWeatherRainStreaks", weatherRainStreaks);
         p.setUniform("uWeatherSoil", weatherSoilColor);
         p.setUniform("uWeatherMoss", weatherMossColor);
+        p.setUniform("uWeatherBrick", weatherBrickColor);
         p.setUniform(p.uniformLocation("uShadowMap"), fuhgl::render::kTextureUnitShadowMap);
         p.setUniform(p.uniformLocation("uShadowMapArray"), fuhgl::render::kTextureUnitShadowMapArray);
         p.setUniform(p.uniformLocation("uShadowMoments"), fuhgl::render::kTextureUnitShadowMoments);

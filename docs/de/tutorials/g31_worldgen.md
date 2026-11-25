@@ -253,6 +253,23 @@ Generator Form, Materialien und Farben automatisch ab:
   (`params.weatherSoilColor`), vertikale Regenschlieren an den Wänden (`params.weatherRainStreaks`).
   `generateWorld`/`generateCityWorld` befüllen den Kontext pro Haus aus den Klima-/Zonen-Maps.
 
+### Organische Architektur (Baugeschichte, Imperfektion, Statik, Clutter)
+
+Damit Häuser nicht wie sterile Lego-Klötze wirken, simuliert der Generator gezielt Zeit und
+menschliche Nutzung (`Params`): **Additive Baugeschichte** — Kernbau + später angedockte Volumina
+(überhängendes Fachwerk-Obergeschoss auf Streben `hasOverhang`, Treppenturm mit Kegeldach,
+Anbau/Garage/Erker) sowie Dach-Durchbrüche (Solarpanels `hasSolar`, Dachfenster `hasRoofWindow`).
+**Kontrollierte Imperfektion**: abgefasste Kanten (`bevelEdges`, Chamfer-Box statt scharfer 90°-Kanten
+→ realistische Specular-Highlights), niederfrequentes fbm3-Vertex-Warping (`warpAmount`: Wände bauchen
+leicht, Dachfirst hängt in der Mitte durch), Micro-Jitter (Fensterläden hängen leicht schief, Kamin
+leicht geneigt). **Statik**: massiver hervorstehender Sockel aus lokaler Bodenfarbe (`hasPlinth`),
+Ecklisenen, Sturzbalken über Tür/Fenstern + zurückgesetzte Laibungen (`hasLintels`). **Menschliche Spuren**
+(`clutter`): Blumenkästen (CSG-Hohlkasten + Blumenkugeln), Klimaanlage, Satellitenschüssel (CSG-Kugelkappe),
+Feuerholzstapel (CSG-Zylinder-Union), Wäscheleine am Zaun — CSG-Solids kommen aus FuhGLCore
+(`fuhgl/render/solid.hpp`, Marching Tetrahedra). **Efeu** (`ivy`): Ranken wachsen vom Boden die
+Sonnen-/Feuchtseite hoch (Dichte folgt `context.humidity`). Im Shader blättert außerdem an bodennahen
+Stellen der Putz ab (`Effect::Weathering`, Material-ID 5) und legt Ziegelmauerwerk frei
+(`weatherBrickColor`).
 ## PlantGenerator-Klasse (Bäume + Büsche)
 
 `procedural::PlantGenerator` in `procedural/plant.hpp` generiert Pflanzen auf L-System-Basis mit

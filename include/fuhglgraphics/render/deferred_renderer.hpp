@@ -309,6 +309,7 @@ public:
     float weatherRainStreaks = 0.6f; ///< strength of the vertical dirt streaks on walls 0..1
     fuhgl::math::Vec3 weatherSoilColor{0.36f, 0.29f, 0.21f}; ///< local soil (splash stain)
     fuhgl::math::Vec3 weatherMossColor{0.24f, 0.33f, 0.16f}; ///< moss/lichen color
+    fuhgl::math::Vec3 weatherBrickColor{0.45f, 0.22f, 0.16f}; ///< masonry under chipped plaster
 
     /// @brief G31 HBAO (Effect::Hbao): the "hbao" post pass runs before lighting (next to G15
     /// SSAO) and writes the horizon-based AO factor into the "hbao" resource (RG16F, .r),

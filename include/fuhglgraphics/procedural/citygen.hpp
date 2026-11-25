@@ -46,6 +46,7 @@ struct CityGenParams {
     float lotMaxSize = 13.f;       ///< OBB split stops when lots are smaller than this
     float lotMinSize = 5.f;        ///< lots smaller than this are merged away (become park)
     float houseCoverage = 0.8f;    ///< house footprint as a fraction of the lot
+    float houseClutter = 0.6f;     ///< 0..1 prop density on the houses (flower boxes, AC, dish, firewood)
     RoadSurface roadSurface = RoadSurface::Asphalt; ///< street material (texture app-side; cobble gets POM)
     float roadIrregularity = 0.08f; ///< edge jitter of the street quads in world units (0 = straight)
     float roadDamage = 0.25f;      ///< probability of a pothole (dark patch) per road edge
