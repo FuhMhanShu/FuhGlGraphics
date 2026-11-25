@@ -22,9 +22,15 @@ enum class HouseStyle { Village, Town, Highrise };
 /// @brief Roof shape of a generated house.
 enum class RoofType { Gable = 0, Shed = 1, Hipped = 2, Flat = 3 };
 
+/// @brief Facade material — selects the geometry detail level and tells the app which
+/// texture/POM set to attach to the walls (brick = Backstein POM, plaster = Rauhputz,
+/// stone = Naturstein with relief courses).
+enum class FacadeMaterial { Brick = 0, Plaster = 1, Stone = 2 };
+
 /// @brief What was built — introspection for tests/apps (which variants fired).
 struct HouseSpec {
     RoofType roofType = RoofType::Gable;
+    FacadeMaterial facade = FacadeMaterial::Brick;
     int floors = 1;
     bool hasBay = false;       ///< bay window (Erker)
     bool hasAnnex = false;     ///< side annex (Anbau)
@@ -32,15 +38,22 @@ struct HouseSpec {
     bool hasDormers = false;   ///< dormers (Dachgauben) on the roof slope
     bool hasChimney = false;
     bool timberFrame = false;  ///< Fachwerk beams on the facade (village)
+    bool hasGutter = false;    ///< Dachrinne along the eaves + downpipe
+    bool hasShutters = false;  ///< Fensterläden beside the windows
+    bool hasGarage = false;    ///< Garage (side annex with roller door)
+    bool hasBalcony = false;   ///< balcony with balcony door on an upper floor
+    bool wallIrregular = false;///< walls got a slight per-vertex jitter (bump-like relief)
     float width = 0.f, depth = 0.f, wallHeight = 0.f;
 };
 
-/// @brief The generated house: three mesh parts so the app can give each its own material
-/// (walls: brick POM set; details: plain vertex colors; roof: shingle texture).
+/// @brief The generated house: mesh parts so the app can give each its own material
+/// (walls: facade POM set per FacadeMaterial; glass: reflective window panes; details: plain
+/// vertex colors; roof: shingle texture).
 struct HouseMesh {
-    fuhgl::render::MeshData walls;    ///< wall boxes + annex + setback (target for facade POM)
-    fuhgl::render::MeshData details;  ///< door, windows, chimney, bay, dormer fronts, timber frame
-    fuhgl::render::MeshData roof;     ///< roof solid(s): main roof, annex roof, dormer roofs, porch
+    fuhgl::render::MeshData walls;    ///< wall boxes + annex + garage + setback (target for facade POM)
+    fuhgl::render::MeshData details;  ///< door, window frames, shutters, chimney, bay, dormer fronts, timber frame, gutters, balcony railing, garage door
+    fuhgl::render::MeshData roof;     ///< roof solid(s): main roof, annex roof, dormer roofs, porch, garage roof
+    fuhgl::render::MeshData glass;    ///< window glass panes (own MeshEntry — reflective material)
     HouseSpec spec;
 };
 
@@ -50,11 +63,13 @@ class HouseGenerator {
 public:
     struct Params {
         HouseStyle style = HouseStyle::Town;
+        FacadeMaterial facade = FacadeMaterial::Brick; ///< facade material (texture choice app-side)
         float width = 5.f;        ///< footprint X (world units)
         float depth = 4.f;        ///< footprint Z
         int floors = 2;           ///< storeys (village/town); highrise derives its height from this
         float floorHeight = 2.8f; ///< storey height
         unsigned seed = 1;        ///< variant seed (roof type, features, palette)
+        float wallIrregularity = 0.012f; ///< per-vertex wall jitter amplitude (bump-like relief; 0 = flat)
     };
 
     /// @brief Generates one house. Local space, base at y = 0, front door faces +z.

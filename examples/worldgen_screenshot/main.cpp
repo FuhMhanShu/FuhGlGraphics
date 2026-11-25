@@ -4,12 +4,16 @@
 // erosion) with the biome splatmap (R grass / G rock / B sand / A snow) as albedo texture,
 // water surface, GPU-instanced grass weighted by the splatmap, L-system trees/bushes and
 // scattered rocks. City: ground, sidewalk/asphalt roads, voronoi district plates, procedural
-// houses with POM brick walls + shingle roofs, park lawns with bushes. Pipeline mode: the
+// houses with per-facade POM walls (Backstein/Rauhputz/Stein), reflective window glass,
+// shingle roofs, park lawns with bushes. Roads use the selectable surface (Asphalt /
+// Kopfsteinpflaster with POM / Pflasterstein / Matsch) with irregular edges + potholes, and
+// --wet renders them dark + reflective (low roughness, metallic, SSR). Pipeline mode: the
 // generateCityWorld() pipeline (terrain+zones -> road graph -> lot subdivision -> houses).
 // Rendered headless (surfaceless EGL) to PNG for docs/images/.
 //
 // Usage: fuhglgraphics_worldgen_screenshot --prefix g31_worldgen [--width 1280] [--height 720]
 //          [--frames 16] [--seed 777] [--mode both|landscape|city|pipeline] [--style town]
+//          [--surface asphalt|cobble|paving|dirt] [--wet]
 //   writes <prefix>_landscape.png, <prefix>_city.png, <prefix>_city_street.png and
 //   <prefix>_pipeline*.png (skipping the shots of a mode not selected).
 //
@@ -42,8 +46,10 @@ struct Args {
     std::string prefix = "g31_worldgen";
     int width = 1280, height = 720, frames = 16;
     unsigned seed = 777u;
-    std::string mode = "both"; // both | landscape | city
+    std::string mode = "both"; // both | landscape | city | pipeline
     std::string style = "town"; // village | town | highrise (city house style)
+    std::string surface = "asphalt"; // asphalt | cobble | paving | dirt (city road surface)
+    bool wet = false; // wet roads: dark + reflective
 };
 
 Args parseArgs(int argc, char** argv) {
@@ -56,8 +62,18 @@ Args parseArgs(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--seed") == 0 && i + 1 < argc) a.seed = static_cast<unsigned>(std::atoi(argv[++i]));
         else if (std::strcmp(argv[i], "--mode") == 0 && i + 1 < argc) a.mode = argv[++i];
         else if (std::strcmp(argv[i], "--style") == 0 && i + 1 < argc) a.style = argv[++i];
+        else if (std::strcmp(argv[i], "--surface") == 0 && i + 1 < argc) a.surface = argv[++i];
+        else if (std::strcmp(argv[i], "--wet") == 0) a.wet = true;
     }
     return a;
+}
+
+fuhglgraphics::procedural::RoadSurface surfaceFromName(const std::string& name) {
+    using fuhglgraphics::procedural::RoadSurface;
+    if (name == "cobble") return RoadSurface::Cobble;
+    if (name == "paving") return RoadSurface::Paving;
+    if (name == "dirt") return RoadSurface::Dirt;
+    return RoadSurface::Asphalt;
 }
 
 void aimAt(fuhgl::FirstPersonCamera& cam, const fuhgl::math::Vec3& target) {
@@ -238,6 +254,23 @@ float brickInfo(int x, int y, int size, float& rowH) {
     return rowH;
 }
 
+// normal map from a height function (wrap-around sampling), generic helper for the
+// procedural road/facade height maps below
+fuhgl::Texture makeNormalFromHeight(int size, const std::function<float(int, int)>& hFn) {
+    return makeTex(size, 37u, [&](int x, int y, float, unsigned char* o) {
+        const auto at = [&](int xx, int yy) {
+            return hFn((xx + size) % size, (yy + size) % size);
+        };
+        const float dx = (at(x + 1, y) - at(x - 1, y)) * 2.2f;
+        const float dy = (at(x, y + 1) - at(x, y - 1)) * 2.2f;
+        const fuhgl::math::Vec3 n = fuhgl::math::normalize({-dx, -dy, 1.f});
+        o[0] = static_cast<unsigned char>((n.x * 0.5f + 0.5f) * 255.f);
+        o[1] = static_cast<unsigned char>((n.y * 0.5f + 0.5f) * 255.f);
+        o[2] = static_cast<unsigned char>((n.z * 0.5f + 0.5f) * 255.f);
+        o[3] = 255;
+    });
+}
+
 fuhgl::Texture makeBrickAlbedo(int size) {
     return makeTex(size, 11u, [&](int x, int y, float n, unsigned char* o) {
         float h;
@@ -259,22 +292,209 @@ fuhgl::Texture makeBrickHeight(int size) {
 }
 
 fuhgl::Texture makeBrickNormal(int size) {
+    return makeNormalFromHeight(size, [&](int x, int y) {
+        float hv;
+        brickInfo(x, y, size, hv);
+        return hv;
+    });
+}
+
+// one procedural road surface set: albedo + height + normal (POM for the structured surfaces).
+// The generator already gave the street slabs world-space uv (uvScale per surface), so the
+// texture tiles in world units; wet roads are darkened by the generator vertex color and get
+// a reflective material (low roughness + metallic) app-side.
+struct RoadTexSet {
+    fuhgl::Texture albedo, height, normal;
+    bool pom = false; // attach heightMap + parallax params for this surface
+};
+
+RoadTexSet makeRoadTexSet(fuhglgraphics::procedural::RoadSurface surf, int size) {
+    using fuhglgraphics::procedural::RoadSurface;
+    RoadTexSet t;
+    std::vector<float> h(static_cast<std::size_t>(size) * size, 0.5f);
+    std::vector<float> tone(static_cast<std::size_t>(size) * size, 1.f);
+    auto cellHash = [&](int cx, int cy, std::uint32_t seed) {
+        return (hashPx(cx, cy, seed) & 0xffu) / 255.f;
+    };
+    if (surf == RoadSurface::Cobble) {
+        // rounded cobblestones on a 6x6 cell grid, mortar in the gaps; height = dome per stone
+        const int cells = 6;
+        for (int y = 0; y < size; ++y)
+            for (int x = 0; x < size; ++x) {
+                const float fx = static_cast<float>(x) / size * cells;
+                const float fy = static_cast<float>(y) / size * cells;
+                const int cx = static_cast<int>(fx), cy = static_cast<int>(fy);
+                const float ox = (cellHash(cx, cy, 101u) - 0.5f) * 0.36f;
+                const float oy = (cellHash(cx, cy, 202u) - 0.5f) * 0.36f;
+                const float dx = fx - cx - 0.5f - ox, dy = fy - cy - 0.5f - oy;
+                const float d = std::sqrt(dx * dx + dy * dy);
+                const float r = 0.44f;
+                const std::size_t i = static_cast<std::size_t>(y) * size + x;
+                tone[i] = 0.75f + 0.45f * cellHash(cx, cy, 303u);
+                if (d >= r) h[i] = 0.f; // mortar gap
+                else h[i] = std::sqrt(std::max(0.f, 1.f - (d / r) * (d / r))); // dome
+            }
+        t.pom = true;
+        t.albedo = makeTex(size, 11u, [&](int x, int y, float, unsigned char* o) {
+            const std::size_t i = static_cast<std::size_t>(y) * size + x;
+            if (h[i] < 0.05f) { o[0] = 42; o[1] = 40; o[2] = 38; } // mortar
+            else {
+                const unsigned char v = static_cast<unsigned char>(96 * tone[i] + 40);
+                o[0] = v; o[1] = static_cast<unsigned char>(v * 0.97f); o[2] = static_cast<unsigned char>(v * 0.92f);
+            }
+            o[3] = 255;
+        });
+    } else if (surf == RoadSurface::Paving) {
+        // square paving slabs on a 4x4 grid with beveled edges
+        const int cells = 4;
+        for (int y = 0; y < size; ++y)
+            for (int x = 0; x < size; ++x) {
+                const float fx = static_cast<float>(x) / size * cells;
+                const float fy = static_cast<float>(y) / size * cells;
+                const int cx = static_cast<int>(fx), cy = static_cast<int>(fy);
+                const float lx = fx - cx, ly = fy - cy;
+                const float border = std::min(std::min(lx, 1.f - lx), std::min(ly, 1.f - ly));
+                const std::size_t i = static_cast<std::size_t>(y) * size + x;
+                tone[i] = 0.8f + 0.3f * cellHash(cx, cy, 404u);
+                h[i] = border < 0.09f ? 0.f : std::min(1.f, (border - 0.09f) / 0.12f) * 0.92f + 0.08f;
+            }
+        t.pom = true;
+        t.albedo = makeTex(size, 23u, [&](int x, int y, float, unsigned char* o) {
+            const std::size_t i = static_cast<std::size_t>(y) * size + x;
+            if (h[i] < 0.05f) { o[0] = 52; o[1] = 51; o[2] = 49; }
+            else {
+                const unsigned char v = static_cast<unsigned char>(118 * tone[i] + 30);
+                o[0] = v; o[1] = static_cast<unsigned char>(v * 0.985f); o[2] = static_cast<unsigned char>(v * 0.95f);
+            }
+            o[3] = 255;
+        });
+    } else if (surf == RoadSurface::Dirt) {
+        // mud: brown noise with darker wet ruts
+        for (int y = 0; y < size; ++y)
+            for (int x = 0; x < size; ++x) {
+                const std::size_t i = static_cast<std::size_t>(y) * size + x;
+                const float n = (hashPx(x, y, 505u) & 0xffu) / 255.f;
+                const float n2 = (hashPx(x / 3, y / 3, 606u) & 0xffu) / 255.f;
+                h[i] = 0.25f + 0.5f * n;
+                tone[i] = n2 < 0.35f ? 0.55f : 0.85f + 0.3f * n; // dark ruts
+            }
+        t.albedo = makeTex(size, 53u, [&](int x, int y, float, unsigned char* o) {
+            const std::size_t i = static_cast<std::size_t>(y) * size + x;
+            o[0] = static_cast<unsigned char>(118 * tone[i]);
+            o[1] = static_cast<unsigned char>(86 * tone[i]);
+            o[2] = static_cast<unsigned char>(52 * tone[i]);
+            o[3] = 255;
+        });
+    } else { // Asphalt
+        for (int y = 0; y < size; ++y)
+            for (int x = 0; x < size; ++x) {
+                const std::size_t i = static_cast<std::size_t>(y) * size + x;
+                const float n = (hashPx(x, y, 707u) & 0xffu) / 255.f;
+                const float crack = (hashPx(x / 2, y / 2, 808u) & 0xffu) / 255.f;
+                h[i] = 0.5f + 0.06f * n;
+                tone[i] = crack < 0.045f ? 0.45f : 0.85f + 0.3f * n; // sparse cracks
+            }
+        t.albedo = makeTex(size, 71u, [&](int x, int y, float, unsigned char* o) {
+            const std::size_t i = static_cast<std::size_t>(y) * size + x;
+            const unsigned char v = static_cast<unsigned char>(34 * tone[i] + 14);
+            o[0] = v; o[1] = v; o[2] = static_cast<unsigned char>(v * 1.06f);
+            o[3] = 255;
+        });
+    }
+    t.height = makeTex(size, 91u, [&](int x, int y, float, unsigned char* o) {
+        const unsigned char v = static_cast<unsigned char>(h[static_cast<std::size_t>(y) * size + x] * 255.f);
+        o[0] = v; o[1] = v; o[2] = v; o[3] = 255;
+    });
+    t.normal = makeNormalFromHeight(size, [&](int x, int y) {
+        return h[static_cast<std::size_t>(y) * size + x];
+    });
+    return t;
+}
+
+// one procedural facade set per HouseSpec.facade (0 Backstein, 1 Rauhputz, 2 Stein)
+struct FacadeTexSet {
+    fuhgl::Texture albedo, height, normal;
+};
+
+FacadeTexSet makePlasterTexSet(int size) {
+    // Rauhputz: light warm plaster with fine grain (low height amplitude, no POM relief)
+    FacadeTexSet t;
+    std::vector<float> h(static_cast<std::size_t>(size) * size);
+    for (int y = 0; y < size; ++y)
+        for (int x = 0; x < size; ++x)
+            h[static_cast<std::size_t>(y) * size + x] =
+                0.5f + 0.28f * ((hashPx(x, y, 909u) & 0xffu) / 255.f);
+    t.albedo = makeTex(size, 31u, [&](int x, int y, float n, unsigned char* o) {
+        const float v = 0.86f + 0.10f * n;
+        o[0] = static_cast<unsigned char>(206 * v); o[1] = static_cast<unsigned char>(198 * v);
+        o[2] = static_cast<unsigned char>(180 * v); o[3] = 255;
+    });
+    t.height = makeTex(size, 32u, [&](int x, int y, float, unsigned char* o) {
+        const unsigned char v = static_cast<unsigned char>(h[static_cast<std::size_t>(y) * size + x] * 255.f);
+        o[0] = v; o[1] = v; o[2] = v; o[3] = 255;
+    });
+    t.normal = makeNormalFromHeight(size, [&](int x, int y) {
+        return h[static_cast<std::size_t>(y) * size + x];
+    });
+    return t;
+}
+
+FacadeTexSet makeStoneTexSet(int size) {
+    // Stein: gray ashlar blocks (running bond, wide mortar) with real relief for POM
+    FacadeTexSet t;
     std::vector<float> h(static_cast<std::size_t>(size) * size);
     for (int y = 0; y < size; ++y)
         for (int x = 0; x < size; ++x)
             brickInfo(x, y, size, h[static_cast<std::size_t>(y) * size + x]);
-    return makeTex(size, 37u, [&](int x, int y, float, unsigned char* o) {
-        const auto at = [&](int xx, int yy) {
-            return h[static_cast<std::size_t>((yy + size) % size) * size + ((xx + size) % size)];
-        };
-        const float dx = (at(x + 1, y) - at(x - 1, y)) * 2.2f;
-        const float dy = (at(x, y + 1) - at(x, y - 1)) * 2.2f;
-        const fuhgl::math::Vec3 n = fuhgl::math::normalize({-dx, -dy, 1.f});
-        o[0] = static_cast<unsigned char>((n.x * 0.5f + 0.5f) * 255.f);
-        o[1] = static_cast<unsigned char>((n.y * 0.5f + 0.5f) * 255.f);
-        o[2] = static_cast<unsigned char>((n.z * 0.5f + 0.5f) * 255.f);
+    t.albedo = makeTex(size, 41u, [&](int x, int y, float n, unsigned char* o) {
+        float hv;
+        brickInfo(x, y, size, hv);
+        if (hv < 0.5f) { o[0] = 62; o[1] = 60; o[2] = 57; } // mortar
+        else {
+            const float tone = 0.8f + 0.35f * n;
+            const unsigned char v = static_cast<unsigned char>(128 * tone + 22);
+            o[0] = v; o[1] = static_cast<unsigned char>(v * 0.985f);
+            o[2] = static_cast<unsigned char>(v * 0.94f);
+        }
         o[3] = 255;
     });
+    t.height = makeTex(size, 42u, [&](int x, int y, float, unsigned char* o) {
+        const unsigned char v = static_cast<unsigned char>(h[static_cast<std::size_t>(y) * size + x] * 255.f);
+        o[0] = v; o[1] = v; o[2] = v; o[3] = 255;
+    });
+    t.normal = makeNormalFromHeight(size, [&](int x, int y) {
+        return h[static_cast<std::size_t>(y) * size + x];
+    });
+    return t;
+}
+
+// MeshEntry material for the roads mesh of a generated world: surface texture set (+POM for
+// structured surfaces) and, when wetRoads, a dark reflective material (IBL + SSR reflections)
+void setupRoadEntry(fuhglgraphics::scene::MeshEntry& e, const fuhgl::Texture& albedo,
+                    const fuhgl::Texture& height, const fuhgl::Texture& normal, bool pom,
+                    bool wet) {
+    e.albedo = {1.f, 1.f, 1.f};
+    e.albedoTexture = &albedo;
+    e.normalMap = &normal;
+    if (pom) {
+        e.heightMap = &height; // POM parallax for the cobble/paving relief
+        e.parallaxScale = 0.055f;
+        e.parallaxLayers = 28;
+    }
+    e.roughness = wet ? 0.12f : 0.92f; // wet asphalt: glossy reflections
+    e.metallic = wet ? 0.4f : 0.f;
+    e.castShadow = false;
+    e.materialId = 3;
+}
+
+// reflective window glass entry (PlacedMesh::glassMesh) — metallic + near-zero roughness so
+// IBL/SSR produce the sky reflection on the panes
+void setupGlassEntry(fuhglgraphics::scene::MeshEntry& e) {
+    e.albedo = {0.62f, 0.74f, 0.86f};
+    e.roughness = 0.06f;
+    e.metallic = 0.9f;
+    e.castShadow = false;
+    e.materialId = 9;
 }
 
 fuhgl::Texture makeShingleTex(int size) {
@@ -527,6 +747,8 @@ int main(int argc, char** argv) {
         p.cellSize = 8.f;
         p.buildingHeight = 8.f;
         p.blocksPerDistrict = 28;
+        p.roadSurface = surfaceFromName(args.surface); // Asphalt/Cobble/Paving/Dirt
+        p.wetRoads = args.wet; // wet streets: rendered dark + reflective
         const procedural::GeneratedWorld world = procedural::generateWorld(p);
         std::fprintf(stderr, "worldgen_screenshot: city seed %u: %dx%d cells, %zu houses, %zu park bushes\n",
                      args.seed, world.cityW, world.cityH, world.buildings.size(), world.bushes.size());
@@ -534,9 +756,18 @@ int main(int argc, char** argv) {
         scene::Scene scene;
         MeshArena arena;
         addMeshNode(scene, arena, "ground", world.cityGround, {1.f, 1.f, 1.f}, 1.f, 2, false);
-        addMeshNode(scene, arena, "roads", world.roads, {1.f, 1.f, 1.f}, 0.9f, 3, false);
+        addMeshNode(scene, arena, "pavements", world.pavements, {1.f, 1.f, 1.f}, 1.f, 2, false);
         if (world.districts.vertexCount() > 0)
             addMeshNode(scene, arena, "districts", world.districts, {1.f, 1.f, 1.f}, 1.f, 4, false);
+        // streets: the selected surface texture (cobble/paving with POM), wet = reflective
+        const RoadTexSet roadTex = makeRoadTexSet(world.roadSurface, 256);
+        {
+            scene::Node& rn = scene.root().createChild("roads");
+            scene::MeshEntry& re =
+                rn.attach<scene::MeshComponent>().addMesh(arena.add(world.roads));
+            setupRoadEntry(re, roadTex.albedo, roadTex.height, roadTex.normal, roadTex.pom,
+                           world.wetRoads);
+        }
 
         fuhgl::math::Vec3 streetSpot{0.f, 0.f, 0.f};
         bool haveStreet = false;
@@ -550,7 +781,10 @@ int main(int argc, char** argv) {
                 }
             }
 
-        // houses: walls entry with POM brick material, roof entry with shingle texture
+        // houses: walls entry with the per-facade POM material (Backstein/Rauhputz/Stein from
+        // PlacedMesh::facade), glass entry (reflective), roof entry with shingle texture
+        const FacadeTexSet plasterTex = makePlasterTexSet(256);
+        const FacadeTexSet stoneTex = makeStoneTexSet(256);
         for (std::size_t i = 0; i < world.buildings.size(); ++i) {
             const auto& b = world.buildings[i];
             scene::Node& n = scene.root().createChild("house" + std::to_string(i));
@@ -558,16 +792,21 @@ int main(int argc, char** argv) {
             n.rotation = fuhgl::math::fromAxisAngle(b.rotY, {0.f, 1.f, 0.f});
             n.scale = {b.scale, b.scale, b.scale};
             scene::MeshComponent& mc = n.attach<scene::MeshComponent>();
+            const FacadeTexSet* ft = b.facade == 1 ? &plasterTex : b.facade == 2 ? &stoneTex : nullptr;
             scene::MeshEntry& walls = mc.addMesh(arena.add(b.mesh));
             walls.albedo = {1.f, 1.f, 1.f};
-            walls.albedoTexture = &brickAlbedo;
-            walls.normalMap = &brickNormal;
-            walls.heightMap = &brickHeight; // POM parallax on the facade
+            walls.albedoTexture = ft ? &ft->albedo : &brickAlbedo;
+            walls.normalMap = ft ? &ft->normal : &brickNormal;
+            walls.heightMap = ft ? &ft->height : &brickHeight; // POM parallax on the facade
             walls.parallaxScale = 0.05f;
             walls.parallaxLayers = 24;
             walls.roughness = 0.85f;
             walls.castShadow = true;
             walls.materialId = 5;
+            if (b.glassMesh.vertexCount() > 0) { // reflective window glass
+                scene::MeshEntry& gl = mc.addMesh(arena.add(b.glassMesh));
+                setupGlassEntry(gl);
+            }
             if (b.detailMesh.vertexCount() > 0) { // door/windows/chimney/bay: plain vertex colors
                 scene::MeshEntry& det = mc.addMesh(arena.add(b.detailMesh));
                 det.albedo = {1.4f, 1.4f, 1.4f};
@@ -598,6 +837,7 @@ int main(int argc, char** argv) {
             e.materialId = 7;
         }
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.4f, 0.65f, 0.5f}));
+        scene.root().effects.enable(render::Effect::Ssr); // screen-space reflections (wet roads, glass)
 
         // oblique overview of the whole WFC layout
         cam.position = {0.f, 80.f, 100.f};
@@ -629,6 +869,8 @@ int main(int argc, char** argv) {
         p.worldSize = 240.f;
         p.cityRadius = 95.f;
         p.roadGrid = 9;
+        p.roadSurface = surfaceFromName(args.surface);
+        p.wetRoads = args.wet;
         const procedural::CityWorld world = procedural::generateCityWorld(p);
         std::fprintf(stderr,
                      "worldgen_screenshot: pipeline seed %u: %zu road nodes, %zu edges, %zu lots, %zu houses\n",
@@ -668,13 +910,22 @@ int main(int argc, char** argv) {
         wc.surface.deepColor = {0.004f, 0.05f, 0.11f};
         wc.surface.shallowColor = {0.06f, 0.30f, 0.38f};
 
-        addMeshNode(scene, arena, "roads", world.roadMesh, {1.f, 1.f, 1.f}, 0.9f, 3, false);
+        addMeshNode(scene, arena, "sidewalks", world.sidewalkMesh, {1.f, 1.f, 1.f}, 1.f, 2, false);
         addMeshNode(scene, arena, "lots", world.lotMesh, {1.f, 1.f, 1.f}, 1.f, 4, false);
-        // houses: bake every house's transform into three merged static meshes (walls with
-        // brick POM, details plain, roofs shingle) — one draw item each instead of ~3 per
-        // house (~6500 houses here); merging static geometry is the recommended app-side
-        // performance pattern and keeps the headless render deterministic
-        fuhgl::render::MeshData wallsAll, detAll, roofAll;
+        const RoadTexSet roadTex = makeRoadTexSet(world.roadSurface, 256);
+        {
+            scene::Node& rn = scene.root().createChild("roads");
+            scene::MeshEntry& re =
+                rn.attach<scene::MeshComponent>().addMesh(arena.add(world.roadMesh));
+            setupRoadEntry(re, roadTex.albedo, roadTex.height, roadTex.normal, roadTex.pom,
+                           world.wetRoads);
+        }
+        // houses: bake every house's transform into merged static meshes — walls split per
+        // facade material (Backstein/Rauhputz/Stein POM), plus details, roofs and the
+        // reflective glass — one draw item each instead of ~4 per house (~6500 houses here);
+        // merging static geometry is the recommended app-side performance pattern and keeps
+        // the headless render deterministic
+        fuhgl::render::MeshData wallsAll[3], detAll, roofAll, glassAll;
         auto appendT = [](fuhgl::render::MeshData& dst, const fuhgl::render::MeshData& src,
                           const fuhgl::math::Mat4& m) {
             const fuhgl::math::Mat3 m3(m);
@@ -698,21 +949,33 @@ int main(int argc, char** argv) {
             const fuhgl::math::Mat4 m = fuhgl::math::translate(b.position) *
                                         fuhgl::math::rotateY(b.rotY) *
                                         fuhgl::math::scale({b.scale, b.scale, b.scale});
-            appendT(wallsAll, b.mesh, m);
+            const int fi = b.facade >= 0 && b.facade <= 2 ? b.facade : 0;
+            appendT(wallsAll[fi], b.mesh, m);
+            if (b.glassMesh.vertexCount() > 0) appendT(glassAll, b.glassMesh, m);
             if (b.detailMesh.vertexCount() > 0) appendT(detAll, b.detailMesh, m);
             if (b.roofMesh.vertexCount() > 0) appendT(roofAll, b.roofMesh, m);
         }
-        {
-            scene::Node& n = scene.root().createChild("houseWalls");
-            scene::MeshEntry& walls = n.attach<scene::MeshComponent>().addMesh(arena.add(wallsAll));
-            walls.albedoTexture = &brickAlbedo;
-            walls.normalMap = &brickNormal;
-            walls.heightMap = &brickHeight;
+        const FacadeTexSet plasterTex = makePlasterTexSet(256);
+        const FacadeTexSet stoneTex = makeStoneTexSet(256);
+        for (int fi = 0; fi < 3; ++fi) {
+            if (wallsAll[fi].vertexCount() == 0) continue;
+            const FacadeTexSet* ft = fi == 1 ? &plasterTex : fi == 2 ? &stoneTex : nullptr;
+            scene::Node& n = scene.root().createChild("houseWalls" + std::to_string(fi));
+            scene::MeshEntry& walls = n.attach<scene::MeshComponent>().addMesh(arena.add(wallsAll[fi]));
+            walls.albedo = {1.f, 1.f, 1.f};
+            walls.albedoTexture = ft ? &ft->albedo : &brickAlbedo;
+            walls.normalMap = ft ? &ft->normal : &brickNormal;
+            walls.heightMap = ft ? &ft->height : &brickHeight;
             walls.parallaxScale = 0.05f;
             walls.parallaxLayers = 24;
             walls.roughness = 0.85f;
             walls.materialId = 5;
             walls.castShadow = true;
+        }
+        if (glassAll.vertexCount() > 0) {
+            scene::Node& n = scene.root().createChild("houseGlass");
+            scene::MeshEntry& gl = n.attach<scene::MeshComponent>().addMesh(arena.add(glassAll));
+            setupGlassEntry(gl);
         }
         if (detAll.vertexCount() > 0) {
             scene::Node& n = scene.root().createChild("houseDetails");
@@ -731,6 +994,7 @@ int main(int argc, char** argv) {
             roof.castShadow = true;
         }
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.3f, 0.55f, 0.6f}));
+        scene.root().effects.enable(render::Effect::Ssr); // reflections on wet roads / glass
 
         // overview steeply down onto the plateau, same camera as the (stable) WFC city
         // overview: road grid + houses fill the lower frame, sky above
@@ -761,8 +1025,8 @@ int main(int argc, char** argv) {
             }
             const auto& nd = world.roads.nodes[best];
             const float gy = world.heightAt(nd.x, nd.y);
-            cam.position = {nd.x, gy + 2.4f, nd.y + 7.f};
-            aimAt(cam, {0.f, world.heightAt(0.f, 0.f) + 1.8f, 0.f});
+            cam.position = {nd.x, gy + 3.2f, nd.y + 9.f};
+            aimAt(cam, {0.f, world.heightAt(0.f, 0.f) + 2.2f, 0.f});
             const std::string stPath = args.prefix + "_pipeline_street.png";
             if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, stPath, &wc.surface, &env)) {
                 std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", stPath.c_str());

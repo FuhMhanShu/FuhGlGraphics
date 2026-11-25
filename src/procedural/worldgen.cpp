@@ -9,6 +9,8 @@
 
 #include <fuhglgraphics/procedural/worldgen.hpp>
 
+#include <fuhglgraphics/procedural/plant.hpp>
+
 #include <fuhgl/render.hpp>
 
 #include <algorithm>
@@ -88,6 +90,108 @@ fuhgl::render::MeshData uvSphereData(float radius, int seg, const fuhgl::math::V
             md.indices.push_back(a + 1); md.indices.push_back(b + 1); md.indices.push_back(b);
         }
     return md;
+}
+
+void pushVertex(fuhgl::render::MeshData& md, const fuhgl::math::Vec3& p, const fuhgl::math::Vec3& n,
+                const fuhgl::math::Vec3& c, float u, float v) {
+    md.vertices.push_back(p.x); md.vertices.push_back(p.y); md.vertices.push_back(p.z);
+    md.vertices.push_back(n.x); md.vertices.push_back(n.y); md.vertices.push_back(n.z);
+    md.vertices.push_back(c.x); md.vertices.push_back(c.y); md.vertices.push_back(c.z);
+    md.vertices.push_back(u); md.vertices.push_back(v);
+}
+
+/// @brief One road slab: a flat quad at height `y` centered at (cx, cz) with per-corner edge
+/// jitter (irregular street edges) and world-space uv (x,z)*uvScale so the app texture tiles.
+void appendRoadSlab(fuhgl::render::MeshData& md, float cx, float cz, float half, float y,
+                    const fuhgl::math::Vec3& col, float jitter, Rng& rng, float uvScale) {
+    const float x0 = cx - half + (rng.nextf() - 0.5f) * 2.f * jitter;
+    const float x1 = cx + half + (rng.nextf() - 0.5f) * 2.f * jitter;
+    const float z0 = cz - half + (rng.nextf() - 0.5f) * 2.f * jitter;
+    const float z1 = cz + half + (rng.nextf() - 0.5f) * 2.f * jitter;
+    const fuhgl::math::Vec3 up{0.f, 1.f, 0.f};
+    const std::uint32_t b = static_cast<std::uint32_t>(md.vertexCount());
+    pushVertex(md, {x0, y, z0}, up, col, x0 * uvScale, z0 * uvScale);
+    pushVertex(md, {x1, y, z0}, up, col, x1 * uvScale, z0 * uvScale);
+    pushVertex(md, {x1, y, z1}, up, col, x1 * uvScale, z1 * uvScale);
+    pushVertex(md, {x0, y, z1}, up, col, x0 * uvScale, z1 * uvScale);
+    md.indices.push_back(b); md.indices.push_back(b + 2); md.indices.push_back(b + 1); // +y
+    md.indices.push_back(b); md.indices.push_back(b + 3); md.indices.push_back(b + 2);
+}
+
+/// @brief BFS labeling of the road components of a solved WFC grid: cells whose (rotated)
+/// tile has an "r" edge are road cells; two road cells belong to the same component when they
+/// share an "r" edge. Fills `compId` (per cell, -1 = no road) and returns the component sizes.
+std::vector<std::size_t> labelRoadComponents(const std::vector<WfcCell>& cells,
+                                             const std::vector<WfcTile>& tiles,
+                                             int gridW, int gridH, std::vector<int>& compId) {
+    static const int dx[4] = {1, 0, -1, 0}, dz[4] = {0, 1, 0, -1}; // E, S, W, N
+    const std::size_t n = static_cast<std::size_t>(gridW) * gridH;
+    compId.assign(n, -1);
+    std::vector<char> isRoad(n, 0);
+    for (int z = 0; z < gridH; ++z)
+        for (int x = 0; x < gridW; ++x) {
+            const WfcCell& c = cells[static_cast<std::size_t>(x) + gridW * z];
+            if (c.tile < 0) continue;
+            const auto tags = wfcRotatedTags(tiles[static_cast<std::size_t>(c.tile)], c.rot);
+            for (const auto& tg : tags)
+                if (tg == "r") isRoad[static_cast<std::size_t>(x) + gridW * z] = 1;
+        }
+    std::vector<std::size_t> sizes;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!isRoad[i] || compId[i] >= 0) continue;
+        const int id = static_cast<int>(sizes.size());
+        std::size_t count = 0;
+        std::vector<int> stack{static_cast<int>(i)};
+        compId[i] = id;
+        while (!stack.empty()) {
+            const int cur = stack.back();
+            stack.pop_back();
+            ++count;
+            const int cx = cur % gridW, cz = cur / gridW;
+            const WfcCell& c = cells[static_cast<std::size_t>(cur)];
+            const auto tags = wfcRotatedTags(tiles[static_cast<std::size_t>(c.tile)], c.rot);
+            for (int d = 0; d < 4; ++d) {
+                if (tags[static_cast<std::size_t>(d)] != "r") continue;
+                const int nx = cx + dx[d], nz = cz + dz[d];
+                if (nx < 0 || nz < 0 || nx >= gridW || nz >= gridH) continue;
+                const int ni = nx + gridW * nz;
+                if (!isRoad[static_cast<std::size_t>(ni)] || compId[static_cast<std::size_t>(ni)] >= 0)
+                    continue;
+                // the neighbor must share the "r" tag on its opposite edge
+                const WfcCell& nc = cells[static_cast<std::size_t>(ni)];
+                const auto ntags = wfcRotatedTags(tiles[static_cast<std::size_t>(nc.tile)], nc.rot);
+                if (ntags[static_cast<std::size_t>(kWfcOpposite[d])] != "r") continue;
+                compId[static_cast<std::size_t>(ni)] = id;
+                stack.push_back(ni);
+            }
+        }
+        sizes.push_back(count);
+    }
+    return sizes;
+}
+
+/// @brief When `allowPathCuts` is false: converts every road cell outside the largest connected
+/// road component into a "block" cell, so the street network is one uninterrupted component and
+/// no path/park fragment can cut a street. Stays a valid WFC solution: all "r" edges of a
+/// component are internal (a valid solve matches every "r" with an "r"), so relabeling a whole
+/// component to "s" edges keeps every shared edge equal.
+void repairRoadConnectivity(std::vector<WfcCell>& cells, const std::vector<WfcTile>& tiles,
+                            int gridW, int gridH) {
+    std::vector<int> compId;
+    const auto sizes = labelRoadComponents(cells, tiles, gridW, gridH, compId);
+    if (sizes.size() <= 1) return; // already one (or zero) component
+    int largest = 0;
+    for (std::size_t i = 1; i < sizes.size(); ++i)
+        if (sizes[i] > sizes[largest]) largest = static_cast<int>(i);
+    int blockTile = -1;
+    for (std::size_t i = 0; i < tiles.size(); ++i)
+        if (tiles[i].name == "block") blockTile = static_cast<int>(i);
+    if (blockTile < 0) return;
+    for (std::size_t i = 0; i < compId.size(); ++i)
+        if (compId[i] >= 0 && compId[i] != largest) {
+            cells[i].tile = blockTile;
+            cells[i].rot = 0; // block is rotationally symmetric
+        }
 }
 
 // --- landscape pipeline -------------------------------------------------------------------
@@ -324,21 +428,33 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
         const std::size_t idx = (static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v)) * 4;
         return w.splatmap[idx + 1] / 255.f;
     };
+    // trees: mixed species via the PlantGenerator (deciduous / fir / birch), bushes likewise
+    PlantGenerator plantGen;
     for (const auto& s : poissonScatter(half, p.treeMinDist, p.treeCount, grassWeight, rng)) {
-        LSystem tree = LSystem::makeTree(static_cast<int>(rng.next() % 3u), p.seed);
+        PlantParams pp;
+        pp.seed = p.seed ^ (rng.next() * 2654435761u);
+        const float kindRoll = rng.nextf();
+        pp.kind = kindRoll < 0.5f ? PlantKind::Deciduous
+                 : kindRoll < 0.75f ? PlantKind::Fir
+                                   : PlantKind::Birch;
+        pp.scale = 0.45f + 0.5f * rng.nextf();
         PlacedMesh pm;
-        pm.mesh = tree.generate();
+        pm.mesh = plantGen.generate(pp).mesh;
         pm.position = {s.x, w.heightAt(s.x, s.y), s.y};
         pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
-        pm.scale = 0.45f + 0.5f * rng.nextf();
+        pm.scale = pp.scale;
         w.trees.push_back(std::move(pm));
     }
     for (const auto& s : poissonScatter(half, p.treeMinDist * 0.5f, p.bushCount, grassWeight, rng)) {
+        PlantParams pp;
+        pp.kind = PlantKind::Bush;
+        pp.seed = p.seed ^ (rng.next() * 40503u);
+        pp.scale = 0.5f + 0.7f * rng.nextf();
         PlacedMesh pm;
-        pm.mesh = LSystem::makeBush().generate();
+        pm.mesh = plantGen.generate(pp).mesh;
         pm.position = {s.x, w.heightAt(s.x, s.y), s.y};
         pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
-        pm.scale = 0.5f + 0.7f * rng.nextf();
+        pm.scale = pp.scale;
         w.bushes.push_back(std::move(pm));
     }
     for (const auto& s : poissonScatter(half, p.treeMinDist * 0.8f, p.rockCount, rockWeight, rng)) {
@@ -355,11 +471,23 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
 /// bushes; optional voronoi district plates underneath.
 void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
     HouseGenerator houseGen;
+    PlantGenerator plantGen;
     const int gw = std::max(2, p.cityGrid);
     Wfc wfc(gw, gw, "s"); // border tag "s": the ring closes with blocks/sidewalk edges
     w.tiles = makeCityTiles();
+    if (!p.allowPathCuts) {
+        // paths/parks (plaza tiles) must not interrupt the road network: drop them, green
+        // spaces still come from parkFraction block cells
+        w.tiles.erase(std::remove_if(w.tiles.begin(), w.tiles.end(),
+                                     [](const WfcTile& t) { return t.name == "plaza"; }),
+                      w.tiles.end());
+    }
     for (const auto& t : w.tiles) wfc.addTile(t);
+    w.roadSurface = p.roadSurface;
+    w.wetRoads = p.wetRoads;
     w.cells = wfc.solve(p.seed, p.maxBacktracks);
+    if (!p.allowPathCuts)
+        repairRoadConnectivity(w.cells, w.tiles, gw, gw); // streets stay one uninterrupted network
     w.cityW = gw;
     w.cityH = gw;
     w.cityCellSize = p.cellSize;
@@ -389,10 +517,14 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                     fuhgl::render::shapes::boxData({p.cellSize * 0.46f, 0.02f, p.cellSize * 0.46f},
                                                    {0.16f, 0.42f, 0.16f});
                 shiftY(lawn, 0.04f);
-                appendTransformed(w.roads, lawn, place);
+                appendTransformed(w.pavements, lawn, place);
                 for (int b = 0; b < p.parkBushesPerPlaza; ++b) {
+                    PlantParams pp;
+                    pp.kind = PlantKind::Bush;
+                    pp.seed = p.seed ^ rng.next();
+                    pp.scale = 0.5f + 0.5f * rng.nextf();
                     PlacedMesh pm;
-                    pm.mesh = LSystem::makeBush().generate();
+                    pm.mesh = plantGen.generate(pp).mesh;
                     pm.position = {wx + (rng.nextf() - 0.5f) * p.cellSize * 0.6f, 0.06f,
                                    wz + (rng.nextf() - 0.5f) * p.cellSize * 0.6f};
                     pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
@@ -405,7 +537,7 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                     fuhgl::render::shapes::boxData({p.cellSize * 0.47f, 0.025f, p.cellSize * 0.47f},
                                                    {0.48f, 0.47f, 0.44f});
                 shiftY(lot, 0.025f);
-                appendTransformed(w.roads, lot, place);
+                appendTransformed(w.pavements, lot, place);
                 // procedural house on the lot
                 const float n = noise.value2(wx * 0.05f + 13.1f, wz * 0.05f + 7.7f); // per-block jitter
                 const std::uint32_t houseSeed =
@@ -421,22 +553,32 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                 pm.mesh = hm.walls;
                 pm.detailMesh = hm.details;
                 pm.roofMesh = hm.roof;
+                pm.glassMesh = hm.glass;
                 pm.roofType = static_cast<int>(hm.spec.roofType);
+                pm.facade = static_cast<int>(hm.spec.facade);
                 pm.position = {wx, 0.05f, wz};
                 pm.rotY = -c.rot * fuhgl::math::kPi * 0.5f;
                 w.buildings.push_back(std::move(pm));
             } else {
-                // street / crossing / T / end: light sidewalk underlay + dark asphalt slab
+                // street / crossing / T / end: light sidewalk underlay + road slab with
+                // irregular edges, world-space uv (texture tiling) and the chosen surface
+                // material; occasional pothole = small dark patch slightly above the slab
                 fuhgl::render::MeshData walk =
                     fuhgl::render::shapes::boxData({p.cellSize * 0.5f, 0.02f, p.cellSize * 0.5f},
                                                    {0.55f, 0.55f, 0.52f});
                 shiftY(walk, 0.02f);
-                appendTransformed(w.roads, walk, place);
-                fuhgl::render::MeshData asphalt =
-                    fuhgl::render::shapes::boxData({p.cellSize * 0.44f, 0.015f, p.cellSize * 0.44f},
-                                                   {0.09f, 0.09f, 0.10f});
-                shiftY(asphalt, 0.045f);
-                appendTransformed(w.roads, asphalt, place);
+                appendTransformed(w.pavements, walk, place);
+                fuhgl::math::Vec3 surfCol;
+                float uvScale = 0.25f;
+                roadSurfaceStyle(p.roadSurface, p.wetRoads, surfCol, uvScale);
+                appendRoadSlab(w.roads, wx, wz, p.cellSize * 0.44f, 0.045f, surfCol,
+                               p.roadIrregularity, rng, uvScale);
+                if (rng.nextf() < p.roadDamage) {
+                    const float ph = 0.22f + 0.25f * rng.nextf();
+                    appendRoadSlab(w.roads, wx + (rng.nextf() - 0.5f) * p.cellSize * 0.5f,
+                                   wz + (rng.nextf() - 0.5f) * p.cellSize * 0.5f, ph, 0.047f,
+                                   {0.05f, 0.05f, 0.06f}, 0.f, rng, uvScale);
+                }
             }
         }
 
@@ -464,6 +606,26 @@ float GeneratedWorld::heightAt(float x, float z) const {
     const float h11 = heightmap[static_cast<std::size_t>(x1) + gridW * z1];
     const float h = (h00 * (1.f - tx) + h10 * tx) * (1.f - tz) + (h01 * (1.f - tx) + h11 * tx) * tz;
     return h * heightScale;
+}
+
+/// @brief Slab color + uv scale per road surface; wet roads are darker (app adds reflection).
+void roadSurfaceStyle(RoadSurface s, bool wet, fuhgl::math::Vec3& color, float& uvScale) {
+    switch (s) {
+        case RoadSurface::Cobble: color = {0.34f, 0.33f, 0.31f}; uvScale = 0.4f; break;  // ~2.5 wu/tile
+        case RoadSurface::Paving: color = {0.46f, 0.45f, 0.43f}; uvScale = 0.5f; break;  // 2 wu/tile
+        case RoadSurface::Dirt:   color = {0.36f, 0.28f, 0.18f}; uvScale = 0.33f; break;
+        case RoadSurface::Asphalt:
+        default:                  color = {0.09f, 0.09f, 0.10f}; uvScale = 0.25f; break; // 4 wu/tile
+    }
+    if (wet) color = color * 0.55f;
+}
+
+bool wfcRoadsConnected(const std::vector<WfcCell>& cells, const std::vector<WfcTile>& tiles,
+                       int gridW, int gridH) {
+    // true when all road cells (tiles with an "r" edge) form one component via shared "r"
+    // edges — i.e. no path/park interrupts the street network (0 or 1 components count as connected)
+    std::vector<int> compId;
+    return labelRoadComponents(cells, tiles, gridW, gridH, compId).size() <= 1;
 }
 
 std::vector<WfcTile> makeCityTiles() {

@@ -79,7 +79,8 @@ void testRoadGraph() {
     const CityWorld w = generateCityWorld(params());
     CHECK(!w.roads.nodes.empty());
     CHECK(!w.roads.edges.empty());
-    CHECK(w.roadMesh.vertexCount() > 0);
+    CHECK(w.roadMesh.vertexCount() > 0);     // street quads (textured app-side)
+    CHECK(w.sidewalkMesh.vertexCount() > 0); // sidewalk underlay + intersection squares
     CHECK(w.roadMesh.indices.size() % 3 == 0);
     // no road node under water
     for (const auto& nd : w.roads.nodes) CHECK(w.heightAt(nd.x, nd.y) >= w.waterLevelWorld);
@@ -116,11 +117,15 @@ void testLotsAndHouses() {
     CHECK(accessed > 0);
     CHECK(!w.houses.empty());
     // houses/park greenery stand on the plateau, meshes are complete
+    int withGlass = 0;
     for (const auto& h : w.houses) {
         CHECK(h.mesh.vertexCount() > 0);
         CHECK(h.position.y >= w.waterLevelWorld * 1.05f);
         CHECK(h.position.y <= w.waterLevelWorld * 1.05f + 0.1f);
+        CHECK(h.facade >= 0 && h.facade <= 2); // FacadeMaterial cast
+        if (h.glassMesh.vertexCount() > 0) ++withGlass;
     }
+    CHECK(withGlass > 0); // window glass panes for the reflective material app-side
     // determinism
     const CityWorld w2 = generateCityWorld(params());
     CHECK(w2.heightmap == w.heightmap);
@@ -132,6 +137,40 @@ void testLotsAndHouses() {
     (void)parks;
 }
 
+void testCitygenRoads() {
+    CityGenParams p = params();
+    const CityWorld w = generateCityWorld(p);
+    CHECK(w.roadSurface == p.roadSurface);
+    CHECK(w.wetRoads == p.wetRoads);
+    // default (allowPathCuts=false): no lot touching the road becomes a park, so no path
+    // interrupts the street frontage
+    for (const Lot& lot : w.lots) CHECK(!(lot.park && lot.hasAccess));
+
+    // road damage: damage=1 adds a pothole quad on every street edge -> more vertices
+    CityGenParams pd = params();
+    pd.roadDamage = 0.f;
+    const CityWorld wd0 = generateCityWorld(pd);
+    pd.roadDamage = 1.f;
+    const CityWorld wd1 = generateCityWorld(pd);
+    CHECK(wd1.roadMesh.vertexCount() > wd0.roadMesh.vertexCount());
+
+    // irregular street edges change the road mesh geometry
+    CityGenParams pi = params();
+    pi.roadIrregularity = 0.f;
+    const CityWorld wi0 = generateCityWorld(pi);
+    pi.roadIrregularity = 0.08f;
+    const CityWorld wi1 = generateCityWorld(pi);
+    CHECK(wi0.roadMesh.vertices != wi1.roadMesh.vertices);
+
+    // surface + wet flags are echoed and change the per-vertex slab colors
+    CityGenParams ps = params();
+    ps.roadSurface = RoadSurface::Dirt;
+    ps.wetRoads = true;
+    const CityWorld ws = generateCityWorld(ps);
+    CHECK(ws.roadSurface == RoadSurface::Dirt && ws.wetRoads);
+    CHECK(ws.roadMesh.vertices != w.roadMesh.vertices);
+}
+
 } // namespace
 
 void runProceduralCitygenTests() {
@@ -139,4 +178,5 @@ void runProceduralCitygenTests() {
     testTerrainAndZones();
     testRoadGraph();
     testLotsAndHouses();
+    testCitygenRoads();
 }

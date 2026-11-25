@@ -118,27 +118,48 @@ p.houseFootprint = 0.62f;   // Haus-Grundfläche als Anteil der Zelle
 p.houseStyle = HouseStyle::Town; // Village | Town | Highrise — Architekturstil
 p.blocksPerDistrict = 28;   // >0: Voronoi-Stadtteilplatten unter der Stadt
 p.parkBushesPerPlaza = 3;   // Büsche pro Plaza (Park)
+p.roadSurface = RoadSurface::Cobble; // Asphalt | Cobble | Paving | Dirt (Texturwahl app-seitig)
+p.roadIrregularity = 0.06f; // Kanten-Jitter der Straßenplatten in Welteinheiten (0 = gerade)
+p.roadDamage = 0.35f;       // Wahrscheinlichkeit eines Schlaglochs (dunkler Fleck) pro Straßenzelle
+p.wetRoads = false;         // nasse Straßen: app-seitig dunkel + reflektierend rendern
+p.allowPathCuts = false;    // false: Straßen werden nie durch Wege/Parks unterbrochen (Default)
 ```
 
 const auto w = generateWorld(p);
 w.cells;                    // cityW*cityH WfcCell {tile, rot}, zeilenweise
 w.tiles;                    // Tile-Set (w.cells[].tile indexiert hinein)
 w.cityGround;               // MeshData-Basisplatte (Oberkante bei y = 0)
-w.roads;                    // gemergte Platten: Bürgersteig + dunkler Asphalt (Straßen), Beton-Lots, Park-Rasen
+w.roads;                    // nur Straßenplatten (irreguläre Kanten, Oberflächen-Farbe/UV, Schlaglöcher) —
+                            // das texturierte Mesh: hier Road-Textursatz anhängen (Cobble mit POM)
+w.pavements;                // Bürgersteig + Beton-Lots + Park-Rasen (reine Vertex-Farben)
 w.districts;                // Voronoi-Platten (leer bei blocksPerDistrict == 0)
-w.buildings;                // ein prozedurales Haus pro Nicht-Park-"block"-Zelle, drei Mesh-Teile:
-                            // mesh = Wände (hier Brick-POM-Satz anhängen), detailMesh = Tür/Fenster/
-                            // Kamin/Erker ( reine Vertex-Farben), roofMesh = Dach
-                            // (roofType: 0 = Satteldach, 1 = Schleppdach, 2 = flach);
+w.buildings;                // ein prozedurales Haus pro Nicht-Park-"block"-Zelle, Mesh-Teile:
+                            // mesh = Wände (Fassaden-POM-Satz je `facade`), detailMesh = Tür/Fenster/
+                            // Läden/Kamin/Erker/Dachrinne/Garage/Balkon (reine Vertex-Farben),
+                            // glassMesh = reflektierende Fensterscheiben (eigener Entry, metallisch),
+                            // roofMesh = Dach (roofType: 0 = Satteldach, 1 = Schleppdach, 2 = Walmdach,
+                            // 3 = flach); facade: 0 = Backstein, 1 = Rauhputz, 2 = Stein;
                             // Stile: Village (Erker + Kamin), Town (Fenster pro Etage),
                             // Highrise (Fensterraster + Rücksprung + Flachdach)
-w.bushes;                   // Park-Grün auf Plaza-Zellen
+w.roadSurface;              // Echo von WorldGenParams::roadSurface (Texturwahl app-seitig)
+w.wetRoads;                 // Echo von WorldGenParams::wetRoads (nasses Material app-seitig)
+w.bushes;                   // Park-Grün (PlantGenerator-Büsche) auf Park-Zellen
 ```
 
 Das Layout ist ein G27-WFC-Solve über `makeCityTiles()` — Edge-Tags `"r"` (Straße), `"s"`
 (Grundstück/Bürgersteig, zugleich Rand-Tag) und `"p"` (Plaza); Tile-Namen `block`, `plaza`,
-`streetH`, `streetV`, `cross`, `tE`, `endE`, Rotationen übernimmt der Solver. Straßen-/Plaza-Zellen
-werden zu gemergten Road-Slabs, `block`-Zellen zu Gebäude-Boxen mit pro Block gejitterter Höhe/Farbe.
+`streetH`, `streetV`, `cross`, `tE`, `endE`, Rotationen übernimmt der Solver. Straßenzellen
+werden zu den texturierten Road-Slabs in `w.roads` (irreguläre Kanten, Schlaglöcher), Plaza-/Block-Zellen
+zu Rasen-/Lot-Platten in `w.pavements`, und `block`-Zellen bekommen zusätzlich ein Haus mit
+pro Block gejitterter Größe/Farbe.
+
+**Straßen werden per Default nicht durch Wege unterbrochen** (`allowPathCuts = false`): Plaza-Tiles
+werden aus dem Tile-Set entfernt und nach dem Solve wird jedes Straßen-Fragment außerhalb der
+größten zusammenhängenden Straßen-Komponente zurück in einen `block` verwandelt (der Repair hält den
+Solve gültig, denn in einem gültigen Solve ist jede `"r"`-Kante von einer `"r"`-Kante des Nachbarn
+gepaart, also intern zu einer Komponente). `procedural::wfcRoadsConnected(cells, tiles, gridW,
+gridH)` prüft die Eigenschaft (BFS über gemeinsame `"r"`-Kanten); mit `allowPathCuts = true` wird
+jeder gültige Solve akzeptiert und Straßen dürfen fragmentieren.
 
 ## HouseGenerator-Klasse (variantenreiche Häuser)
 
@@ -150,15 +171,44 @@ fuhglgraphics::procedural::HouseGenerator gen;
 auto p = fuhglgraphics::procedural::HouseGenerator::randomParams(
     fuhglgraphics::procedural::HouseStyle::Village, /*cellSize=*/8.f, /*seed=*/123u);
 const auto house = gen.generate(p);
-// house.walls    -> Fassade (hier Brick-POM-Satz anhängen)
-// house.details  -> Tür/Fenster/Kamin/Erker/Gauben/Fachwerk (reine Vertex-Farben)
+// house.walls    -> Fassade (hier Fassaden-POM-Satz je spec.facade anhängen)
+// house.details  -> Tür/Fenster/Läden/Kamin/Erker/Gauben/Fachwerk/Dachrinne/Garage/Balkon
+//                   (reine Vertex-Farben)
+// house.glass    -> Fensterscheiben (eigener MeshEntry mit reflektierendem Material)
 // house.roof     -> Dachkörper; house.spec.roofType = Gable | Shed | Hipped | Flat
-// house.spec     -> welche Varianten gezogen wurden (hasBay, hasDormers, hasAnnex, hasPorch, ...)
+// house.spec     -> was gebaut wurde (facade, hasGutter, hasShutters, hasGarage, hasBalcony,
+//                   wallIrregular, hasBay, hasDormers, hasAnnex, hasPorch, ...)
 ```
 
 Varianten: Dachformen Satteldach, Schleppdach, Walmdach, Flachdach; Features Erker, Dachgauben,
 Anbau, Vordach, Kamin, Fachwerk; der Stil Highrise ergänzt Fensterraster + Rücksprung + Flachdach.
-Deterministisch pro Seed; Unit-Tests in `tests/test_procedural_house.cpp`.
+Fassadenmaterial `spec.facade` wählbar: `Brick` (Backstein), `Plaster` (Rauhputz mit Sockelband),
+`Stone` (Stein mit Reliefschichten alle ~0,55 m). Weitere Details: Dachrinne + Fallrohr
+(`hasGutter`), Fensterläden (`hasShutters`), reflektierende Scheiben (`house.glass`), Garage mit
+Rolltor (`hasGarage`), Balkon mit Balkontür (`hasBalcony`) und leicht unregelmäßige Wände
+(`wallIrregular`, Per-Vertex-Jitter in x/z {EM} bump-artig ohne Textur). `Params::facade` erzwingt
+ein Material, `randomParams()` wählt eines. Deterministisch pro Seed; Unit-Tests in
+`tests/test_procedural_house.cpp`.
+
+## PlantGenerator-Klasse (Bäume + Büsche)
+
+`procedural::PlantGenerator` in `procedural/plant.hpp` generiert Pflanzen auf L-System-Basis mit
+artspezifischen Regeln, Paletten und Seed-Jitter {EM} `generateWorld` nutzt sie für den
+Landschafts-Scatter und die Stadtparks:
+
+```cpp
+fuhglgraphics::procedural::PlantGenerator gen;
+auto p = fuhglgraphics::procedural::PlantGenerator::randomParams(
+    fuhglgraphics::procedural::PlantKind::Fir, /*seed=*/42u); // Deciduous | Fir | Birch | Bush
+const auto plant = gen.generate(p);
+// plant.mesh        -> Stamm + Krone (Vertex-Farben: Stamm/Blatt je Art)
+// plant.trunkColor / plant.leafColor / plant.kind / plant.height
+```
+
+Arten: `Deciduous` (Laubbaum), `Fir` (Tanne {EM} konische Krone über eine eigene Regel plus
+konisches Zusammendrücken der Blatt-Vertexe), `Birch` (Birke {EM} weiße Borke, helle Blätter,
+hängende Zweige), `Bush` (Busch). Deterministisch pro Seed; Unit-Tests in
+`tests/test_procedural_plant.cpp`.
 
 ## Pipeline-Stadtgenerator (Terrain -> Straßen -> Grundstücke -> Häuser)
 
@@ -169,12 +219,17 @@ Deterministisch pro Seed; Unit-Tests in `tests/test_procedural_house.cpp`.
    `waterLevel`; Zonen-Gitter `density` (Zentrum -> Hochhäuser, Rand -> Dorf) und `wealth`
    aus unabhängigen Noise-Layern (`CityWorld::heightAt/densityAt/wealthAt`).
 2. **Straßennetz**: noise-gewarptes Straßengitter als planarer Graph (`RoadGraph`: Knoten =
-   Kreuzungen, Kanten = Abschnitte); Knoten im Wasser werden verworfen. Als Bürgersteig-+
-   Asphalt-Quads in `CityWorld::roadMesh` gerendert.
+   Kreuzungen, Kanten = Abschnitte); Knoten im Wasser werden verworfen. Gerendert in
+   `CityWorld::roadMesh` (Straßen-Quads mit irregulären Kanten, gewählter Oberfläche + Schlaglöcher {EM}
+   das texturierte Mesh) und `CityWorld::sidewalkMesh` (Bürgersteig + Kreuzungsflächen).
+   `CityGenParams` hat dieselben Road-Knobs wie `WorldGenParams` (`roadSurface`,
+   `roadIrregularity`, `roadDamage`, `wetRoads`, `allowPathCuts`).
 3. **Parzellierung**: jede überlebende Gitterzelle ist ein Block-Polygon, rekursiv per OBB
    gesplittet (Half-Plane-Split entlang der längsten PCA-Achse, eigenes `clipHalfPlane`/
    `computeObb`); `earClip` trianguliert die Grundstücks-Platten (`lotMesh`). Rand-nahe Lots
-   bekommen Straßenzugang, innenliegende werden Parks.
+   bekommen Straßenzugang, innenliegende werden Parks {EM} und zu kleine Lots, die bis an die
+   Straße reichen, werden nur dann zu "Weg"-Lots (Park), wenn `allowPathCuts` gesetzt ist {EM}
+   sonst bleibt die Straßenfront ununterbrochen.
 4. **Gebäude**: pro zugänglichem Lot ein `HouseGenerator`-Haus, Stil aus der Dichte-Zone
    (Village/Town/Highrise); Park-Lots bekommen Büsche.
 
@@ -187,17 +242,21 @@ LOD/Instancing nutzen. Unit-Tests: `tests/test_procedural_citygen.cpp`.
 procedural::CityGenParams p;
 p.seed = 777;
 const auto city = procedural::generateCityWorld(p);
-// city.heightmap -> TerrainComponent, city.roadMesh/city.lotMesh -> Nodes,
-// city.houses -> PlacedMesh-Liste (Wände POM + Details + Dach)
+// city.heightmap -> TerrainComponent, city.roadMesh (texturierte Oberfläche) /
+// city.sidewalkMesh / city.lotMesh -> Nodes, city.houses -> PlacedMesh-Liste (Wände POM je
+// Fassade + Glass + Details + Dach); city.roadSurface / city.wetRoads echoen die Params
 ```
 
 ## Screenshot-Demo
 
 `examples/worldgen_screenshot` rendert alle Modi headless zu PNG. Die CI rendert und
-PSNR-gated `docs/images/ci/g31_worldgen_{landscape,city,city_street}.png` (per optipng
-komprimiert; eingecheckte Referenzen in [docs/images/](../../images/g31_worldgen_city.png)).
-Die Pipeline-Shots (`--mode pipeline`, ~6500 Häuser) sind unter headless llvmpipe flaky, werden
-also manuell gerendert und nur als Referenzen eingecheckt, nicht CI-gated:
+PSNR-gated `docs/images/ci/g31_worldgen_{landscape,city,city_street}.png` sowie das
+Kopfsteinpflaster+Nass-Straßen-Showcase `g31_cobble_{city,city_street}.png` (`--mode city
+--surface cobble --wet`; per optipng komprimiert; eingecheckte Referenzen in
+[docs/images/](../../images/g31_worldgen_city.png)). Die Pipeline-Shots (`--mode pipeline`,
+~6500 Häuser) sind unter headless llvmpipe flaky, daher rendert die CI sie in ein nicht gatedes
+`manual/`-Unterverzeichnis des Artefakts und gute Runs werden von Hand nach
+`docs/images/g31_pipeline{,_street}.png` kopiert:
 
 ```bash
 cmake --build build --target fuhglgraphics_worldgen_screenshot
@@ -206,11 +265,16 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
 FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
     --prefix g31 --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline
 # schreibt g31_worldgen_{landscape,city,city_street}.png und g31_pipeline{,_street}.png
+# Straßenbelag + nasse Straßen für die Stadt-Modi (Default: asphalt, trocken):
+#   --surface asphalt|cobble|paving|dirt   (cobble/paving rendern mit POM-Parallax)
+#   --wet                                  (dunkle reflektierende Straßen: SSR + roughness 0.12)
 ```
 
 ![G31 Landschaft](../../images/g31_worldgen_landscape.png)
 ![G31 Stadt Übersicht](../../images/g31_worldgen_city.png)
 ![G31 Stadt Straßenebene](../../images/g31_worldgen_city_street.png)
+![G31 Kopfsteinpflaster + nasse Straßen Übersicht](../../images/g31_cobble_city.png)
+![G31 Kopfsteinpflaster + nasse Straßen Straßenebene](../../images/g31_cobble_city_street.png)
 ![G31 Pipeline-Stadt Übersicht](../../images/g31_pipeline.png)
 ![G31 Pipeline Straßenebene](../../images/g31_pipeline_street.png)
 
@@ -220,7 +284,12 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
   Sampling + Clamping, Erosion (Tropfen senken die Gipfel, flowmap bleibt in [0,1]), Splatmap-Kanäle
   (Gras/Fels/Sand/Schnee vorhanden und im Wertebereich), Poisson-Scatter (Mindestabstand, Felsen
   auf der Felsmaske, Determinismus pro Seed), Baum-Platzierungsregeln (auf dem Terrain, nicht im
-  See, Mindestabstand), WFC-Layout-Gültigkeit inkl. Rand-Tags, Block→Gebäude-Mapping, Modus-Wahl.
+  See, Mindestabstand), WFC-Layout-Gültigkeit inkl. Rand-Tags, Block→Gebäude-Mapping, Modus-Wahl, Roads
+(per Default keine Plaza-Tiles + `wfcRoadsConnected`, Schlagloch-/Irregularitäts-/Oberflächen-/Nässe-Effekte
+auf den Slab-Meshes), Glass + Fassaden-Plumbing; `tests/test_procedural_citygen.cpp`: Road-Graph-
+Konnektivität, keine Straßen im Wasser, `sidewalkMesh`, Lot-Zugang (per Default keine Weg-Durchbrüche),
+Road-Damage/Irregularität/Oberfläche/Nässe auf `roadMesh`; `tests/test_procedural_plant.cpp`: art-spezifische
+Formen (Tannenkrone verjüngt sich, Birke weiße Borke), Größen, Determinismus.
 
 ## Hinweise
 

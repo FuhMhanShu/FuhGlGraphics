@@ -22,6 +22,11 @@
 
 namespace fuhglgraphics::procedural {
 
+/// @brief Street surface material — selects slab color + uv scale in the generator; the app
+/// attaches the matching texture set (asphalt / cobblestone with POM parallax / paving stones /
+/// dirt-mud). Wet roads (WorldGenParams::wetRoads) are rendered dark + reflective app-side.
+enum class RoadSurface { Asphalt = 0, Cobble = 1, Paving = 2, Dirt = 3 };
+
 /// @brief Parameters of generateWorld(). `mode` switches between Landscape and City;
 /// all other members are plain knobs with sensible defaults.
 struct WorldGenParams {
@@ -62,6 +67,14 @@ struct WorldGenParams {
     float parkFraction = 0.12f;   ///< fraction of interior block cells turned into parks (lawn + bushes)
     int parkBushesPerPlaza = 3;   ///< bushes scattered on each park cell
     int maxBacktracks = 20000;    ///< WFC solver backtrack budget
+    RoadSurface roadSurface = RoadSurface::Asphalt; ///< street slab material (texture app-side)
+    float roadIrregularity = 0.06f; ///< edge jitter of the road slabs in world units (0 = straight)
+    float roadDamage = 0.35f;     ///< probability of a pothole (dark patch) per street cell
+    bool wetRoads = false;        ///< wet streets: render with low roughness + reflections
+    bool allowPathCuts = false;   ///< false (default): plaza tiles are dropped and road fragments
+                                  ///< outside the largest connected component become blocks, so
+                                  ///< paths/parks never interrupt the streets; true: any valid WFC
+                                  ///< solve is accepted (plaza tiles allowed, roads may fragment)
 };
 
 /// @brief One placed mesh: local-space MeshData + a world placement (position / rotY / scale)
@@ -70,7 +83,9 @@ struct PlacedMesh {
     fuhgl::render::MeshData mesh;          ///< local-space triangle data (11 floats/vertex)
     fuhgl::render::MeshData roofMesh;      ///< optional roof part (city houses) — own MeshEntry, e.g. shingle texture
     fuhgl::render::MeshData detailMesh;    ///< optional details (city houses: door/windows/chimney/bay) — own MeshEntry, plain vertex colors
+    fuhgl::render::MeshData glassMesh;     ///< optional window glass (city houses) — own MeshEntry with a reflective material
     int roofType = 0;                      ///< city houses: cast of procedural::RoofType (0 gable, 1 lean-to, 2 hipped, 3 flat)
+    int facade = 0;                        ///< city houses: cast of procedural::FacadeMaterial (0 brick, 1 plaster, 2 stone) — texture choice app-side
     fuhgl::math::Vec3 position{0.f, 0.f, 0.f}; ///< world position
     float rotY = 0.f;                      ///< rotation around +Y in radians
     float scale = 1.f;
@@ -99,8 +114,13 @@ struct GeneratedWorld {
     int cityW = 0, cityH = 0;              ///< WFC grid size
     float cityCellSize = 0.f;              ///< world size of one cell
     fuhgl::render::MeshData cityGround;    ///< base plate under the whole city (top at y = 0)
-    fuhgl::render::MeshData roads;         ///< merged slabs: sidewalk underlay + asphalt road + park lawn (plaza cells)
+    fuhgl::render::MeshData roads;         ///< street slabs only (irregular edges, chosen surface,
+                                           ///< pothole patches) — the textured mesh, app attaches the
+                                           ///< road texture set (cobble gets POM) + wet material here
+    fuhgl::render::MeshData pavements;     ///< sidewalk underlay + lot plates + park lawn slabs (plain vertex colors)
     fuhgl::render::MeshData districts;     ///< voronoi district plates (empty when blocksPerDistrict == 0)
+    RoadSurface roadSurface = RoadSurface::Asphalt; ///< echo of WorldGenParams::roadSurface (texture choice)
+    bool wetRoads = false;                 ///< echo of WorldGenParams::wetRoads
 
     // --- placed objects ---
     std::vector<PlacedMesh> trees;         ///< landscape: scattered L-system trees
@@ -123,6 +143,15 @@ struct GeneratedWorld {
 /// "block" (building lot), "plaza", "streetH"/"streetV", "cross", "tE" (T junction, road
 /// to E/S/W) and "endE" (dead end to E) — rotations cover the symmetric variants.
 std::vector<WfcTile> makeCityTiles();
+
+/// @brief True when all road tiles (tags containing "r") of a solved WFC grid form at most one
+/// connected component through shared "r" edges — i.e. no path/park interrupts the streets.
+bool wfcRoadsConnected(const std::vector<WfcCell>& cells, const std::vector<WfcTile>& tiles,
+                       int gridW, int gridH);
+
+/// @brief Slab color + uv scale per road surface; wet roads are darker (the app renders them
+/// with low roughness + reflections).
+void roadSurfaceStyle(RoadSurface s, bool wet, fuhgl::math::Vec3& color, float& uvScale);
 
 /// @brief Generates a whole world from `params` (landscape or city, see WorldGenParams::mode).
 /// Deterministic per seed; pure CPU, no GL.

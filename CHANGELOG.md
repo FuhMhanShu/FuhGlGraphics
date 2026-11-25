@@ -61,6 +61,22 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   docs-screenshots step + lossless optipng compression, references
   `docs/images/g31_{worldgen_{landscape,city,city_street},pipeline{,_street}}.png`,
   tutorials en/de. Requirement entry G31 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+  Extensions on top: **PlantGenerator** (`procedural/plant.hpp`, L-system based:
+  Deciduous/Fir/Birch trees + bushes with per-kind rules, palettes incl. white birch bark and
+  conical fir crown squash; used by the landscape scatter and city parks);
+  **HouseGenerator** facade material selectable (`FacadeMaterial::Brick/Plaster/Stone` with
+  plinth band / relief courses, `Params::facade` or random), roof gutter + downpipe, window
+  shutters, separate reflective `HouseMesh::glass` pane mesh, garage with roller door, balcony
+  with balcony door, slightly irregular walls (`wallIrregular` per-vertex jitter);
+  **roads**: `RoadSurface` (Asphalt/Cobble/Paving/Dirt) + `roadIrregularity` + `roadDamage`
+  (potholes) + `wetRoads` echo in the result, `wfcRoadsConnected()` and a largest-component
+  repair so streets are never interrupted by paths unless `allowPathCuts = true`; street slabs
+  are split from pavements/sidewalks (`GeneratedWorld::roads`/`pavements`,
+  `CityWorld::roadMesh`/`sidewalkMesh`) so the app can texture only the streets (cobble with POM);
+  `PlacedMesh` carries `glassMesh` + `facade`; the demo wires per-facade POM walls, a reflective
+  glass entry, the selectable road surface (`--surface`, asphalt default; CI also renders a gated
+  cobble+wet showcase) and wet reflective streets (`--wet`, SSR + roughness 0.12/metallic 0.4). Unit tests
+  `tests/test_procedural_{worldgen,house,citygen,plant}.cpp`.
 - **G30 — procedural creatures** (`include/fuhglgraphics/procedural/creature.hpp`,
   `src/procedural/creature.cpp`): `Skeleton` graph (nodes with position/radius/`BodyPart`,
   `finalize()` bakes world-space ellipsoid + tapered-capsule prims with broadphase AABBs, linear

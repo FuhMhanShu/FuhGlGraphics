@@ -31,3 +31,4 @@ void runProceduralCreatureTests();
 void runProceduralWorldgenTests();
 void runProceduralHouseTests();
 void runProceduralCitygenTests();
+void runProceduralPlantTests();
