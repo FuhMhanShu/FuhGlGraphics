@@ -7,6 +7,28 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **G31 HouseGenerator BuildingContext rules** (`procedural/house.hpp`): a small
+  `BuildingContext` (temperature, precipitation, humidity, water proximity, wealth, density,
+  biome, local material, soil color) now drives the architecture automatically —
+  climate->form (steep gable/hipped + wide eaves + gutter in rain/snow, flat roof + parapet in
+  arid heat, small windows + shutters + light high-albedo walls when hot, big windows + chimney
+  when cold, stilts over a stone foundation in flood zones), local resources->material
+  (`resolveFacadeMaterial`: forest->Wood+timber frame, rock->Stone+slate, clay/river->Brick+red
+  tiles, desert->Adobe, metropolis->Concrete), socio-economy (low density->1-2 storeys+garden
+  fence, high density->block-edge + 4-6+ storeys + ground-floor shop front with display
+  windows/sign band, wealth->cornices vs. wall patches + wall-jitter). New `HouseSpec` fields:
+  `hasParapet/onStilts/hasShopFront/hasFence/hasPatches/hasCornice/roofHeight/roofOverhang/
+  windowScale/stiltHeight/context`. `generateWorld` (WFC city) and `generateCityWorld`
+  (pipeline) fill the context per house from the climate/zone maps (shared `biomeFromClimate`
+  Whittaker lookup). New `Effect::Weathering` (lighting pass, building material IDs 5..8):
+  moss/lichen on north+up faces, soil-colored splash plinth in the lowest ~2 m, vertical rain
+  streaks on walls; params in `scene::EffectParams` (`weatherStrength/Humidity/BaseY/
+  RainStreaks/SoilColor/MossColor`). Tests: climate/material/socio-economy/stilt rules in
+  `tests/test_procedural_house.cpp` (864,862 checks, 0 failures; worldgen/citygen 102,748 checks,
+  0 failures).
+
 ### Fixed
 
 - **G25 marching-cubes demo** showed see-through holes: the cave SDF reached the volume

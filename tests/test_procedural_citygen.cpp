@@ -122,7 +122,7 @@ void testLotsAndHouses() {
         CHECK(h.mesh.vertexCount() > 0);
         CHECK(h.position.y >= w.waterLevelWorld * 1.05f);
         CHECK(h.position.y <= w.waterLevelWorld * 1.05f + 0.1f);
-        CHECK(h.facade >= 0 && h.facade <= 2); // FacadeMaterial cast
+        CHECK(h.facade >= 0 && h.facade <= 5); // FacadeMaterial cast (zone/biome-driven materials)
         if (h.glassMesh.vertexCount() > 0) ++withGlass;
     }
     CHECK(withGlass > 0); // window glass panes for the reflective material app-side

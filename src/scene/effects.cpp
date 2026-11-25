@@ -62,6 +62,13 @@ void Effects::applyTo(render::DeferredRenderer& renderer) const {
     renderer.wetnessAmount = params.wetnessAmount;
     renderer.wetnessPuddle = params.wetnessPuddle;
     renderer.wetnessNoiseScale = params.wetnessNoiseScale;
+    // G31 weathering
+    renderer.weatherStrength = params.weatherStrength;
+    renderer.weatherHumidity = params.weatherHumidity;
+    renderer.weatherBaseY = params.weatherBaseY;
+    renderer.weatherRainStreaks = params.weatherRainStreaks;
+    renderer.weatherSoilColor = params.weatherSoilColor;
+    renderer.weatherMossColor = params.weatherMossColor;
     // G23 tonemap operator
     renderer.tonemapOperator = static_cast<render::TonemapOperator>(params.tonemapOperator);
     // G30 lens flare + anamorphic streaks

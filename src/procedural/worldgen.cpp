@@ -20,6 +20,13 @@
 
 namespace fuhglgraphics::procedural {
 
+Biome biomeFromClimate(float temperature, float humidity) {
+    // Whittaker lookup: x = humidity, y = temperature
+    if (temperature < 0.25f) return humidity < 0.5f ? Biome::Tundra : Biome::Taiga;
+    if (temperature < 0.55f) return humidity < 0.35f ? Biome::Grassland : Biome::Forest;
+    return humidity < 0.4f ? Biome::Desert : Biome::Jungle;
+}
+
 namespace {
 
 /// @brief Deterministic splitmix32 RNG (same stream on every platform).
@@ -587,9 +594,7 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
                 Biome b;
                 if (h < waterN) b = Biome::Ocean;
                 else if (std::fabs(h - waterN) < 0.035f) b = Biome::Shore;
-                else if (temp < 0.25f) b = hum < 0.5f ? Biome::Tundra : Biome::Taiga;
-                else if (temp < 0.55f) b = hum < 0.35f ? Biome::Grassland : Biome::Forest;
-                else b = hum < 0.4f ? Biome::Desert : Biome::Jungle;
+                else b = biomeFromClimate(temp, hum);
                 // overrides: steep slopes = rock, high altitude = snow
                 if (slopeMap[idx] > rockHi) b = Biome::Rock;
                 else if (h > 0.8f) b = Biome::Snow;
@@ -749,13 +754,37 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                                                    {0.48f, 0.47f, 0.44f});
                 shiftY(lot, 0.025f);
                 appendTransformed(w.pavements, lot, place);
-                // procedural house on the lot
+                // procedural house on the lot. The BuildingContext drives the architecture
+                // rules: climate from latitude + noise, Whittaker biome -> local material,
+                // density falls off from the city center (zones), wealth from a noise layer
                 const float n = noise.value2(wx * 0.05f + 13.1f, wz * 0.05f + 7.7f); // per-block jitter
                 const std::uint32_t houseSeed =
                     p.seed ^ 0x11A5u ^ (static_cast<std::uint32_t>(x) * 73856093u) ^
                     (static_cast<std::uint32_t>(z) * 19349663u);
+                const float lat = std::fabs(wz) / (size * 0.5f);
+                BuildingContext ctx;
+                ctx.temperature = std::min(1.f, std::max(0.f, 1.f - lat * 0.85f +
+                    noise.fbm2(wx * 0.008f + 51.3f, wz * 0.008f + 17.9f, 3, Noise::Base::Simplex) * 0.3f));
+                ctx.precipitation = std::min(1.f, std::max(0.f,
+                    noise.fbm2(wx * 0.013f + 3.7f, wz * 0.013f + 9.2f, 4, Noise::Base::Simplex) * 0.5f + 0.45f));
+                ctx.humidity = std::min(1.f, std::max(0.f,
+                    noise.fbm2(wx * 0.013f + 7.9f, wz * 0.013f + 3.1f, 4, Noise::Base::Simplex) * 0.5f + 0.5f));
+                ctx.biome = static_cast<int>(biomeFromClimate(ctx.temperature, ctx.humidity));
+                const float dc = std::hypot(wx, wz) / (size * 0.45f);
+                ctx.density = std::min(1.f, std::max(0.f, 1.15f - dc +
+                    noise.fbm2(wx * 0.02f + 91.7f, wz * 0.02f + 43.1f, 3, Noise::Base::Simplex) * 0.3f));
+                ctx.wealth = std::min(1.f, std::max(0.f,
+                    noise.fbm2(wx * 0.017f + 31.7f, wz * 0.017f + 11.3f, 3, Noise::Base::Simplex) * 0.7f + 0.45f));
+                ctx.soilColor = fuhgl::math::Vec3{0.36f, 0.29f, 0.21f} *
+                                (0.85f + 0.3f * noise.value2(wx * 0.09f + 5.5f, wz * 0.09f));
+                // zones: an explicit non-default houseStyle wins, otherwise density picks it
+                const HouseStyle style =
+                    p.houseStyle != HouseStyle::Town ? p.houseStyle
+                    : ctx.density < 0.35f ? HouseStyle::Village
+                    : ctx.density < 0.65f ? HouseStyle::Town
+                                          : HouseStyle::Highrise;
                 HouseGenerator::Params hp =
-                    HouseGenerator::randomParams(p.houseStyle, p.cellSize, houseSeed);
+                    HouseGenerator::randomParams(style, p.cellSize, houseSeed, ctx);
                 hp.seed = houseSeed;
                 hp.width *= (0.8f + 0.4f * n);
                 hp.depth *= (0.8f + 0.4f * noise.value2(wz * 0.07f, wx * 0.07f));

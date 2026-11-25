@@ -693,6 +693,46 @@ void applyWetness(inout vec3 albedo, inout float roughness, vec3 worldPos, vec3 
 }
 )GLSL";
 
+// --- G31 building weathering for the lighting pass (Effect::Weathering) -------------------
+// Moss/lichen on north-facing and upward surfaces (humidity-driven), a soil-colored splash
+// stain / rising damp in the lowest ~2 m above uWeatherBaseY, and vertical rain streaks on
+// walls (below window sills and eaves; approximated with a y-stretched noise on vertical
+// faces). Gated to building material IDs (5..8 = walls/roof/details of the worldgen houses)
+// so terrain/grass/water stay untouched. Reuses wetNoise() from kLightFragWetness above.
+constexpr const char* kLightFragWeathering = R"GLSL(
+uniform int uWeatheringEnabled;
+uniform float uWeatherStrength;
+uniform float uWeatherHumidity;
+uniform float uWeatherBaseY;
+uniform float uWeatherRainStreaks;
+uniform vec3 uWeatherSoil;
+uniform vec3 uWeatherMoss;
+uniform sampler2D uGMatId;   // unit 25: G-buffer material ID
+void applyWeathering(inout vec3 albedo, vec3 worldPos, vec3 N, float matId) {
+    if (uWeatheringEnabled != 1 || uWeatherStrength <= 0.0) return;
+    float building = (matId > 4.5 && matId < 8.5) ? 1.0 : 0.0;
+    if (building < 0.5) return;
+    float s = clamp(uWeatherStrength, 0.0, 1.0);
+    float hum = clamp(uWeatherHumidity, 0.0, 1.0);
+    // moss/lichen: upward faces (roofs, window sills) + north-facing walls (north = -z)
+    float up = smoothstep(0.25, 0.65, N.y);
+    float north = clamp(dot(N, vec3(0.0, 0.0, -1.0)), 0.0, 1.0) * (1.0 - up);
+    float mossN = wetNoise(worldPos.xz * 0.9 + worldPos.y * 0.35);
+    float moss = hum * s * (up * 0.75 + north * 0.55) * smoothstep(0.45, 0.75, mossN);
+    albedo = mix(albedo, uWeatherMoss * (0.75 + 0.5 * mossN), clamp(moss, 0.0, 0.85));
+    // splash stain / rising damp in the lowest ~2 m, tinted with the local soil color
+    float h = worldPos.y - uWeatherBaseY;
+    float splashN = wetNoise(worldPos.xz * 2.2);
+    float splash = smoothstep(1.9, 0.15, h) * (0.45 + 0.55 * splashN) * s;
+    albedo = mix(albedo, uWeatherSoil * 0.55, clamp(splash * 0.85, 0.0, 0.9));
+    // rain streaks: vertically stretched noise on wall faces (run downward from sills/eaves)
+    float streakN = wetNoise(vec2(dot(worldPos.xz, vec2(1.0, 0.37)) * 5.0, worldPos.y * 0.28));
+    float wall = 1.0 - clamp(N.y, 0.0, 1.0);
+    float streak = smoothstep(0.62, 0.95, streakN) * wall * hum * clamp(uWeatherRainStreaks, 0.0, 1.0) * s;
+    albedo *= 1.0 - 0.38 * clamp(streak, 0.0, 1.0);
+}
+)GLSL";
+
 // --- fullscreen triangle (all post passes) ------------------------------------------
 constexpr const char* kFsVert = R"GLSL(#version 330 core
 out vec2 vUV;
@@ -1060,6 +1100,8 @@ void main() {
     vec3 V = normalize(uCamPos - worldPos);
     // G22: wetness/rain film modulates albedo + roughness before shading
     applyWetness(albedo, pbr.g, worldPos, N);
+    // G31: building weathering (moss / soil splash stain / rain streaks) on building material IDs
+    applyWeathering(albedo, worldPos, N, texture(uGMatId, vUV).r);
     // G15/G31: multiply the material AO with the screen-space AO factor (HBAO preferred when on)
     float ssao = (uHbaoEnabled == 1) ? texture(uHbao, vUV).r
                                      : ((uSsaoEnabled == 1) ? texture(uSsao, vUV).r : 1.0);

@@ -273,7 +273,7 @@ bool DeferredRenderer::createInternal() {
     if (!im.decalBox.create()) return false;
     im.decalBox.setMeshData(fuhgl::render::shapes::boxData({1.f, 1.f, 1.f}, {1.f, 1.f, 1.f}));
     const std::string lightFrag = std::string(kLightFragHead) + kLightFragKit +
-                                  fuhgl::render::kSkFuncs + kLightFragProbes + kLightFragSsao + kLightFragWetness + kLightFragPbr + kLightFragTail;
+                                  fuhgl::render::kSkFuncs + kLightFragProbes + kLightFragSsao + kLightFragWetness + kLightFragWeathering + kLightFragPbr + kLightFragTail;
     im.ssaoKernel = ssaoKernel(std::min(ssaoSamples > 0 ? ssaoSamples : 24, 64), 1337u);
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
         !compilePostFs(im.ssaoMat, kSsaoFrag, "ssao") ||
@@ -1109,6 +1109,7 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
     ctx.bindInput(5, "gDepth");
     ctx.bindInput(6, "ssao"); // G15
     ctx.bindInput(24, "hbao"); // G31 (unit 24: sky cube = 16, probes = 17..23)
+    ctx.bindInput(25, "gMatId"); // G31 weathering: material-ID gate (unit 25 is free here)
     // shadow samplers (units 4 / 10; dummies when off)
     fuhgl::gl::activeTexture(fuhgl::gl::GL_TEXTURE0 + fuhgl::render::kTextureUnitShadowMap);
     f.glBindTexture(fuhgl::gl::GL_TEXTURE_2D, s.shadowMap ? s.shadowMap->textureId() : im.dummyShadowTex.id());
@@ -1173,6 +1174,15 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
         p.setUniform("uWetness", wetnessAmount);
         p.setUniform("uWetnessPuddle", wetnessPuddle);
         p.setUniform("uWetnessNoiseScale", wetnessNoiseScale);
+        // G31 weathering
+        p.setUniform(p.uniformLocation("uGMatId"), 25);
+        p.setUniform(p.uniformLocation("uWeatheringEnabled"), effectEnabled(Effect::Weathering) ? 1 : 0);
+        p.setUniform("uWeatherStrength", weatherStrength);
+        p.setUniform("uWeatherHumidity", weatherHumidity);
+        p.setUniform("uWeatherBaseY", weatherBaseY);
+        p.setUniform("uWeatherRainStreaks", weatherRainStreaks);
+        p.setUniform("uWeatherSoil", weatherSoilColor);
+        p.setUniform("uWeatherMoss", weatherMossColor);
         p.setUniform(p.uniformLocation("uShadowMap"), fuhgl::render::kTextureUnitShadowMap);
         p.setUniform(p.uniformLocation("uShadowMapArray"), fuhgl::render::kTextureUnitShadowMapArray);
         p.setUniform(p.uniformLocation("uShadowMoments"), fuhgl::render::kTextureUnitShadowMoments);
@@ -1583,6 +1593,7 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::ChromaticAberration, caEnabled_);
     gate(Effect::Subsurface, sssEnabled_);
     gate(Effect::Gi, giEnabled_);
+    gate(Effect::Weathering, weatheringEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -1616,6 +1627,7 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::ChromaticAberration: caEnabled_ = on; break;
         case Effect::Subsurface: sssEnabled_ = on; break;
         case Effect::Gi: giEnabled_ = on; break;
+        case Effect::Weathering: weatheringEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -1659,6 +1671,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::ChromaticAberration: return caEnabled_;
         case Effect::Subsurface: return sssEnabled_;
         case Effect::Gi: return giEnabled_;
+        case Effect::Weathering: return weatheringEnabled_;
     }
     return false;
 }

@@ -106,6 +106,11 @@ enum class Biome : unsigned char {
     Ocean = 0, Shore, Desert, Grassland, Forest, Jungle, Taiga, Tundra, Rock, Snow
 };
 
+/// @brief Whittaker-style biome lookup over (temperature, humidity) only (no terrain
+/// overrides). Shared by the landscape climate maps and the city generators, which feed the
+/// Biome cast into BuildingContext::biome for the HouseGenerator material rules.
+Biome biomeFromClimate(float temperature, float humidity);
+
 /// @brief One placed mesh: local-space MeshData + a world placement (position / rotY / scale)
 /// + a tint. Attach as a scene node (translation/rotation/scale) with the mesh uploaded.
 struct PlacedMesh {
