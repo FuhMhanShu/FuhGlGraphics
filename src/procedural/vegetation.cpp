@@ -226,7 +226,8 @@ ScaTree spaceColonization(const GrowthForm& form, const EcoEnvironment& eco, con
     tip.depth = 1;
     tree.nodes.push_back(tip);
     std::vector<int> tips{1};
-    std::vector<int> grace(tree.nodes.size(), 0); // per-node: iterations without light capture
+    std::vector<int> grace(tree.nodes.size(), 0);     // per-node: iterations without light capture
+    std::vector<char> captured(tree.nodes.size(), 0); // per-node: captured an attractor this iteration
 
     auto addNode = [&](const Vec3& pos, int parent, int depth) -> int {
         ScaNode nd;
@@ -235,6 +236,7 @@ ScaTree spaceColonization(const GrowthForm& form, const EcoEnvironment& eco, con
         nd.depth = depth;
         tree.nodes.push_back(nd);
         grace.push_back(0);
+        captured.push_back(0);
         return static_cast<int>(tree.nodes.size()) - 1;
     };
 
@@ -243,7 +245,7 @@ ScaTree spaceColonization(const GrowthForm& form, const EcoEnvironment& eco, con
            static_cast<int>(tree.nodes.size()) < p.maxNodes) {
         ++iter;
         std::vector<int> nextTips;
-        std::vector<char> captured(tree.nodes.size(), 0);
+        std::fill(captured.begin(), captured.end(), 0);
         for (const int t : tips) {
             if (static_cast<int>(tree.nodes.size()) >= p.maxNodes) break; // hard node cap
             // copy: addNode() may reallocate tree.nodes, so no references into it across calls
