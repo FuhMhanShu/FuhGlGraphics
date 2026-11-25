@@ -345,3 +345,8 @@ parameters (cycle frequency, stride length, lift) scale with body mass
   + unit normals + keratin mask, Turing pattern range/determinism, countershading
   (dorsal darker than ventral), two-bone IK reachability, gait determinism + feet on
   terrain.
+- Demo: `examples/creature_showcase` renders three different G32 creatures (horned herbivore,
+  frontal-eyed carnivore, striped serpentine) side by side on procedural Corinthian columns in
+  a pitch-dark hall lit only by flickering torch point lights with G35 flame particles —
+  headless to PNG (`docs/images/ci/g32_creature_showcase_wide.png`,
+  `..._closeup.png`, rendered by the CI docs-screenshots job).

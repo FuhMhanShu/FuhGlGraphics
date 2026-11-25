@@ -166,6 +166,12 @@ target_link_libraries(fuhglgraphics_mandelbulb_screenshot PRIVATE fuhglgraphics)
 add_executable(fuhglgraphics_creature_screenshot creature_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_creature_screenshot PRIVATE fuhglgraphics)
 
+# G32 creature showcase: three different G32 blueprint creatures side by side on procedural
+# Corinthian columns in a pitch-dark scene, lit only by flickering torch point lights with G35
+# flame particles — headless to PNG.
+add_executable(fuhglgraphics_creature_showcase creature_showcase/main.cpp)
+target_link_libraries(fuhglgraphics_creature_showcase PRIVATE fuhglgraphics)
+
 # G31 world-generator showcase: procedural::generateWorld() builds a landscape (G24 noise
 # heightmap + lake basin + G26 L-system trees) and a city (G27 WFC layout + G28 district
 # plates + building boxes), attached to scene::Scene nodes; sun + CSM shadows + gradient sky,

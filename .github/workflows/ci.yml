@@ -240,6 +240,10 @@ jobs:
         run: |
           cmake --build build -j --target fuhglgraphics_creature_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_creature_screenshot --prefix docs/images/ci/g30_creature --width 1280 --height 720 --frames 16
+      - name: Build + render G32 creature-showcase screenshots (three G32 blueprint creatures on procedural Corinthian columns, pitch-dark scene lit only by flickering torch point lights with G35 flame particles, SSAO/bloom/volumetric)
+        run: |
+          cmake --build build -j --target fuhglgraphics_creature_showcase
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_creature_showcase --prefix docs/images/ci/g32_creature_showcase --width 1280 --height 720 --frames 16
 
       # G31 pipeline shots (--mode pipeline, ~6500 houses) are flaky under headless llvmpipe
       # (occasionally an empty frame), so they are rendered into the manual/ subdir: uploaded
