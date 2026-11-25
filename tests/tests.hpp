@@ -28,6 +28,7 @@ void runProceduralWfcTests();
 void runProceduralVoronoiTests();
 void runProceduralSdfTests();
 void runProceduralCreatureTests();
+void runProceduralCreaturegenTests();
 void runProceduralWorldgenTests();
 void runProceduralHouseTests();
 void runProceduralCitygenTests();

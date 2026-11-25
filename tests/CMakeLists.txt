@@ -26,6 +26,7 @@ add_executable(fuhglgraphics_tests
     test_procedural_voronoi.cpp
     test_procedural_sdf.cpp
     test_procedural_creature.cpp
+    test_procedural_creaturegen.cpp
     test_procedural_worldgen.cpp
     test_procedural_house.cpp
     test_procedural_citygen.cpp
