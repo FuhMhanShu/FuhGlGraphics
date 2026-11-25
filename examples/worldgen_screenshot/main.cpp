@@ -13,6 +13,7 @@
 //
 // Usage: fuhglgraphics_worldgen_screenshot --prefix g31_worldgen [--width 1280] [--height 720]
 //          [--frames 16] [--seed 777] [--mode both|landscape|city|pipeline|village] [--style town]
+//          [--fx all|none|hbao,ssr,bloom,volumetric,wetness] (village extra-effect selection)
 //          [--surface asphalt|cobble|paving|dirt] [--wet]
 //   writes <prefix>_landscape.png, <prefix>_city.png, <prefix>_city_street.png,
 //   <prefix>_village.png and <prefix>_pipeline*.png (skipping unselected modes).
@@ -52,6 +53,7 @@ struct Args {
     std::string mode = "both"; // both | landscape | city | pipeline | village
     std::string style = "town"; // village | town | highrise (city house style)
     std::string surface = "asphalt"; // asphalt | cobble | paving | dirt (city road surface)
+    std::string fx = "all"; // village extra effects: all | none | comma list (hbao,ssr,bloom,volumetric,wetness)
     bool wet = false; // wet roads: dark + reflective
 };
 
@@ -66,6 +68,7 @@ Args parseArgs(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--mode") == 0 && i + 1 < argc) a.mode = argv[++i];
         else if (std::strcmp(argv[i], "--style") == 0 && i + 1 < argc) a.style = argv[++i];
         else if (std::strcmp(argv[i], "--surface") == 0 && i + 1 < argc) a.surface = argv[++i];
+        else if (std::strcmp(argv[i], "--fx") == 0 && i + 1 < argc) a.fx = argv[++i];
         else if (std::strcmp(argv[i], "--wet") == 0) a.wet = true;
     }
     return a;
@@ -1016,13 +1019,16 @@ int main(int argc, char** argv) {
         // fog, wetness (morning damp), TAA + upscale + ACES tonemap
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.35f, 0.30f, -0.85f}));
         scene.root().effects.enable(render::Effect::Water);
-        scene.root().effects.enable(render::Effect::CsmShadows);
-        scene.root().effects.enable(render::Effect::Ibl);
-        scene.root().effects.enable(render::Effect::Hbao);
-        scene.root().effects.enable(render::Effect::Ssr);
-        scene.root().effects.enable(render::Effect::Bloom);
-        scene.root().effects.enable(render::Effect::VolumetricFog);
-        scene.root().effects.enable(render::Effect::Wetness);
+        // extra effects selectable via --fx (default: all) so CI can bisect llvmpipe crashes
+        const auto fxOn = [&](const char* name) {
+            return args.fx == "all" || args.fx.find(name) != std::string::npos;
+        };
+        if (fxOn("hbao")) scene.root().effects.enable(render::Effect::Hbao);
+        if (fxOn("ssr")) scene.root().effects.enable(render::Effect::Ssr);
+        if (fxOn("bloom")) scene.root().effects.enable(render::Effect::Bloom);
+        if (fxOn("volumetric")) scene.root().effects.enable(render::Effect::VolumetricFog);
+        if (fxOn("wetness")) scene.root().effects.enable(render::Effect::Wetness);
+        std::fprintf(stderr, "worldgen_screenshot: village fx='%s'\n", args.fx.c_str());
         scene.root().effects.params.exposure = 1.1f;
         scene.root().effects.params.shadowCenter = {vc.x, plateauY, vc.y};
         scene.root().effects.params.shadowRadius = 120.f;
