@@ -306,21 +306,21 @@ int main(int argc, char** argv) {
         Vec3 pos{0.f, 0.f, 0.f};
     };
     std::vector<Torch> torches;
-    const Vec3 torchPos[3] = {{-2.3f, 0.f, 2.2f}, {2.3f, 0.f, 2.2f}, {0.f, 0.f, -2.9f}};
+    const Vec3 torchPos[3] = {{-2.3f, 0.f, 1.6f}, {2.3f, 0.f, 1.6f}, {0.f, 0.f, -2.9f}};
     const Vec3 torchColor{1.0f, 0.52f, 0.22f};
-    const float torchIntensity = 12.f, torchRange = 20.f;
+    const float torchIntensity = 18.f, torchRange = 22.f;
     for (int i = 0; i < 3; ++i) {
         const Vec3& tp = torchPos[i];
         // iron pole + bowl
         fuhgl::render::Mesh* pole = new fuhgl::render::Mesh();
         pole->setMeshData(procedural::meshFromSdf(
             [](const Vec3& p) {
-                float d = fuhglgraphics::procedural::sdf::cylinder(p, 0.045f, 1.5f);
+                float d = fuhglgraphics::procedural::sdf::cylinder(p, 0.045f, 2.0f);
                 d = fuhglgraphics::procedural::sdf::smoothMin(
-                    d, fuhglgraphics::procedural::sdf::sphere(p - Vec3{0.f, 1.55f, 0.f}, 0.13f), 0.06f);
+                    d, fuhglgraphics::procedural::sdf::sphere(p - Vec3{0.f, 2.05f, 0.f}, 0.13f), 0.06f);
                 return d;
             },
-            {-0.2f, -0.05f, -0.2f}, {0.2f, 1.75f, 0.2f}, 20, {0.5f, 0.45f, 0.42f}));
+            {-0.2f, -0.05f, -0.2f}, {0.2f, 2.25f, 0.2f}, 20, {0.5f, 0.45f, 0.42f}));
         scene::Node& pn = scene.root().createChild("torchPole" + std::to_string(i));
         pn.translation = tp;
         scene::MeshEntry& pe = pn.attach<scene::MeshComponent>().addMesh(pole);
@@ -330,7 +330,7 @@ int main(int argc, char** argv) {
         pe.castShadow = false;
         // flame particles at the bowl
         scene::Node& fn = scene.root().createChild("torchFire" + std::to_string(i));
-        fn.translation = tp + Vec3{0.f, 1.62f, 0.f};
+        fn.translation = tp + Vec3{0.f, 2.12f, 0.f};
         auto& em = fn.attach<scene::ParticleEmitterComponent>();
         em.config.position = {0.f, 0.f, 0.f};
         em.config.direction = {0.f, 1.f, 0.f};
@@ -352,7 +352,7 @@ int main(int argc, char** argv) {
         }
         // point light at the flame
         scene::Node& ln = scene.root().createChild("torchLight" + std::to_string(i));
-        ln.translation = tp + Vec3{0.f, 1.85f, 0.f};
+        ln.translation = tp + Vec3{0.f, 2.35f, 0.f};
         auto& lc = ln.attach<scene::LightComponent>();
         lc.light = fuhgl::render::Light::point({0.f, 0.f, 0.f}, torchColor, torchIntensity, torchRange);
         Torch t;
@@ -384,7 +384,7 @@ int main(int argc, char** argv) {
     scene.root().effects.enable(render::Effect::Bloom);
     scene.root().effects.enable(render::Effect::Particles);
     scene.root().effects.enable(render::Effect::VolumetricFog);
-    scene.root().effects.params.exposure = 1.35f;
+    scene.root().effects.params.exposure = 1.5f;
     scene.root().effects.params.taaBlend = 0.08f;
     scene.root().effects.params.ssaoRadius = 0.8f;
     scene.root().effects.params.ssaoIntensity = 1.2f;
@@ -437,8 +437,8 @@ int main(int argc, char** argv) {
 
     // shot 2: closeup of the middle (carnivore) creature in profile — Turing spots +
     // countershading in torchlight
-    cam.position = {2.8f, kColumnTop + 2.1f, 5.6f};
-    aimAt(cam, {0.f, kColumnTop + 0.8f, 0.f});
+    cam.position = {2.2f, kColumnTop + 1.7f, 4.4f};
+    aimAt(cam, {0.f, kColumnTop + 1.0f, 0.f});
     if (!renderShot(args.prefix + "_closeup.png")) return 1;
 
     std::fprintf(stderr, "creature_showcase: done (GL %d.%d %s)\n", fuhgl::gl::version().major,
