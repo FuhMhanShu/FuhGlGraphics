@@ -56,12 +56,15 @@ ViewportWidget::ViewportWidget(AssetDocument* doc, QWidget* parent)
         // FBO as its default framebuffer, so FBO 0 is not the widget surface here).
         // NOTE: use Qt's QOpenGLFunctions + the plain GL enums — the fuhgl::gl::GL_*
         // tokens clash with the GL macros leaked in by the Qt headers.
-        auto* glf = QOpenGLContext::currentContext()->versionFunctions<QOpenGLFunctions_3_0>();
-        const GLuint dstFbo = QOpenGLContext::currentContext()->defaultFramebufferObject();
-        glf->glBindFramebuffer(GL_READ_FRAMEBUFFER, renderer_->output().id());
-        glf->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dstFbo);
-        glf->glBlitFramebuffer(0, 0, renderer_->width(), renderer_->height(), 0, 0, devW_, devH_,
-                               GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        auto* glf = QOpenGLVersionFunctionsFactory::get<QOpenGLFunctions_3_0>(
+            QOpenGLContext::currentContext());
+        if (glf) {
+            const GLuint dstFbo = QOpenGLContext::currentContext()->defaultFramebufferObject();
+            glf->glBindFramebuffer(GL_READ_FRAMEBUFFER, renderer_->output().id());
+            glf->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dstFbo);
+            glf->glBlitFramebuffer(0, 0, renderer_->width(), renderer_->height(), 0, 0, devW_, devH_,
+                                   GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        }
     });
     connect(gl_, &fuhglgraphics::editor::GlViewportWidget::frameRendered, this,
             &ViewportWidget::frameRendered);
