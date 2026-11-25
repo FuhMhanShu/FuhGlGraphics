@@ -249,11 +249,7 @@ jobs:
         run: |
           cmake --build build -j --target fuhglgraphics_worldgen_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode both
-          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode village || true
-          # llvmpipe crash bisection probes for --mode village (small, non-gated manual/ dir)
-          for fx in none hbao ssr bloom volumetric wetness; do
-            FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/manual/village_$fx --width 640 --height 360 --frames 2 --seed 777 --mode village --fx $fx || true
-          done
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode village
           # cobblestone + wet streets showcase (POM parallax, reflective) as extra gated refs
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_cobble --width 1280 --height 720 --frames 16 --seed 777 --mode city --surface cobble --wet
           mkdir -p docs/images/ci/manual

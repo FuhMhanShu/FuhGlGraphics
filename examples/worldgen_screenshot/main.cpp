@@ -755,8 +755,6 @@ int main(int argc, char** argv) {
         // GPU-instanced grass blades snapped onto the terrain; the heightFn hides blades
         // under water and on non-grass splatmap texels (rock/snow/sand) — a density mask
         if (p.grassBlades > 0) {
-            fuhgl::render::Mesh blade;
-            fuhgl::render::shapes::box(blade, {0.015f, 0.22f, 0.015f}, {0.25f, 0.45f, 0.18f});
             scene::Node& grass = scene.root().createChild("grass");
             grass.instancing.enabled = true;
             grass.instancing.count = p.grassBlades;
@@ -774,7 +772,9 @@ int main(int argc, char** argv) {
                 if (world.splatmap[idx + 0] < 110) return -1000.f; // grass weight too low
                 return h + 0.22f;
             };
-            scene::MeshEntry& ge = grass.attach<scene::MeshComponent>().addMesh(&blade);
+            // arena-owned: the MeshEntry must not point at a stack Mesh whose scope ends here
+            scene::MeshEntry& ge = grass.attach<scene::MeshComponent>().addMesh(
+                arena.add(fuhgl::render::shapes::boxData({0.015f, 0.22f, 0.015f}, {0.25f, 0.45f, 0.18f})));
             ge.albedo = {0.55f, 0.75f, 0.35f};
             ge.roughness = 1.f;
             ge.castShadow = false;
@@ -921,8 +921,6 @@ int main(int argc, char** argv) {
         water->surface.deepColor = {0.004f, 0.05f, 0.11f};
         water->surface.shallowColor = {0.06f, 0.30f, 0.38f};
         if (p.grassBlades > 0) {
-            fuhgl::render::Mesh blade;
-            fuhgl::render::shapes::box(blade, {0.015f, 0.22f, 0.015f}, {0.25f, 0.45f, 0.18f});
             scene::Node& grass = scene.root().createChild("grass");
             grass.instancing.enabled = true;
             grass.instancing.count = p.grassBlades;
@@ -939,7 +937,9 @@ int main(int argc, char** argv) {
                 if (world.splatmap[idx + 0] < 110) return -1000.f;
                 return h + 0.22f;
             };
-            scene::MeshEntry& ge = grass.attach<scene::MeshComponent>().addMesh(&blade);
+            // arena-owned: the MeshEntry must not point at a stack Mesh whose scope ends here
+            scene::MeshEntry& ge = grass.attach<scene::MeshComponent>().addMesh(
+                arena.add(fuhgl::render::shapes::boxData({0.015f, 0.22f, 0.015f}, {0.25f, 0.45f, 0.18f})));
             ge.albedo = {0.55f, 0.75f, 0.35f};
             ge.roughness = 1.f;
             ge.castShadow = false;
