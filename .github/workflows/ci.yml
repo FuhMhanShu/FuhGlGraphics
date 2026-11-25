@@ -209,15 +209,6 @@ jobs:
           cmake --build build -j --target fuhglgraphics_tonemap_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_tonemap_screenshot --prefix docs/images/ci/g23_tonemap --width 1280 --height 720 --frames 16
 
-      - name: Build + render parallax-mapping (POM) brick-house screenshots (wide / grazing wall / wall without POM)
-        run: |
-          cmake --build build -j --target fuhglgraphics_parallax_house_screenshot
-          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_parallax_house_screenshot --prefix docs/images/ci/parallax_house --width 1280 --height 720 --frames 16
-
-      - name: Build + render G30/G31 post-effect screenshots (lens flare + anamorphic on/off, HBAO vs SSAO)
-        run: |
-          cmake --build build -j --target fuhglgraphics_postfx_screenshot
-          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_postfx_screenshot --prefix docs/images/ci/postfx --width 1280 --height 720 --frames 16
       - name: Build + render G24 procedural-noise screenshots (noise-carved terrain + lake, noise cloud sky + IBL, sun/CSM/god rays, SSAO/volumetric/wetness/bloom)
         run: |
           cmake --build build -j --target fuhglgraphics_noise_screenshot
@@ -232,11 +223,6 @@ jobs:
         run: |
           cmake --build build -j --target fuhglgraphics_lsystem_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_lsystem_screenshot --prefix docs/images/ci/g26_lsystem --width 1280 --height 720 --frames 16
-      - name: Build + render G32-G34 post-effect screenshots (chromatic aberration, SSS, screen-space GI; each on/off)
-        run: |
-          cmake --build build -j --target fuhglgraphics_postfx2_screenshot
-          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_postfx2_screenshot --prefix docs/images/ci/postfx2 --width 1280 --height 720 --frames 16
-
       - name: Build + render G27 WFC screenshots (WFC dungeon — torches+bloom, wear decals, CSM shadows, SSAO, volumetric fog; interior + top-down overview)
         run: |
           cmake --build build -j --target fuhglgraphics_wfc_screenshot
@@ -267,13 +253,6 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_cobble --width 1280 --height 720 --frames 16 --seed 777 --mode city --surface cobble --wet
           mkdir -p docs/images/ci/manual
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/manual/g31 --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline || true
-
-      - name: Build + render G36 ice-cave screenshots (SDF cave with campfire inside — G35 flame particles, ice crystals + SSR/SSS, water puddle, HBAO, bloom, volumetric fog, entrance glow; wide/crystals/entrance)
-        run: |
-          cmake --build build -j --target fuhglgraphics_cave_screenshot
-          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_cave_screenshot --prefix docs/images/ci/cave --shot 0 --width 1280 --height 720 --frames 16
-          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_cave_screenshot --prefix docs/images/ci/cave --shot 1 --width 1280 --height 720 --frames 16
-          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_cave_screenshot --prefix docs/images/ci/cave --shot 2 --width 1280 --height 720 --frames 16
 
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).
