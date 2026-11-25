@@ -29,6 +29,7 @@ add_executable(fuhglgraphics_tests
     test_procedural_worldgen.cpp
     test_procedural_house.cpp
     test_procedural_citygen.cpp
+    test_procedural_plant.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)

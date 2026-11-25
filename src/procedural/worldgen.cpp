@@ -9,6 +9,8 @@
 
 #include <fuhglgraphics/procedural/worldgen.hpp>
 
+#include <fuhglgraphics/procedural/plant.hpp>
+
 #include <fuhgl/render.hpp>
 
 #include <algorithm>
@@ -324,21 +326,33 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
         const std::size_t idx = (static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v)) * 4;
         return w.splatmap[idx + 1] / 255.f;
     };
+    // trees: mixed species via the PlantGenerator (deciduous / fir / birch), bushes likewise
+    PlantGenerator plantGen;
     for (const auto& s : poissonScatter(half, p.treeMinDist, p.treeCount, grassWeight, rng)) {
-        LSystem tree = LSystem::makeTree(static_cast<int>(rng.next() % 3u), p.seed);
+        PlantParams pp;
+        pp.seed = p.seed ^ (rng.next() * 2654435761u);
+        const float kindRoll = rng.nextf();
+        pp.kind = kindRoll < 0.5f ? PlantKind::Deciduous
+                 : kindRoll < 0.75f ? PlantKind::Fir
+                                   : PlantKind::Birch;
+        pp.scale = 0.45f + 0.5f * rng.nextf();
         PlacedMesh pm;
-        pm.mesh = tree.generate();
+        pm.mesh = plantGen.generate(pp).mesh;
         pm.position = {s.x, w.heightAt(s.x, s.y), s.y};
         pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
-        pm.scale = 0.45f + 0.5f * rng.nextf();
+        pm.scale = pp.scale;
         w.trees.push_back(std::move(pm));
     }
     for (const auto& s : poissonScatter(half, p.treeMinDist * 0.5f, p.bushCount, grassWeight, rng)) {
+        PlantParams pp;
+        pp.kind = PlantKind::Bush;
+        pp.seed = p.seed ^ (rng.next() * 40503u);
+        pp.scale = 0.5f + 0.7f * rng.nextf();
         PlacedMesh pm;
-        pm.mesh = LSystem::makeBush().generate();
+        pm.mesh = plantGen.generate(pp).mesh;
         pm.position = {s.x, w.heightAt(s.x, s.y), s.y};
         pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
-        pm.scale = 0.5f + 0.7f * rng.nextf();
+        pm.scale = pp.scale;
         w.bushes.push_back(std::move(pm));
     }
     for (const auto& s : poissonScatter(half, p.treeMinDist * 0.8f, p.rockCount, rockWeight, rng)) {
@@ -355,6 +369,7 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
 /// bushes; optional voronoi district plates underneath.
 void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
     HouseGenerator houseGen;
+    PlantGenerator plantGen;
     const int gw = std::max(2, p.cityGrid);
     Wfc wfc(gw, gw, "s"); // border tag "s": the ring closes with blocks/sidewalk edges
     w.tiles = makeCityTiles();
@@ -391,8 +406,12 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                 shiftY(lawn, 0.04f);
                 appendTransformed(w.roads, lawn, place);
                 for (int b = 0; b < p.parkBushesPerPlaza; ++b) {
+                    PlantParams pp;
+                    pp.kind = PlantKind::Bush;
+                    pp.seed = p.seed ^ rng.next();
+                    pp.scale = 0.5f + 0.5f * rng.nextf();
                     PlacedMesh pm;
-                    pm.mesh = LSystem::makeBush().generate();
+                    pm.mesh = plantGen.generate(pp).mesh;
                     pm.position = {wx + (rng.nextf() - 0.5f) * p.cellSize * 0.6f, 0.06f,
                                    wz + (rng.nextf() - 0.5f) * p.cellSize * 0.6f};
                     pm.rotY = rng.nextf() * 2.f * fuhgl::math::kPi;
