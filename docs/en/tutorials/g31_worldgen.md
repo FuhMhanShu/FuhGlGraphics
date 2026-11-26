@@ -349,7 +349,9 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
 ```
 
 ![G31 landscape](../../images/g31_worldgen_landscape.png)
+![G31 street-level roads at the main hamlet](../../images/g31_worldgen_roads.png)
 ![G31 village on the lake shore](../../images/g31_worldgen_village.png)
+![G31 panorama: vegetated landscape with a WFC city at a river and a village at the lake, connected by a G38 road](../../images/g31_worldgen_panorama.png)
 ![G31 city overview](../../images/g31_worldgen_city.png)
 ![G31 city street level](../../images/g31_worldgen_city_street.png)
 ![G31 cobblestone + wet streets overview](../../images/g31_cobble_city.png)

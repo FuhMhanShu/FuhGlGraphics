@@ -52,6 +52,12 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   `<prefix>_roads.png` (street-level close-up: road ribbon, ruts, houses, milestones/lanterns,
   bridges over water); CI renders both via `--mode both`. Docs updated (ROAD_GENERATION.md,
   g38 tutorials en/de, README rows point at `g31_worldgen_roads.png`).
+- **G31 panorama screenshot mode** (`examples/worldgen_screenshot --mode panorama`, also part
+  of `--mode both`, rendered by CI as `g31_worldgen_panorama.png`): one scene combining a big
+  vegetated landscape (420 G37 trees, 520 bushes, instanced grass, lake + 18 rivers) with a WFC
+  city placed on a flattened pad at a riverbank (strongest flow channel far from the lake) and a
+  HouseGenerator village on the lake's south shore — connected by a G38 least-cost road whose
+  water crossings render as bridges. Camera: vista from behind the city toward the lake.
 - **G31 HouseGenerator BuildingContext rules** (`procedural/house.hpp`): a small
   `BuildingContext` (temperature, precipitation, humidity, water proximity, wealth, density,
   biome, local material, soil color) now drives the architecture automatically —
