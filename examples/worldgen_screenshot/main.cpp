@@ -3,7 +3,9 @@
 // the result to a scene::Scene. Landscape: heightmap terrain (macro relief + hydraulic/thermal
 // erosion) with the biome splatmap (R grass / G rock / B sand / A snow) as albedo texture,
 // water surface, GPU-instanced grass weighted by the splatmap, L-system trees/bushes and
-// scattered rocks. City: ground, sidewalk/asphalt roads, voronoi district plates, procedural
+// scattered rocks, plus G38 settlements connected by an organic A* road network (road ribbons,
+// bridges, milestones/lanterns/signs/walls props, hamlet houses). Roads carve their bench into
+// the terrain; vegetation keeps off the road mask. City: ground, sidewalk/asphalt roads, voronoi district plates, procedural
 // houses with per-facade POM walls (Backstein/Rauhputz/Stein), reflective window glass,
 // shingle roofs, park lawns with bushes. Roads use the selectable surface (Asphalt /
 // Kopfsteinpflaster with POM / Pflasterstein / Matsch) with irregular edges + potholes, and
@@ -691,11 +693,15 @@ int main(int argc, char** argv) {
         p.riverCount = 14;        // rivers carved from mountain sources down to the lake
         p.terraceSteps = 8;       // mild terracing on high ground (mesa/canyon steps)
         p.terraceStrength = 0.5f;
+        p.settlementCount = 4;     // G38: hamlets placed by terrain+climate ...
+        p.housesPerSettlement = 8; // ... connected by the organic A* road network
         procedural::GeneratedWorld world = procedural::generateWorld(p);
         std::fprintf(stderr,
-                     "worldgen_screenshot: landscape seed %u: grid %d, %zu trees, %zu bushes, %zu rocks\n",
+                     "worldgen_screenshot: landscape seed %u: grid %d, %zu trees, %zu bushes, %zu rocks, "
+                     "%zu settlements, %zu hamlet houses, %zu road props\n",
                      args.seed, world.gridW, world.trees.size(), world.bushes.size(),
-                     world.rocks.size());
+                     world.rocks.size(), world.settlements.size(), world.buildings.size(),
+                     world.roadProps.size());
 
         // composition derived from the heightmap: camera on the south rim of the lake,
         // looking NW across the water toward the far shore with the mountains behind —
@@ -826,6 +832,68 @@ int main(int argc, char** argv) {
         addPlant("tree", world.trees, 30);
         addPlant("bush", world.bushes, 31);
         addPlant("rock", world.rocks, 32);
+
+        // G38 organic road network: extruded road ribbons (vertex colors carry the surface
+        // material), bridge decks/posts over water, and spline props (milestones, lanterns,
+        // signs, guard walls)
+        if (world.roads.vertexCount() > 0) {
+            scene::Node& rn = scene.root().createChild("roads");
+            scene::MeshEntry& re = rn.attach<scene::MeshComponent>().addMesh(arena.add(world.roads));
+            re.albedo = {1.f, 1.f, 1.f};
+            re.roughness = 0.95f;
+            re.castShadow = true;
+            re.materialId = 1;
+        }
+        if (world.bridges.vertexCount() > 0) {
+            scene::Node& bn = scene.root().createChild("bridges");
+            scene::MeshEntry& be = bn.attach<scene::MeshComponent>().addMesh(arena.add(world.bridges));
+            be.albedo = {1.f, 1.f, 1.f};
+            be.roughness = 0.8f;
+            be.castShadow = true;
+            be.materialId = 1;
+        }
+        addPlant("roadprop", world.roadProps, 33);
+
+        // hamlet houses of the settlements (same PlacedMesh layout as the city houses)
+        for (std::size_t i = 0; i < world.buildings.size(); ++i) {
+            const auto& b = world.buildings[i];
+            scene::Node& n = scene.root().createChild("hamlet" + std::to_string(i));
+            n.translation = b.position;
+            n.rotation = fuhgl::math::fromAxisAngle(b.rotY, {0.f, 1.f, 0.f});
+            n.scale = {b.scale, b.scale, b.scale};
+            scene::MeshComponent& mc = n.attach<scene::MeshComponent>();
+            fuhgl::math::Vec3 facTint;
+            const FacadeTexSet* ft = facadeSet(b.facade, plasterTex, stoneTex, facTint);
+            scene::MeshEntry& walls = mc.addMesh(arena.add(b.mesh));
+            walls.albedo = facTint;
+            walls.albedoTexture = ft ? &ft->albedo : &brickAlbedo;
+            walls.normalMap = ft ? &ft->normal : &brickNormal;
+            walls.heightMap = ft ? &ft->height : &brickHeight;
+            walls.parallaxScale = 0.05f;
+            walls.parallaxLayers = 24;
+            walls.roughness = 0.85f;
+            walls.castShadow = true;
+            walls.materialId = 5;
+            if (b.glassMesh.vertexCount() > 0) {
+                scene::MeshEntry& gl = mc.addMesh(arena.add(b.glassMesh));
+                setupGlassEntry(gl);
+            }
+            if (b.detailMesh.vertexCount() > 0) {
+                scene::MeshEntry& det = mc.addMesh(arena.add(b.detailMesh));
+                det.albedo = {1.4f, 1.4f, 1.4f};
+                det.roughness = 0.4f;
+                det.castShadow = true;
+                det.materialId = 8;
+            }
+            if (b.roofMesh.vertexCount() > 0) {
+                scene::MeshEntry& roof = mc.addMesh(arena.add(b.roofMesh));
+                roof.albedoTexture = &shingle;
+                roof.albedo = {1.6f, 1.6f, 1.6f};
+                roof.roughness = 0.7f;
+                roof.castShadow = true;
+                roof.materialId = 6;
+            }
+        }
         // warm sun in the south (behind the shore camera) so the seen slopes are lit
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.30f, 0.50f, 0.85f}));
 

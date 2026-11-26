@@ -9,6 +9,38 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G38 organic road/path network** (`procedural/roadgen.{hpp,cpp}`, integrated in the G31
+  landscape pipeline; design: `docs/ROAD_GENERATION.md`, tutorials `docs/{en,de}/tutorials/g38_roads.md`):
+  `procedural::RoadGenerator` routes a highway/country-road/desire-path hierarchy between
+  sites with an A* least-cost search whose movement cost is the terrain physics — quadratic
+  slope cost (`slopeWeight*slope^2`) plus a `criticalPenalty` above a class-specific critical
+  slope (highway ~15 deg) so steep hillsides automatically produce switchbacks; water costs
+  `waterCost` except at shallow+narrow fords (`fordMaxDepth`/`fordMaxFlow` -> `fordCost`), and
+  path segments forced across deeper water are flagged as bridges; swamp/forest/rock cost
+  extra and existing roads get an `existingRoadDiscount` so new paths merge instead of running
+  parallel. The raw grid path is smoothed by a Catmull-Rom resample + iterative min-curve-radius
+  clamp per class, then extruded with a class cross-section (crowned highway with shoulders and
+  ditches, country road with two wheel ruts + grass ridge, narrow trodden trail); bridge runs
+  become a flat deck + posts in a separate mesh. `carveTerrain()` cuts the road bench into the
+  uphill side and fills the embankment on the downhill side (water and border ring untouched).
+  Output masks per cell: `mask` (noise-frayed road edges — shader edge blending + scatter
+  suppression), `rutMask` (wheel ruts — puddles after rain), `bridgeMask`, and a Dijkstra
+  distance field exposed as `roadDistanceAt(x,z)` for creature fast routes; props along the
+  spline (milestones, lanterns near settlements, way signs at junctions, guard walls at steep
+  drops). In `generateWorld(Landscape)` the closed loop runs: terrain+climate pick
+  `settlementCount` sites (flat, dry, biome-suitable, near-water bonus; `importance` from
+  flatness+water proximity drives the hierarchy), the G38 network connects them and carves the
+  terrain, the road mask is merged into the splatmap (dirt replaces grass), `housesPerSettlement`
+  G31 village houses are placed per settlement off the road corridor, and the G37 tree/rock
+  scatter is suppressed on the road while bushes grow as weeds at the frayed edges
+  (`settlementCount = 0` disables the whole phase). New `GeneratedWorld` fields: `settlements`,
+  `bridges`, `roadProps`, `roadMask`, `rutMask`, `bridgeMask`, `roadDistance`,
+  `roadDistanceAt()`; landscape road ribbons go into the existing `roads` mesh.
+  `examples/worldgen_screenshot` renders roads/bridges/props/hamlet houses in landscape mode.
+  Tests: `tests/test_procedural_roadgen.cpp` (A* slope detour, ford vs. bridge, merge discount,
+  spline min-radius, hierarchy+carving+meshes+determinism) and
+  `testLandscapeSettlementsAndRoads` in `tests/test_procedural_worldgen.cpp`
+  (fuhglgraphics_tests: 6,417,825 checks, 0 failures).
 - **G31 HouseGenerator BuildingContext rules** (`procedural/house.hpp`): a small
   `BuildingContext` (temperature, precipitation, humidity, water proximity, wealth, density,
   biome, local material, soil color) now drives the architecture automatically —

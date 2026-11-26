@@ -219,7 +219,11 @@ void repairRoadConnectivity(std::vector<WfcCell>& cells, const std::vector<WfcTi
 //    mountain sources, V-carved channels, sinks filled to their spill point as ponds)
 // 3. splatmap: R grass / G rock (slope) / B sand (shore + flow channels) / A snow (altitude),
 //    plus climate maps (temperature/humidity) and a Whittaker biome lookup per cell
-// 4. vegetation & rocks scattered by poisson-disk sampling weighted by splatmap + biome
+// 3c. settlements + G38 road network: terrain+climate pick the sites, A* least-cost paths
+//     connect them (highway/country/trail hierarchy) and carve their bench into the terrain,
+//     the road mask is merged into the splatmap, hamlet houses are placed off the corridor
+// 4. vegetation & rocks scattered by poisson-disk sampling weighted by splatmap + biome,
+//    suppressed on the road mask (weeds only at the frayed edges)
 
 float cellWorld(const WorldGenParams& p, int g) { return p.worldSize / static_cast<float>(g - 1); }
 
@@ -615,14 +619,188 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
         w.biome.clear();
     }
 
+    // 3c. settlements + G38 organic road network — the closed world loop: terrain & climate
+    //     pick the settlement sites, the sites are connected by least-cost paths (A* with
+    //     physics costs) whose bench is carved into the terrain, the road mask is merged
+    //     into the splatmap, houses are placed per settlement off the road corridor, and the
+    //     scatter below keeps vegetation off the roads (weeds only at the frayed edges)
+    if (p.settlementCount > 0 && g >= 8) {
+        Rng roadRng(p.seed ^ 0xB0ADu);
+        const float half3 = p.worldSize * 0.5f;
+        auto siteBiome = [&](float x, float z) -> int {
+            if (w.biome.empty()) return -1;
+            const float u = std::min(1.f, std::max(0.f, x / w.sizeX + 0.5f)) * (g - 1);
+            const float v = std::min(1.f, std::max(0.f, z / w.sizeZ + 0.5f)) * (g - 1);
+            return w.biome[static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v)];
+        };
+        auto gridIdxAt = [&](float x, float z) {
+            const float u = std::min(1.f, std::max(0.f, x / w.sizeX + 0.5f)) * (g - 1);
+            const float v = std::min(1.f, std::max(0.f, z / w.sizeZ + 0.5f)) * (g - 1);
+            return static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v);
+        };
+        // site suitability: dry, flat, climate-suitable land; villages like to be near water
+        auto siteWeight = [&](float x, float z) {
+            if (w.heightAt(x, z) < w.waterLevelWorld + 0.5f) return 0.f;
+            const float slope = slopeMap[gridIdxAt(x, z)];
+            float wgt = 1.f - smoothstep(0.22f, 0.55f, slope);
+            const int b = siteBiome(x, z);
+            if (b == static_cast<int>(Biome::Ocean) || b == static_cast<int>(Biome::Rock) ||
+                b == static_cast<int>(Biome::Snow)) return 0.f;
+            if (b == static_cast<int>(Biome::Desert)) wgt *= 0.3f;
+            else if (b == static_cast<int>(Biome::Tundra)) wgt *= 0.5f;
+            else if (b == static_cast<int>(Biome::Shore)) wgt *= 1.25f;
+            if (w.heightAt(x, z) < w.waterLevelWorld + 3.f) wgt *= 1.4f;
+            return wgt;
+        };
+        const auto sitePts = poissonScatter(half3 * 0.9f, p.settlementMinDist, p.settlementCount,
+                                            siteWeight, roadRng);
+        if (!sitePts.empty()) {
+            // importance (flatness + water proximity) decides the road hierarchy hub role
+            std::vector<RoadSite> sites;
+            for (std::size_t i = 0; i < sitePts.size(); ++i) {
+                const float slope = slopeMap[gridIdxAt(sitePts[i].x, sitePts[i].y)];
+                const float waterProx =
+                    w.heightAt(sitePts[i].x, sitePts[i].y) < w.waterLevelWorld + 3.f ? 1.f : 0.f;
+                RoadSite s;
+                s.pos = sitePts[i];
+                s.importance = std::min(1.f, 0.30f + (1.f - std::min(1.f, slope / 0.55f)) * 0.40f +
+                                             waterProx * 0.30f);
+                s.id = static_cast<int>(i);
+                sites.push_back(s);
+            }
+            RoadInput rin;
+            rin.heightmap = &w.heightmap;
+            rin.gridW = g;
+            rin.gridH = g;
+            rin.sizeX = p.worldSize;
+            rin.sizeZ = p.worldSize;
+            rin.heightScale = w.heightScale;
+            rin.waterLevel = waterN;
+            rin.flow = &w.flowmap;
+            rin.biome = w.biome.empty() ? nullptr : &w.biome;
+            rin.sites = sites;
+            RoadGenerator roadGen;
+            RoadNetwork net = roadGen.generate(rin, p.roads);
+            roadGen.carveTerrain(w.heightmap, net, p.roads); // bench + embankment into the terrain
+            roadGen.buildGeometry(net, rin, p.roads);        // road sits on the carved bench now
+            appendMeshData(w.roads, net.roadMesh);
+            appendMeshData(w.bridges, net.bridgeMesh);
+            for (auto& prop : net.props) {
+                PlacedMesh pm;
+                pm.mesh = std::move(prop.mesh);
+                pm.position = prop.position;
+                pm.rotY = prop.rotY;
+                w.roadProps.push_back(std::move(pm));
+            }
+            w.roadMask = std::move(net.mask);
+            w.rutMask = std::move(net.rutMask);
+            w.bridgeMask = std::move(net.bridgeMask);
+            w.roadDistance = std::move(net.dist);
+            // merge the road into the splatmap: dirt replaces grass, frayed edges blend into sand
+            for (int j = 0; j < g; ++j)
+                for (int i = 0; i < g; ++i) {
+                    const std::size_t ci = static_cast<std::size_t>(i) + g * j;
+                    const float m = w.roadMask[ci];
+                    if (m <= 0.003f) continue;
+                    const std::size_t idx = ci * 4;
+                    const float grass = w.splatmap[idx + 0] / 255.f * (1.f - m);
+                    const float sand =
+                        std::max(w.splatmap[idx + 2] / 255.f, std::min(1.f, m) * 0.9f);
+                    w.splatmap[idx + 0] = static_cast<unsigned char>(grass * 255.f);
+                    w.splatmap[idx + 2] = static_cast<unsigned char>(std::min(1.f, sand) * 255.f);
+                }
+            // houses per settlement, placed off the road corridor (the road passes the center)
+            HouseGenerator houseGen;
+            auto siteClimate = [&](float x, float z, float& temp, float& hum) {
+                const std::size_t idx = gridIdxAt(x, z);
+                temp = w.temperature.empty() ? 0.6f : w.temperature[idx];
+                hum = w.humidity.empty() ? 0.5f : w.humidity[idx];
+            };
+            for (const auto& s : sites) {
+                Settlement set;
+                set.center = s.pos;
+                set.radius = 5.f + p.housesPerSettlement * 0.6f;
+                set.importance = s.importance;
+                set.biome = siteBiome(s.pos.x, s.pos.y);
+                set.firstHouse = w.buildings.size();
+                float temp = 0.6f, hum = 0.5f;
+                siteClimate(s.pos.x, s.pos.y, temp, hum);
+                const float waterProx =
+                    w.heightAt(s.pos.x, s.pos.y) < w.waterLevelWorld + 2.5f ? 1.f : 0.f;
+                for (int k = 0; k < p.housesPerSettlement; ++k) {
+                    float hx = s.pos.x, hz = s.pos.y;
+                    bool ok = false;
+                    for (int t = 0; t < 14 && !ok; ++t) {
+                        const float ang = roadRng.nextf() * 2.f * fuhgl::math::kPi;
+                        const float r = 2.5f + roadRng.nextf() * set.radius;
+                        hx = s.pos.x + std::cos(ang) * r;
+                        hz = s.pos.y + std::sin(ang) * r;
+                        if (std::fabs(hx) > half3 * 0.97f || std::fabs(hz) > half3 * 0.97f) continue;
+                        if (w.heightAt(hx, hz) < w.waterLevelWorld + 0.25f) continue;
+                        if (w.roadDistanceAt(hx, hz) < p.roads.highwayWidth * 0.5f + 2.f) continue;
+                        ok = true;
+                    }
+                    if (!ok) continue;
+                    const std::uint32_t houseSeed =
+                        p.seed ^ 0x5E77u ^ (static_cast<std::uint32_t>(s.id) * 2654435761u) ^
+                        (static_cast<std::uint32_t>(k) * 40503u);
+                    BuildingContext ctx;
+                    ctx.temperature = temp;
+                    ctx.humidity = hum;
+                    ctx.precipitation = hum;
+                    ctx.waterProximity = waterProx;
+                    ctx.wealth = std::min(1.f, std::max(0.f, 0.25f + s.importance * 0.5f +
+                        noise.fbm2(hx * 0.05f + 11.1f, hz * 0.05f + 5.3f, 3,
+                                   Noise::Base::Simplex) * 0.3f));
+                    ctx.density = 0.15f; // hamlet
+                    ctx.biome = set.biome;
+                    ctx.soilColor = fuhgl::math::Vec3{0.36f, 0.29f, 0.21f} *
+                                    (0.85f + 0.3f * noise.value2(hx * 0.09f + 5.5f, hz * 0.09f));
+                    HouseGenerator::Params hp =
+                        HouseGenerator::randomParams(HouseStyle::Village, 7.f, houseSeed, ctx);
+                    hp.seed = houseSeed;
+                    hp.width *= 0.8f + 0.4f * noise.value2(hx * 0.07f, hz * 0.07f + 3.3f);
+                    hp.depth *= 0.8f + 0.4f * noise.value2(hz * 0.06f + 1.7f, hx * 0.06f);
+                    const HouseMesh hm = houseGen.generate(hp);
+                    PlacedMesh pm;
+                    pm.mesh = hm.walls;
+                    pm.detailMesh = hm.details;
+                    pm.roofMesh = hm.roof;
+                    pm.glassMesh = hm.glass;
+                    pm.roofType = static_cast<int>(hm.spec.roofType);
+                    pm.facade = static_cast<int>(hm.spec.facade);
+                    pm.position = {hx, w.heightAt(hx, hz), hz};
+                    pm.rotY = roadRng.nextf() * 2.f * fuhgl::math::kPi;
+                    w.buildings.push_back(std::move(pm));
+                    ++set.houseCount;
+                }
+                w.settlements.push_back(set);
+            }
+        }
+    }
+
     // 4. poisson-disk scatter weighted by the splatmap (+ biome density): trees on grass,
-    //    rocks on rock/steep
+    //    rocks on rock/steep; the road mask suppresses vegetation on the roads (weeds at edges)
     const float half = p.worldSize * 0.5f;
     auto biomeAt = [&](float x, float z) -> int {
         if (w.biome.empty()) return -1;
         const float u = std::min(1.f, std::max(0.f, x / w.sizeX + 0.5f)) * (g - 1);
         const float v = std::min(1.f, std::max(0.f, z / w.sizeZ + 0.5f)) * (g - 1);
         return w.biome[static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v)];
+    };
+    // bilinear sample of the road mask ([0,1], 0 when no roads were generated)
+    auto roadMaskAt = [&](float x, float z) -> float {
+        if (w.roadMask.empty()) return 0.f;
+        const float u = std::min(1.f, std::max(0.f, x / w.sizeX + 0.5f)) * (g - 1);
+        const float v = std::min(1.f, std::max(0.f, z / w.sizeZ + 0.5f)) * (g - 1);
+        const int x0 = static_cast<int>(u), z0 = static_cast<int>(v);
+        const int x1 = std::min(g - 1, x0 + 1), z1 = std::min(g - 1, z0 + 1);
+        const float tx = u - x0, tz = v - z0;
+        const auto at = [&](int x, int zz) {
+            return w.roadMask[static_cast<std::size_t>(x) + g * zz];
+        };
+        return (at(x0, z0) * (1.f - tx) + at(x1, z0) * tx) * (1.f - tz) +
+               (at(x0, z1) * (1.f - tx) + at(x1, z1) * tx) * tz;
     };
     auto grassWeight = [&](float x, float z) {
         if (w.heightAt(x, z) < w.waterLevelWorld + 0.3f) return 0.f;
@@ -632,6 +810,7 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
         const float grass = w.splatmap[idx + 0] / 255.f;
         const float rock = w.splatmap[idx + 1] / 255.f;
         float wgt = grass * (1.f - rock);
+        wgt *= 1.f - roadMaskAt(x, z); // vegetation keeps off the roads
         const int b = biomeAt(x, z); // biome density: deserts/tundra/snow/rock are sparse
         if (b == static_cast<int>(Biome::Desert)) wgt *= 0.12f;
         else if (b == static_cast<int>(Biome::Tundra)) wgt *= 0.45f;
@@ -642,7 +821,14 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
         const float u = std::min(1.f, std::max(0.f, x / w.sizeX + 0.5f)) * (g - 1);
         const float v = std::min(1.f, std::max(0.f, z / w.sizeZ + 0.5f)) * (g - 1);
         const std::size_t idx = (static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v)) * 4;
-        return w.splatmap[idx + 1] / 255.f;
+        return w.splatmap[idx + 1] / 255.f * (1.f - roadMaskAt(x, z));
+    };
+    // bushes additionally grow as weeds (Unkraut) at the frayed road edges
+    auto bushWeight = [&](float x, float z) {
+        float wgt = grassWeight(x, z);
+        const float m = roadMaskAt(x, z);
+        if (m > 0.02f && m < 0.55f) wgt += 0.20f;
+        return wgt;
     };
     // trees: G37 ecophysiological VegetationGenerator — the same environmental parameters as
     // the terrain (temperature/humidity climate maps) plus slope/altitude (wind exposure) and
@@ -696,7 +882,7 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
         pm.scale = 1.f; // scale is already baked into the generated mesh
         w.trees.push_back(std::move(pm));
     }
-    for (const auto& s : poissonScatter(half, p.treeMinDist * 0.5f, p.bushCount, grassWeight, rng)) {
+    for (const auto& s : poissonScatter(half, p.treeMinDist * 0.5f, p.bushCount, bushWeight, rng)) {
         PlantParams pp;
         pp.kind = PlantKind::Bush;
         pp.seed = p.seed ^ (rng.next() * 40503u);
@@ -865,6 +1051,20 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
 }
 
 } // namespace
+
+float GeneratedWorld::roadDistanceAt(float x, float z) const {
+    if (roadDistance.empty() || gridW < 2 || gridH < 2) return 1e9f;
+    const float u = std::min(1.f, std::max(0.f, x / sizeX + 0.5f)) * (gridW - 1);
+    const float v = std::min(1.f, std::max(0.f, z / sizeZ + 0.5f)) * (gridH - 1);
+    const int x0 = static_cast<int>(u), z0 = static_cast<int>(v);
+    const int x1 = std::min(gridW - 1, x0 + 1), z1 = std::min(gridH - 1, z0 + 1);
+    const float tx = u - x0, tz = v - z0;
+    const auto at = [&](int x, int zz) {
+        return roadDistance[static_cast<std::size_t>(x) + gridW * zz];
+    };
+    return (at(x0, z0) * (1.f - tx) + at(x1, z0) * tx) * (1.f - tz) +
+           (at(x0, z1) * (1.f - tx) + at(x1, z1) * tx) * tz;
+}
 
 float GeneratedWorld::heightAt(float x, float z) const {
     if (gridW < 2 || gridH < 2 || sizeX <= 0.f || sizeZ <= 0.f) return 0.f;
