@@ -926,11 +926,11 @@ int main(int argc, char** argv) {
         }
         std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", path.c_str());
 
-        // street-level close-up along the main road at the hamlet -> <prefix>_roads.png
-        // (road ribbon, wheel ruts, houses, milestones/lanterns, bridges over water)
-        const float rx = topSite.x - roadDir.x * 9.f, rz = topSite.y - roadDir.y * 9.f;
-        cam.position = {rx, std::max(world.heightAt(rx, rz), world.waterLevelWorld) + 4.5f, rz};
-        aimAt(cam, {topSite.x + roadDir.x * 8.f, siteH + 1.6f, topSite.y + roadDir.y * 8.f});
+        // oblique close-up of the hamlet and its road hub -> <prefix>_roads.png
+        // (road ribbons with ruts, houses, milestones/lanterns, bridges over water)
+        const float rx = topSite.x + 12.f, rz = topSite.y + 14.f;
+        cam.position = {rx, std::max(world.heightAt(rx, rz), world.waterLevelWorld) + 22.f, rz};
+        aimAt(cam, {topSite.x - roadDir.x * 4.f, siteH + 2.f, topSite.y - roadDir.y * 4.f});
         const std::string rpath = args.prefix + "_roads.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, rpath,
                          water ? &water->surface : nullptr, &env)) {
@@ -1260,11 +1260,11 @@ int main(int argc, char** argv) {
         p.erosionDroplets = 4000;
         p.thermalPasses = 4;
         p.riverCount = 18;
-        p.treeCount = 420;         // lots of vegetation
-        p.bushCount = 520;
+        p.treeCount = 500;         // lots of vegetation
+        p.bushCount = 600;
         p.rockCount = 90;
         p.grassBlades = 14000;
-        p.treeMinDist = 5.f;
+        p.treeMinDist = 4.5f;
         p.settlementCount = 0;     // city + village are placed explicitly below
         procedural::GeneratedWorld world = generateWorld(p);
         const int g = world.gridW;
@@ -1292,9 +1292,11 @@ int main(int argc, char** argv) {
         if (lakeN > 0) { lakeCx /= lakeN; lakeCz /= lakeN; } else { lakeSouthZ = world.sizeZ * 0.25f; }
 
         // city spot: riverbank land (just above the water level, next to a strong flow
-        // channel), as far from the lake as possible -> city and village are visibly apart
+        // channel) at a moderate distance from the lake -> city at the river and village at
+        // the lake both fit into one vista frame, with the connecting road between them
         fuhgl::math::Vec2 cityC{world.sizeX * 0.30f, -world.sizeX * 0.28f};
-        float bestScore = -1.f;
+        const float cityTargetDist = world.sizeX * 0.26f;
+        float bestScore = 1e9f;
         for (int j = 2; j < g - 2; ++j)
             for (int i = 2; i < g - 2; ++i) {
                 const float h = world.heightmap[static_cast<std::size_t>(i) + g * j];
@@ -1306,8 +1308,8 @@ int main(int argc, char** argv) {
                 if (nf < 0.6f) continue;
                 const float x = (static_cast<float>(i) / (g - 1) - 0.5f) * world.sizeX;
                 const float z = (static_cast<float>(j) / (g - 1) - 0.5f) * world.sizeZ;
-                const float score = std::hypot(x - lakeCx, z - lakeCz);
-                if (score > bestScore) { bestScore = score; cityC = {x, z}; }
+                const float score = std::fabs(std::hypot(x - lakeCx, z - lakeCz) - cityTargetDist);
+                if (score < bestScore) { bestScore = score; cityC = {x, z}; }
             }
 
         // village at the lake's south shore
@@ -1635,18 +1637,18 @@ int main(int argc, char** argv) {
                 }
         }
 
-        // vista camera: behind the city at the river, looking toward the lake — the city is
-        // in the foreground, the village at the lake far in the background (both on the
-        // view axis, so both stay in frame)
+        // vista camera: from the city side toward the lake — the city at the river in the
+        // foreground, the connecting road across the middle ground, the village at the lake
+        // in the background
         const fuhgl::math::Vec2 d{vilC.x - cityC.x, vilC.y - cityC.y};
         const float dl = std::hypot(d.x, d.y);
         const fuhgl::math::Vec2 dn{d.x / dl, d.y / dl};
         const fuhgl::math::Vec2 perp{-dn.y, dn.x};
         const fuhgl::math::Vec2 mid{(cityC.x + vilC.x) * 0.5f, (cityC.y + vilC.y) * 0.5f};
-        const float camX = cityC.x - dn.x * 70.f + perp.x * 18.f;
-        const float camZ = cityC.y - dn.y * 70.f + perp.y * 18.f;
-        cam.position = {camX, std::max(world.heightAt(camX, camZ), world.waterLevelWorld) + 34.f, camZ};
-        aimAt(cam, {mid.x, world.waterLevelWorld + 5.f, mid.y});
+        const float camX = mid.x - dn.x * 55.f + perp.x * 22.f;
+        const float camZ = mid.y - dn.y * 55.f + perp.y * 22.f;
+        cam.position = {camX, std::max(world.heightAt(camX, camZ), world.waterLevelWorld) + 30.f, camZ};
+        aimAt(cam, {mid.x + dn.x * 12.f, world.waterLevelWorld + 4.f, mid.y + dn.y * 12.f});
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.35f, 0.62f, 0.45f}));
         const std::string ppath = args.prefix + "_panorama.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, ppath,
