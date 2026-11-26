@@ -19,6 +19,8 @@
 //                   catalog with procedural (G24-G31) + deferred-render + G13 water tools
 //                   (tool_catalog.hpp) and the stdio MCP server (mcp_server.hpp)
 //   io/asset_cache.hpp  G11 on-disk asset cache keyed by content hash
+//   weather/  G38  weather system core: CPU state machine with time-based transitions
+//                   (sun path, clouds, rain, thunderstorm) + renderer param mapping (A2)
 //   editor/   G2+G11  Qt6 editor code (only built with FUHGLGRAPHICS_WITH_QT=1):
 //                   gl_viewport_widget.hpp = GL viewport widget (fps limiter, frame stats)
 //   tools/    G12  fuhglgraphics_mcp_server (Qt-free stdio MCP server) +
@@ -77,6 +79,8 @@
 #include <fuhglgraphics/procedural/worldgen.hpp>
 #include <fuhglgraphics/procedural/house.hpp>
 #include <fuhglgraphics/procedural/citygen.hpp>
+
+#include <fuhglgraphics/weather/weather.hpp>
 
 // NOTE: editor/gl_viewport_widget.hpp (WITH_QT only) is deliberately NOT included here:
 // its Qt/GL headers would leak GL macros (e.g. GL_UNSIGNED_INT) into every core TU and

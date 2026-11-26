@@ -71,6 +71,7 @@ add_library(fuhglgraphics STATIC
     src/procedural/citygen.cpp
     src/procedural/plant.cpp
     src/procedural/vegetation.cpp
+    src/weather/weather.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 

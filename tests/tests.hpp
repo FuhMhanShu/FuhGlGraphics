@@ -36,3 +36,4 @@ void runProceduralCitygenTests();
 void runProceduralPlantTests();
 void runMcpTests();
 void runProceduralVegetationTests();
+void runWeatherTests();
