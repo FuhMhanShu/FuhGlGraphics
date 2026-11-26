@@ -82,4 +82,6 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_vegetation_showcase \
 Unit-Tests: `tests/test_procedural_vegetation.cpp` (Klima→Geometrie-Regeltabelle, Konkurrenz
 offen vs. dicht, Pipe-Model-Identität, Wind-Lean, Determinismus, Mesh-Gültigkeit).
 
-![G37 Vegetations-Showcase](../../images/g37_vegetation_wide.png)
+![G37 Vegetations-Showcase — sechs ökogesteuerte Pflanzen nebeneinander](../../images/g37_vegetation_wide.png)
+
+![Tropenbaum mit Träufelspitzen im Closeup, Blätter im Gegenlicht (G33-SSS)](../../images/g37_vegetation_driptip_closeup.png)
