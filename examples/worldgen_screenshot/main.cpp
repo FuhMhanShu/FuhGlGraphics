@@ -874,15 +874,21 @@ int main(int argc, char** argv) {
                 const float dirx = topSite.x - aim.x, dirz = topSite.y - aim.y;
                 const float dl = std::hypot(dirx, dirz) + 1e-6f;
                 clutterAimX = aim.x; clutterAimZ = aim.y;
-                clutterCamX = aim.x + dirx / dl * 4.5f;
-                clutterCamZ = aim.y + dirz / dl * 4.5f;
+                clutterCamX = aim.x + dirx / dl * 6.f;
+                clutterCamZ = aim.y + dirz / dl * 6.f;
                 haveClutterCam = true;
             }
         }
         float shoreCamX = 0.f, shoreCamZ = 0.f, shoreAimX = 0.f, shoreAimZ = 0.f;
         bool haveShoreCam = false;
         {
-            // nearest water clutter item to the hamlet (reed/pebble/driftwood)
+            // nearest water clutter item to the hamlet (reed/pebble/driftwood), skipping aims
+            // with a rock near the camera->aim line (a rock would fill the whole frame)
+            auto rockNear = [&](float x, float z, float r) {
+                for (const auto& rk : world.rocks)
+                    if (std::hypot(rk.position.x - x, rk.position.z - z) < r) return true;
+                return false;
+            };
             float ad = 1e9f;
             fuhgl::math::Vec2 aim{-1e9f, -1e9f};
             for (const auto& c : world.clutter) {
@@ -891,14 +897,19 @@ int main(int argc, char** argv) {
                     k != static_cast<int>(procedural::ClutterKind::Pebble) &&
                     k != static_cast<int>(procedural::ClutterKind::Driftwood)) continue;
                 const float d = std::hypot(c.position.x - topSite.x, c.position.z - topSite.y);
-                if (d < ad) { ad = d; aim = {c.position.x, c.position.z}; }
+                if (d >= ad) continue;
+                const float dirx = topSite.x - c.position.x, dirz = topSite.y - c.position.z;
+                const float dl = std::hypot(dirx, dirz) + 1e-6f;
+                const float camx = c.position.x + dirx / dl * 6.f, camz = c.position.z + dirz / dl * 6.f;
+                if (rockNear(c.position.x, c.position.z, 3.5f) || rockNear(camx, camz, 3.5f)) continue;
+                ad = d; aim = {c.position.x, c.position.z};
             }
             if (ad < 1e8f) {
                 const float dirx = topSite.x - aim.x, dirz = topSite.y - aim.y;
                 const float dl = std::hypot(dirx, dirz) + 1e-6f;
                 shoreAimX = aim.x; shoreAimZ = aim.y;
-                shoreCamX = aim.x + dirx / dl * 4.5f; // camera on the land side
-                shoreCamZ = aim.y + dirz / dl * 4.5f;
+                shoreCamX = aim.x + dirx / dl * 6.f; // camera on the land side
+                shoreCamZ = aim.y + dirz / dl * 6.f;
                 haveShoreCam = true;
             } else {
                 // fallback: nearest sub-water cell to the hamlet
@@ -1119,8 +1130,8 @@ int main(int argc, char** argv) {
         // (camera positions + near-camera clutter erase were computed before the bake above)
         if (haveClutterCam) {
             cam.position = {clutterCamX, std::max(world.heightAt(clutterCamX, clutterCamZ),
-                                                  world.waterLevelWorld) + 2.2f, clutterCamZ};
-            aimAt(cam, {clutterAimX, world.heightAt(clutterAimX, clutterAimZ) + 0.15f, clutterAimZ});
+                                                  world.waterLevelWorld) + 3.0f, clutterCamZ};
+            aimAt(cam, {clutterAimX, world.heightAt(clutterAimX, clutterAimZ) + 0.1f, clutterAimZ});
             const std::string cpath = args.prefix + "_clutter.png";
             if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, cpath,
                              water ? &water->surface : nullptr, &env)) {
@@ -1131,7 +1142,7 @@ int main(int argc, char** argv) {
         }
         if (haveShoreCam) {
             cam.position = {shoreCamX, std::max(world.heightAt(shoreCamX, shoreCamZ),
-                                                world.waterLevelWorld) + 1.8f, shoreCamZ};
+                                                world.waterLevelWorld) + 3.2f, shoreCamZ};
             aimAt(cam, {shoreAimX, std::max(world.heightAt(shoreAimX, shoreAimZ), world.waterLevelWorld) + 0.1f,
                         shoreAimZ});
             const std::string spath = args.prefix + "_shore.png";

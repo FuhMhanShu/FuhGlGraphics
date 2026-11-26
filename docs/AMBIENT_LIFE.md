@@ -36,13 +36,20 @@ kind + local mesh (base at y=0, vertex colors encode the kind) + world position 
 | Building clutter (weed/gravel/roof tile/crate) | building spots | ring of radius 2.5..7 around each building |
 | Road-rim clutter (weed tufts/gravel) | road mask | only the frayed rim `mask ∈ (0.03, 0.6)`, not the carriageway |
 
-### Clusters: poisson-disk + high-frequency noise mask
+### Clusters: poisson-disk + high-frequency noise mask (+ zone targeting)
 
 Real nests (mushrooms, pebble beds, weed tufts) never grow alone. `poissonScatter()` does
 weighted dart-throwing with a spatial hash (minimum distance `minDist`); on top of it
 `clusterMask()` evaluates high-frequency fbm2 and remaps it through `clusterThreshold`:
 below the threshold nothing grows at all, above it a dense nest forms. Each rule uses its own
 noise seed so the nests of different kinds do not overlap perfectly.
+
+Thin features (riverbeds, the waterline band) would almost never be hit by uniform dart
+throwing, so the riverbed and reed passes jitter their candidates around **precomputed zone
+cells** (high-flow sub-water cells / waterline-band cells) instead. Pass order and budgets:
+rockfall, riverbed, reeds, building ring (`buildingClutterCount`), road rim
+(`roadEdgeClutterCount`) — each with its own budget so one kind cannot starve the others —
+then the numerous tree-litter pass fills the remaining `maxItems`.
 
 ### Integration
 
