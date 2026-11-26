@@ -22,6 +22,8 @@
 //          [--fx all|none|hbao,ssr,bloom,volumetric,wetness] (village extra-effect selection)
 //          [--surface asphalt|cobble|paving|dirt] [--wet]
 //   writes <prefix>_landscape.png, <prefix>_roads.png (street-level at the main hamlet),
+//   <prefix>_clutter.png + <prefix>_shore.png (G39 ground-level close-ups: building/road-rim
+//   clutter at the hamlet, reeds/pebbles at the nearest waterline),
 //   <prefix>_panorama.png (vegetated landscape + WFC city at a river + village at the lake,
 //   connected by a G38 road with bridges), <prefix>_city.png, <prefix>_city_street.png,
 //   <prefix>_village.png and <prefix>_pipeline*.png (skipping unselected modes).
@@ -841,6 +843,56 @@ int main(int argc, char** argv) {
                                                return std::hypot(c.position.x - camX, c.position.z - camZ) < 14.f;
                                            }),
                             world.clutter.end());
+        // G39 close-up cameras (ground level): hamlet rim + nearest waterline. Their clutter
+        // must be erased BEFORE the clutter mesh is baked below, so compute them here.
+        float clutterCamX = 0.f, clutterCamZ = 0.f;
+        bool haveClutterCam = false;
+        if (!world.buildings.empty()) {
+            std::size_t hi = 0;
+            float hd = 1e9f;
+            for (std::size_t i = 0; i < world.buildings.size(); ++i) {
+                const float d = std::hypot(world.buildings[i].position.x - topSite.x,
+                                           world.buildings[i].position.z - topSite.y);
+                if (d < hd) { hd = d; hi = i; }
+            }
+            clutterCamX = world.buildings[hi].position.x + 6.5f;
+            clutterCamZ = world.buildings[hi].position.z + 5.5f;
+            haveClutterCam = true;
+        }
+        float shoreCamX = 0.f, shoreCamZ = 0.f, shoreAimX = 0.f, shoreAimZ = 0.f;
+        bool haveShoreCam = false;
+        {
+            int bi = -1, bj = -1;
+            float bd = 1e9f;
+            for (int j = 0; j < world.gridH; ++j)
+                for (int i = 0; i < world.gridW; ++i) {
+                    if (world.heightmap[static_cast<std::size_t>(i) + world.gridW * j] >= p.waterLevel) continue;
+                    const float x = (static_cast<float>(i) / (world.gridW - 1) - 0.5f) * world.sizeX;
+                    const float z = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
+                    const float d = std::hypot(x - topSite.x, z - topSite.y);
+                    if (d < bd) { bd = d; bi = i; bj = j; }
+                }
+            if (bi >= 0) {
+                const float sx = (static_cast<float>(bi) / (world.gridW - 1) - 0.5f) * world.sizeX;
+                const float sz = (static_cast<float>(bj) / (world.gridH - 1) - 0.5f) * world.sizeZ;
+                const float dirx = topSite.x - sx, dirz = topSite.y - sz;
+                const float dl = std::hypot(dirx, dirz) + 1e-6f;
+                shoreCamX = sx + dirx / dl * 5.f; // camera on the land side of the waterline
+                shoreCamZ = sz + dirz / dl * 5.f;
+                shoreAimX = sx + dirx / dl * 1.5f;
+                shoreAimZ = sz + dirz / dl * 1.5f;
+                haveShoreCam = true;
+            }
+        }
+        auto eraseClutterNear = [&](float ex, float ez, float r) {
+            world.clutter.erase(std::remove_if(world.clutter.begin(), world.clutter.end(),
+                                               [&](const procedural::ClutterItem& c) {
+                                                   return std::hypot(c.position.x - ex, c.position.z - ez) < r;
+                                               }),
+                                world.clutter.end());
+        };
+        if (haveClutterCam) eraseClutterNear(clutterCamX, clutterCamZ, 3.f);
+        if (haveShoreCam) eraseClutterNear(shoreCamX, shoreCamZ, 3.f);
 
         scene::Scene scene;
         MeshArena arena;
@@ -1020,6 +1072,44 @@ int main(int argc, char** argv) {
             return 1;
         }
         std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", rpath.c_str());
+
+        // G39 ground-level close-ups -> <prefix>_clutter.png / <prefix>_shore.png.
+        // Clutter items are 0.1..0.8 world units, so from a ~2 wu-high camera they fill pixels:
+        // building-ring clutter + road-rim weeds at the hamlet, reeds/pebbles at the waterline.
+        // (camera positions + near-camera clutter erase were computed before the bake above)
+        if (haveClutterCam) {
+            std::size_t hi = 0;
+            float hd = 1e9f;
+            for (std::size_t i = 0; i < world.buildings.size(); ++i) {
+                const float d = std::hypot(world.buildings[i].position.x - topSite.x,
+                                           world.buildings[i].position.z - topSite.y);
+                if (d < hd) { hd = d; hi = i; }
+            }
+            const auto& hp = world.buildings[hi].position;
+            cam.position = {clutterCamX, std::max(world.heightAt(clutterCamX, clutterCamZ),
+                                                  world.waterLevelWorld) + 2.2f, clutterCamZ};
+            const float mx = (hp.x + topSite.x) * 0.5f, mz = (hp.z + topSite.y) * 0.5f;
+            aimAt(cam, {mx, world.heightAt(mx, mz) + 0.25f, mz});
+            const std::string cpath = args.prefix + "_clutter.png";
+            if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, cpath,
+                             water ? &water->surface : nullptr, &env)) {
+                std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", cpath.c_str());
+                return 1;
+            }
+            std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", cpath.c_str());
+        }
+        if (haveShoreCam) {
+            cam.position = {shoreCamX, std::max(world.heightAt(shoreCamX, shoreCamZ),
+                                                world.waterLevelWorld) + 1.8f, shoreCamZ};
+            aimAt(cam, {shoreAimX, world.waterLevelWorld + 0.05f, shoreAimZ});
+            const std::string spath = args.prefix + "_shore.png";
+            if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, spath,
+                             water ? &water->surface : nullptr, &env)) {
+                std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", spath.c_str());
+                return 1;
+            }
+            std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", spath.c_str());
+        }
     }
 
     // --- village: big landscape + a small procedural village on the lake shore ----------
