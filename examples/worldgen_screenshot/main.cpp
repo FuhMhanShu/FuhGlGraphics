@@ -1481,7 +1481,9 @@ int main(int argc, char** argv) {
         }
 
         // the WFC city on its riverbank pad (city-local coords are centered at the origin
-        // with the ground top at y=0 -> one parent node carries the world offset)
+        // with the ground top at y=0 -> one parent node carries the world offset).
+        // NOTE: roadTex must outlive the inner scope — MeshEntries keep &roadTex.albedo
+        const RoadTexSet roadTex = makeRoadTexSet(city.roadSurface, 256);
         {
             scene::Node& cn = scene.root().createChild("city");
             cn.translation = {cityC.x, cityPlateauY, cityC.y};
@@ -1499,7 +1501,6 @@ int main(int argc, char** argv) {
             cityMesh("pavements", city.pavements, {1.f, 1.f, 1.f}, 1.f, 2, false);
             if (city.districts.vertexCount() > 0)
                 cityMesh("districts", city.districts, {1.f, 1.f, 1.f}, 1.f, 4, false);
-            const RoadTexSet roadTex = makeRoadTexSet(city.roadSurface, 256);
             {
                 scene::Node& rn = cn.createChild("roads");
                 scene::MeshEntry& re = rn.attach<scene::MeshComponent>().addMesh(arena.add(city.roads));
