@@ -30,6 +30,7 @@ void runProceduralSdfTests();
 void runProceduralCreatureTests();
 void runProceduralCreaturegenTests();
 void runProceduralWorldgenTests();
+void runProceduralRoadgenTests();
 void runProceduralHouseTests();
 void runProceduralCitygenTests();
 void runProceduralPlantTests();

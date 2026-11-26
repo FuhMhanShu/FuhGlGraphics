@@ -431,6 +431,8 @@ const std::vector<ToolDef>& catalog() {
                                       {"erosionDroplets", prop("integer", "hydraulic erosion droplets")},
                                       {"thermalPasses", prop("integer", "thermal erosion passes")},
                                       {"riverCount", prop("integer", "rivers")},
+                                      {"settlementCount", prop("integer", "landscape: G38 hamlets + road network (0 = off)")},
+                                      {"housesPerSettlement", prop("integer", "landscape: houses per settlement")},
                                       {"cityGrid", prop("integer", "city WFC cells per side")},
                                       {"attach", prop("boolean", "attach terrain + placements as nodes")},
                                       {"name", prop("string", "root node name")}, {"parent", prop("string", "parent node")}}, {"mode"})},

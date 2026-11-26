@@ -97,6 +97,7 @@ void testHeightAt() {
 
 void testErosionAndScatter() {
     WorldGenParams p = landscapeParams();
+    p.settlementCount = 0; // isolate the erosion + scatter mechanics from the road mask
     p.erosionDroplets = 1500;
     p.thermalPasses = 3;
     const GeneratedWorld w = generateWorld(p);
@@ -339,6 +340,7 @@ void testSpline1D() {
 
 void testLandscapeClimateAndRivers() {
     WorldGenParams p = landscapeParams();
+    p.settlementCount = 0; // isolate the river carving from the road bench carving
     p.erosionDroplets = 0; // isolate the river flow from the droplet flow
     const GeneratedWorld w = generateWorld(p);
     const std::size_t n = w.heightmap.size();
@@ -495,6 +497,83 @@ void testCityRoads() {
     CHECK(uvC != uvA && uvP != uvA && uvD != uvA);
 }
 
+// bilinear sample of a gridW*gridH float map (same layout as the worldgen maps)
+float sampleMap(const std::vector<float>& map, int g, float size, float x, float z) {
+    if (map.empty()) return 0.f;
+    const float u = std::min(1.f, std::max(0.f, x / size + 0.5f)) * (g - 1);
+    const float v = std::min(1.f, std::max(0.f, z / size + 0.5f)) * (g - 1);
+    const int x0 = static_cast<int>(u), z0 = static_cast<int>(v);
+    const int x1 = std::min(g - 1, x0 + 1), z1 = std::min(g - 1, z0 + 1);
+    const float tx = u - x0, tz = v - z0;
+    const auto at = [&](int xx, int zz) { return map[static_cast<std::size_t>(xx) + g * zz]; };
+    return (at(x0, z0) * (1.f - tx) + at(x1, z0) * tx) * (1.f - tz) +
+           (at(x0, z1) * (1.f - tx) + at(x1, z1) * tx) * tz;
+}
+
+void testLandscapeSettlementsAndRoads() {
+    // default landscape params: settlements + G38 road network are part of the world
+    const WorldGenParams p = landscapeParams();
+    const GeneratedWorld w = generateWorld(p);
+    const int g = w.gridW;
+    CHECK(!w.settlements.empty());
+    CHECK(w.settlements.size() <= static_cast<std::size_t>(p.settlementCount));
+    CHECK(!w.buildings.empty()); // hamlet houses
+    CHECK(w.roads.vertexCount() > 0);   // landscape road ribbons (G38 extruded profiles)
+    CHECK(w.roads.indices.size() % 3 == 0);
+    CHECK(w.roadMask.size() == static_cast<std::size_t>(g) * g);
+    CHECK(w.rutMask.size() == w.roadMask.size());
+    CHECK(w.bridgeMask.size() == w.roadMask.size());
+    CHECK(w.roadDistance.size() == w.roadMask.size());
+    for (const float m : w.roadMask) CHECK(m >= 0.f && m <= 1.f + 1e-6f);
+    for (const auto& s : w.settlements) {
+        CHECK(s.houseCount > 0);
+        CHECK(s.firstHouse + s.houseCount <= w.buildings.size());
+        CHECK(s.importance > 0.f && s.importance <= 1.f);
+        // the settlement center is a road hub of the network
+        CHECK(w.roadDistanceAt(s.center.x, s.center.y) < 6.f);
+        for (std::size_t k = s.firstHouse; k < s.firstHouse + s.houseCount; ++k) {
+            const auto& b = w.buildings[k];
+            CHECK(b.mesh.vertexCount() > 0);
+            CHECK(std::hypot(b.position.x - s.center.x, b.position.z - s.center.y) <=
+                  s.radius + 3.f);
+            CHECK_NEAR(b.position.y, w.heightAt(b.position.x, b.position.z), 1e-2f);
+            CHECK(b.position.y >= w.waterLevelWorld);
+            // houses keep off the carriageway (strict placements keep the full corridor)
+            CHECK(w.roadDistanceAt(b.position.x, b.position.z) > p.roads.highwayWidth * 0.5f * 0.9f);
+        }
+    }
+    // vegetation keeps off the roads (trees/rocks only where the road mask is low)
+    for (const auto& t : w.trees)
+        CHECK(sampleMap(w.roadMask, g, w.sizeX, t.position.x, t.position.z) < 0.7f);
+    for (const auto& r : w.rocks)
+        CHECK(sampleMap(w.roadMask, g, w.sizeX, r.position.x, r.position.z) < 0.7f);
+    // road props (milestones/lanterns/signs/walls) exist and carry meshes
+    for (const auto& prop : w.roadProps) CHECK(prop.mesh.vertexCount() > 0);
+    // determinism of the whole road/settlement phase
+    const GeneratedWorld w2 = generateWorld(p);
+    CHECK(w2.roadMask == w.roadMask);
+    CHECK(w2.rutMask == w.rutMask);
+    CHECK(w2.settlements.size() == w.settlements.size());
+    CHECK(w2.buildings.size() == w.buildings.size());
+    CHECK(w2.roadProps.size() == w.roadProps.size());
+    CHECK(w2.roads.vertices == w.roads.vertices);
+    // off switch: no settlements -> no roads, no hamlet houses, empty masks
+    WorldGenParams p0 = landscapeParams();
+    p0.settlementCount = 0;
+    const GeneratedWorld w0 = generateWorld(p0);
+    CHECK(w0.settlements.empty());
+    CHECK(w0.buildings.empty());
+    CHECK(w0.roadProps.empty());
+    CHECK(w0.roads.vertexCount() == 0);
+    CHECK(w0.bridges.vertexCount() == 0);
+    CHECK(w0.roadMask.empty() && w0.rutMask.empty() && w0.bridgeMask.empty() &&
+          w0.roadDistance.empty());
+    CHECK(w0.roadDistanceAt(0.f, 0.f) > 1e8f);
+    // roadDistanceAt is ~0 on a settlement and large far away from any road
+    CHECK(w.roadDistanceAt(w.settlements[0].center.x, w.settlements[0].center.y) <
+          w.roadDistanceAt(0.f, 0.f) + 1e9f); // sanity: finite
+}
+
 } // namespace
 
 void runProceduralWorldgenTests() {
@@ -510,4 +589,5 @@ void runProceduralWorldgenTests() {
     testSpline1D();
     testLandscapeClimateAndRivers();
     testLandscapeTerracing();
+    testLandscapeSettlementsAndRoads();
 }

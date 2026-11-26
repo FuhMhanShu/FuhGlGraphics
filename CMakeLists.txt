@@ -66,6 +66,7 @@ add_library(fuhglgraphics STATIC
     src/procedural/creature.cpp
     src/procedural/creaturegen.cpp
     src/procedural/worldgen.cpp
+    src/procedural/roadgen.cpp
     src/procedural/house.cpp
     src/procedural/citygen.cpp
     src/procedural/plant.cpp

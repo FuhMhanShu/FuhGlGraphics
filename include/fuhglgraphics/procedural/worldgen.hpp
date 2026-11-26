@@ -3,15 +3,18 @@
 /// @file worldgen.hpp
 /// @brief World generator helper: one parameter struct (WorldGenParams) + one function
 /// (generateWorld) that procedurally builds either a LANDSCAPE (G24 noise heightmap with
-/// optional lake basin + scattered G37 eco-driven VegetationGenerator trees) or a CITY (G27 WFC street/building
-/// layout over a ground plate, optional G28 voronoi district plates). Pure CPU,
-/// deterministic per seed, no GL: the result is plain data (heightmap, placements, MeshData)
-/// that the app attaches to a scene::Scene (upload via Mesh::setMeshData, place via node
-/// transforms — see examples/wfc_screenshot for the scene side).
+/// optional lake basin + rivers, Whittaker climate/biome maps, G38 settlements + organic
+/// road network that carves the terrain, scattered G37 eco-driven VegetationGenerator trees
+/// that keep off the roads) or a CITY (G27 WFC street/building layout over a ground plate,
+/// optional G28 voronoi district plates). Pure CPU, deterministic per seed, no GL: the
+/// result is plain data (heightmap, placements, MeshData) that the app attaches to a
+/// scene::Scene (upload via Mesh::setMeshData, place via node transforms — see
+/// examples/wfc_screenshot for the scene side).
 
 #include "house.hpp"
 #include "lsystem.hpp"
 #include "noise.hpp"
+#include "roadgen.hpp"
 #include "voronoi.hpp"
 #include "wfc.hpp"
 
@@ -80,6 +83,14 @@ struct WorldGenParams {
     float lapseRate = 0.5f;       ///< temperature drop per normalized altitude (mountains are cold)
     float humidityRiverBoost = 0.5f;  ///< humidity boost along flow channels (rivers)
 
+    // --- settlements & road network (landscape; the closed world loop: terrain+climate pick
+    //     the settlement sites, the sites generate the G38 road network, the roads carve the
+    //     terrain and the vegetation avoids them) ---
+    int settlementCount = 3;      ///< hamlets placed by terrain+climate suitability (0 = off)
+    int housesPerSettlement = 7;  ///< houses per settlement (land in GeneratedWorld::buildings)
+    float settlementMinDist = 26.f; ///< min distance between settlement centers (world units)
+    RoadGenParams roads;          ///< G38 road network: A* costs, hierarchy, widths, carving, props
+
     // --- city (mode == City) ---
     int cityGrid = 12;            ///< WFC cells per side
     float cellSize = 8.f;         ///< world size of one city cell
@@ -110,6 +121,17 @@ enum class Biome : unsigned char {
 /// overrides). Shared by the landscape climate maps and the city generators, which feed the
 /// Biome cast into BuildingContext::biome for the HouseGenerator material rules.
 Biome biomeFromClimate(float temperature, float humidity);
+
+/// @brief One settlement (hamlet) placed in the landscape by terrain+climate suitability.
+/// Its houses are a contiguous range in GeneratedWorld::buildings; its center is a road hub.
+struct Settlement {
+    fuhgl::math::Vec2 center{0.f, 0.f}; ///< world XZ of the village center (road hub)
+    float radius = 8.f;                 ///< house scatter radius around the center
+    float importance = 0.5f;            ///< [0,1] — drives the road class (highway hub or not)
+    int biome = -1;                     ///< Biome cast at the center
+    std::size_t firstHouse = 0;         ///< house range [firstHouse, firstHouse+houseCount)
+    std::size_t houseCount = 0;         ///< into GeneratedWorld::buildings
+};
 
 /// @brief One placed mesh: local-space MeshData + a world placement (position / rotY / scale)
 /// + a tint. Attach as a scene node (translation/rotation/scale) with the mesh uploaded.
@@ -183,6 +205,28 @@ struct GeneratedWorld {
     /// @brief gridW*gridH pond mask: 1 = mountain-lake cell (a river sink filled to its spill
     /// point). Render as wet mud / place small water discs app-side. Landscape only.
     std::vector<unsigned char> pondMask;
+
+    // --- landscape settlements & roads (mode == Landscape, settlementCount > 0) ---
+    std::vector<Settlement> settlements; ///< placed hamlets (their houses are in `buildings`)
+    /// @brief Landscape road surface ribbons (G38 extruded profiles; `roads` is shared with
+    /// the city street slabs — in landscape mode it holds only the organic road meshes).
+    fuhgl::render::MeshData bridges;      ///< bridge decks + posts over water (empty when no bridge)
+    std::vector<PlacedMesh> roadProps;    ///< milestones, lanterns, way signs, guard walls
+    /// @brief gridW*gridH [0,1] road mask with noise-frayed edges — terrain-shader edge
+    /// blending + scatter suppression (vegetation keeps off the road, weeds at the rim).
+    std::vector<float> roadMask;
+    /// @brief gridW*gridH [0,1] wheel-rut mask (country roads/trails) — the shader darkens
+    /// these and lowers roughness so puddles form in the ruts after rain.
+    std::vector<float> rutMask;
+    /// @brief gridW*gridH bridge-over-water cells (place a water-crossing marker app-side).
+    std::vector<unsigned char> bridgeMask;
+    /// @brief gridW*gridH world-unit distance to the nearest road centerline — creatures
+    /// use it as fast routes through rough terrain (see roadDistanceAt).
+    std::vector<float> roadDistance;
+
+    /// @brief World-unit distance to the nearest road at (x, z) (bilinear sample of
+    /// roadDistance); ~1e9 when the world has no roads. Landscape only.
+    float roadDistanceAt(float x, float z) const;
 };
 
 /// @brief City tile set for the WFC solver: edge tags "r" = road, "s" = lot/sidewalk edge

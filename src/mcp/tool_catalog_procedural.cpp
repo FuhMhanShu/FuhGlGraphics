@@ -267,6 +267,8 @@ io::Json tProceduralWorldgen(const io::Json& a, ToolHost& host, std::string* err
     p.thermalPasses = clampInt(argInt(a, "thermalPasses", 0), 0, 16);
     p.cityGrid = clampInt(argInt(a, "cityGrid", 8), 3, 16);
     p.riverCount = clampInt(argInt(a, "riverCount", 0), 0, 20);
+    p.settlementCount = clampInt(argInt(a, "settlementCount", 3), 0, 12);
+    p.housesPerSettlement = clampInt(argInt(a, "housesPerSettlement", 7), 0, 24);
     procedural::GeneratedWorld w = procedural::generateWorld(p);
     int attached = 0;
     scene::Node* parent = host.scene ? findNode(*host.scene, argStr(a, "parent", "root")) : nullptr;
@@ -299,6 +301,11 @@ io::Json tProceduralWorldgen(const io::Json& a, ToolHost& host, std::string* err
             if (w.cityGround.vertexCount() && attachMeshData(host, base + "_ground", w.cityGround, wnode, Vec3{0.f, 0.f, 0.f})) ++attached;
             if (w.roads.vertexCount() && attachMeshData(host, base + "_roads", w.roads, wnode, Vec3{0.f, 0.02f, 0.f})) ++attached;
             if (w.pavements.vertexCount() && attachMeshData(host, base + "_pavements", w.pavements, wnode, Vec3{0.f, 0.01f, 0.f})) ++attached;
+        } else {
+            // G38 landscape: organic road ribbons, bridges, props (hamlet houses are in buildings)
+            if (w.roads.vertexCount() && attachMeshData(host, base + "_roads", w.roads, wnode, Vec3{0.f, 0.02f, 0.f})) ++attached;
+            if (w.bridges.vertexCount() && attachMeshData(host, base + "_bridges", w.bridges, wnode, Vec3{0.f, 0.f, 0.f})) ++attached;
+            placeAll(w.roadProps, "roadprop");
         }
     }
     return payload({{"mode", jsonString(mode)}, {"seed", jsonNumber(p.seed)},
@@ -310,6 +317,8 @@ io::Json tProceduralWorldgen(const io::Json& a, ToolHost& host, std::string* err
                     {"rocks", jsonNumber(static_cast<double>(w.rocks.size()))},
                     {"buildings", jsonNumber(static_cast<double>(w.buildings.size()))},
                     {"cityCells", jsonNumber(static_cast<double>(w.cells.size()))},
+                    {"settlements", jsonNumber(static_cast<double>(w.settlements.size()))},
+                    {"roadProps", jsonNumber(static_cast<double>(w.roadProps.size()))},
                     {"attachedNodes", jsonNumber(attached)}});
 }
 
