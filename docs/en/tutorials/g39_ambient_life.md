@@ -97,6 +97,21 @@ procedural::GeneratedWorld w = procedural::generateWorld(p);
 ```
 
 The scatter runs as step 5 of the landscape pipeline — after the G38 road carving — so it
-reads the final terrain and the final road mask; the worldgen screenshots
-(`g31_worldgen_landscape.png`, `_roads.png`, `_village.png`, `_panorama.png`) show the clutter
+reads the final terrain and the final road mask; the worldgen screenshots show the clutter
 baked into the scene.
+
+## Screenshots (CI-rendered, seed 777)
+
+Ground-level close-ups from `examples/worldgen_screenshot --mode both` — the causal clutter
+items are 0.1–0.8 world units, clearly visible from a ~3 wu-high camera aimed at a scattered
+item (hamlet rim: nearest building-ring item; shore: densest reed/pebble/driftwood nest on
+flat ground):
+
+| Hamlet rim — weed tufts, gravel, crate at the house, litter on the ground | Waterline nest — reeds at the shore, pebbles + driftwood in the channel |
+| --- | --- |
+| ![G39 clutter at the hamlet](../../images/g31_worldgen_clutter.png) | ![G39 reeds/pebbles/driftwood at the waterline](../../images/g31_worldgen_shore.png) |
+
+The same world in the wide shots: [hamlet + road network](../../images/g31_worldgen_roads.png),
+[landscape overview](../../images/g31_worldgen_landscape.png),
+[panorama — city at the river, village at the lake](../../images/g31_worldgen_panorama.png),
+[village on the lake shore](../../images/g31_worldgen_village.png).

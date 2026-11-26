@@ -100,6 +100,21 @@ procedural::GeneratedWorld w = procedural::generateWorld(p);
 ```
 
 Die Streuung läuft als Schritt 5 der Landschafts-Pipeline — nach dem G38-Road-Carving — und
-liest damit das finale Terrain und die finale Straßenmaske; die Worldgen-Screenshots
-(`g31_worldgen_landscape.png`, `_roads.png`, `_village.png`, `_panorama.png`) zeigen das Clutter
-in die Szene gebacken.
+liest damit das finale Terrain und die finale Straßenmaske; die Worldgen-Screenshots zeigen das
+Clutter in die Szene gebacken.
+
+## Screenshots (CI-gerendert, Seed 777)
+
+Bodennahe Close-ups aus `examples/worldgen_screenshot --mode both` — die kausalen
+Clutter-Items sind 0.1–0.8 Welt-Einheiten groß und aus ~3 wu Kamerahöhe gezielt auf ein
+gestreutes Item sichtbar (Dorfrand: nächstes Gebäude-Ring-Item; Ufer: dichtestes
+Schilf/Kiesel/Treibholz-Nest auf flachem Boden):
+
+| Dorfrand — Unkrautbüschel, Kies, Kiste am Haus, Streu am Boden | Ufer-Nest — Schilf am Ufer, Kiesel + Treibholz im Gerinne |
+| --- | --- |
+| ![G39 Clutter am Hamlet](../../images/g31_worldgen_clutter.png) | ![G39 Schilf/Kiesel/Treibholz an der Wasserlinie](../../images/g31_worldgen_shore.png) |
+
+Dieselbe Welt in den Weitwinkel-Shots: [Hamlet + Straßennetz](../../images/g31_worldgen_roads.png),
+[Landschafts-Übersicht](../../images/g31_worldgen_landscape.png),
+[Panorama — Stadt am Fluss, Dorf am See](../../images/g31_worldgen_panorama.png),
+[Dorf am Seeufer](../../images/g31_worldgen_village.png).

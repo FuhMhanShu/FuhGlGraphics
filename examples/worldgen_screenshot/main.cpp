@@ -882,18 +882,19 @@ int main(int argc, char** argv) {
         float shoreCamX = 0.f, shoreCamZ = 0.f, shoreAimX = 0.f, shoreAimZ = 0.f;
         bool haveShoreCam = false;
         {
-            // best water-clutter NEST (reed/pebble/driftwood): maximize the item count within
-            // 6 wu, on flat ground, without a rock near the camera line (a rock would fill the
-            // whole frame); tie-break by distance to the hamlet
+            // best REED nest at the waterline (reeds stand at/above the water -> visible, while
+            // pebbles can sit deep in the channel below the surface): maximize the water-clutter
+            // count within 6 wu, on flat ground (true world slope dh/dx <= 0.35), without a rock
+            // near the camera line (a rock would fill the whole frame); tie-break: near the hamlet
             auto isWaterKind = [](int k) {
                 return k == static_cast<int>(procedural::ClutterKind::Reed) ||
                        k == static_cast<int>(procedural::ClutterKind::Pebble) ||
                        k == static_cast<int>(procedural::ClutterKind::Driftwood);
             };
             auto slopeAt = [&](float x, float z) {
-                const float e = 1.5f, cw = world.sizeX / (world.gridW - 1);
-                const float gx = (world.heightAt(x + e, z) - world.heightAt(x - e, z)) * 0.5f * world.heightScale / cw;
-                const float gz = (world.heightAt(x, z + e) - world.heightAt(x, z - e)) * 0.5f * world.heightScale / cw;
+                const float e = 1.5f;
+                const float gx = (world.heightAt(x + e, z) - world.heightAt(x - e, z)) / (2.f * e);
+                const float gz = (world.heightAt(x, z + e) - world.heightAt(x, z - e)) / (2.f * e);
                 return std::hypot(gx, gz);
             };
             auto rockNear = [&](float x, float z, float r) {
@@ -905,8 +906,9 @@ int main(int argc, char** argv) {
             int bestNest = -1;
             float bestD = 1e9f;
             for (const auto& c : world.clutter) {
-                if (!isWaterKind(static_cast<int>(c.kind))) continue;
-                if (slopeAt(c.position.x, c.position.z) > 1.2f) continue;
+                if (static_cast<int>(c.kind) != static_cast<int>(procedural::ClutterKind::Reed)) continue;
+                if (c.position.y < world.waterLevelWorld - 0.1f) continue; // at/above the waterline
+                if (slopeAt(c.position.x, c.position.z) > 0.35f) continue;
                 const float dirx = topSite.x - c.position.x, dirz = topSite.y - c.position.z;
                 const float dl = std::hypot(dirx, dirz) + 1e-6f;
                 const float camx = c.position.x + dirx / dl * 6.f, camz = c.position.z + dirz / dl * 6.f;
