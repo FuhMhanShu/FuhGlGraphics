@@ -94,7 +94,7 @@ struct WorldGenParams {
     RoadGenParams roads;          ///< G38 road network: A* costs, hierarchy, widths, carving, props
 
     // --- ambient life (landscape): causal clutter scatter + life zones + shared wind ---
-    int clutterCount = 700;       ///< max G39a clutter items, causally scattered (0 = off)
+    int clutterCount = 1200;      ///< max G39a clutter items, causally scattered (0 = off)
     ClutterGenParams clutterParams; ///< nested G39a knobs (per-kind budgets, cluster mask)
     bool lifeZones = true;        ///< derive G39b LifeZone descriptors (birds/fish/insects/...)
     WindFieldParams wind;         ///< shared 3D wind field — echoed in the result; the app mirrors

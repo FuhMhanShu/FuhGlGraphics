@@ -269,7 +269,7 @@ io::Json tProceduralWorldgen(const io::Json& a, ToolHost& host, std::string* err
     p.riverCount = clampInt(argInt(a, "riverCount", 0), 0, 20);
     p.settlementCount = clampInt(argInt(a, "settlementCount", 3), 0, 12);
     p.housesPerSettlement = clampInt(argInt(a, "housesPerSettlement", 7), 0, 24);
-    p.clutterCount = clampInt(argInt(a, "clutterCount", 700), 0, 4000); // G39a causal clutter
+    p.clutterCount = clampInt(argInt(a, "clutterCount", 1200), 0, 4000); // G39a causal clutter
     procedural::GeneratedWorld w = procedural::generateWorld(p);
     int attached = 0;
     scene::Node* parent = host.scene ? findNode(*host.scene, argStr(a, "parent", "root")) : nullptr;

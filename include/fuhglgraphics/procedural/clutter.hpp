@@ -84,7 +84,7 @@ struct ClutterGenParams {
     int reedCount = 90;               ///< reeds at the waterline
     int litterPerTree = 4;            ///< branch/cone/bark/leafpile per tree (max)
     int mushroomPerTree = 2;          ///< mushroom clusters per tree (wet sides only)
-    int buildingClutterCount = 60;    ///< weeds/gravel/tiles/crates around buildings
+    int buildingClutterCount = 60;    ///< weeds/gravel/tiles/crates around buildings (own budget)
     int roadEdgeClutterCount = 80;    ///< weed tufts / gravel at the frayed road edges
     float cliffSlope = 0.9f;          ///< world slope from which on = cliff (rockfall)
     float maxSlope = 2.5f;            ///< slope normalization for the rockfall band
@@ -94,8 +94,11 @@ struct ClutterGenParams {
 class ClutterGenerator {
 public:
     /// @brief Scatters clutter causally from `in` (slope/flow/humidity/biome/road/tree/
-    /// building data). Deterministic per params.seed. Exposed per-rule weight functions
-    /// make the causality unit-testable.
+    /// building data). Deterministic per params.seed. Pass order: rockfall, riverbed,
+    /// reeds, building ring, road rim (each with its own budget), then tree litter fills
+    /// the rest up to maxItems. Riverbed/reed candidates are jittered around precomputed
+    /// zone cells (high-flow sub-water / waterline band), so the thin features are hit
+    /// reliably. Exposed per-rule weight functions make the causality unit-testable.
     std::vector<ClutterItem> generate(const ClutterInput& in, const ClutterGenParams& p) const;
 
     /// @brief Rockfall weight at (x, z): high on/below cliffs (world slope band).

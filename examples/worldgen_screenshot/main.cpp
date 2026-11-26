@@ -843,11 +843,13 @@ int main(int argc, char** argv) {
                                                return std::hypot(c.position.x - camX, c.position.z - camZ) < 14.f;
                                            }),
                             world.clutter.end());
-        // G39 close-up cameras (ground level): hamlet rim + nearest waterline. Their clutter
-        // must be erased BEFORE the clutter mesh is baked below, so compute them here.
-        float clutterCamX = 0.f, clutterCamZ = 0.f;
+        // G39 close-up cameras (ground level), aimed at actual scattered items so the shot is
+        // guaranteed to show clutter: hamlet rim (nearest building-ring item to the nearest
+        // house) + shore (nearest reed/pebble/driftwood, fallback: nearest water cell).
+        // Their clutter must be erased BEFORE the clutter mesh is baked below, so compute here.
+        float clutterCamX = 0.f, clutterCamZ = 0.f, clutterAimX = 0.f, clutterAimZ = 0.f;
         bool haveClutterCam = false;
-        if (!world.buildings.empty()) {
+        {
             std::size_t hi = 0;
             float hd = 1e9f;
             for (std::size_t i = 0; i < world.buildings.size(); ++i) {
@@ -855,33 +857,71 @@ int main(int argc, char** argv) {
                                            world.buildings[i].position.z - topSite.y);
                 if (d < hd) { hd = d; hi = i; }
             }
-            clutterCamX = world.buildings[hi].position.x + 6.5f;
-            clutterCamZ = world.buildings[hi].position.z + 5.5f;
-            haveClutterCam = true;
+            if (!world.buildings.empty()) {
+                const auto& hp = world.buildings[hi].position;
+                // nearest building-ring clutter (weed/gravel/tile/crate) within 10 wu of the house
+                float ad = 1e9f;
+                fuhgl::math::Vec2 aim{hp.x, hp.z};
+                for (const auto& c : world.clutter) {
+                    const int k = static_cast<int>(c.kind);
+                    if (k != static_cast<int>(procedural::ClutterKind::WeedTuft) &&
+                        k != static_cast<int>(procedural::ClutterKind::GravelPile) &&
+                        k != static_cast<int>(procedural::ClutterKind::RoofTile) &&
+                        k != static_cast<int>(procedural::ClutterKind::Crate)) continue;
+                    const float d = std::hypot(c.position.x - hp.x, c.position.z - hp.z);
+                    if (d < 10.f && d < ad) { ad = d; aim = {c.position.x, c.position.z}; }
+                }
+                const float dirx = topSite.x - aim.x, dirz = topSite.y - aim.y;
+                const float dl = std::hypot(dirx, dirz) + 1e-6f;
+                clutterAimX = aim.x; clutterAimZ = aim.y;
+                clutterCamX = aim.x + dirx / dl * 4.5f;
+                clutterCamZ = aim.y + dirz / dl * 4.5f;
+                haveClutterCam = true;
+            }
         }
         float shoreCamX = 0.f, shoreCamZ = 0.f, shoreAimX = 0.f, shoreAimZ = 0.f;
         bool haveShoreCam = false;
         {
-            int bi = -1, bj = -1;
-            float bd = 1e9f;
-            for (int j = 0; j < world.gridH; ++j)
-                for (int i = 0; i < world.gridW; ++i) {
-                    if (world.heightmap[static_cast<std::size_t>(i) + world.gridW * j] >= p.waterLevel) continue;
-                    const float x = (static_cast<float>(i) / (world.gridW - 1) - 0.5f) * world.sizeX;
-                    const float z = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
-                    const float d = std::hypot(x - topSite.x, z - topSite.y);
-                    if (d < bd) { bd = d; bi = i; bj = j; }
-                }
-            if (bi >= 0) {
-                const float sx = (static_cast<float>(bi) / (world.gridW - 1) - 0.5f) * world.sizeX;
-                const float sz = (static_cast<float>(bj) / (world.gridH - 1) - 0.5f) * world.sizeZ;
-                const float dirx = topSite.x - sx, dirz = topSite.y - sz;
+            // nearest water clutter item to the hamlet (reed/pebble/driftwood)
+            float ad = 1e9f;
+            fuhgl::math::Vec2 aim{-1e9f, -1e9f};
+            for (const auto& c : world.clutter) {
+                const int k = static_cast<int>(c.kind);
+                if (k != static_cast<int>(procedural::ClutterKind::Reed) &&
+                    k != static_cast<int>(procedural::ClutterKind::Pebble) &&
+                    k != static_cast<int>(procedural::ClutterKind::Driftwood)) continue;
+                const float d = std::hypot(c.position.x - topSite.x, c.position.z - topSite.y);
+                if (d < ad) { ad = d; aim = {c.position.x, c.position.z}; }
+            }
+            if (ad < 1e8f) {
+                const float dirx = topSite.x - aim.x, dirz = topSite.y - aim.y;
                 const float dl = std::hypot(dirx, dirz) + 1e-6f;
-                shoreCamX = sx + dirx / dl * 5.f; // camera on the land side of the waterline
-                shoreCamZ = sz + dirz / dl * 5.f;
-                shoreAimX = sx + dirx / dl * 1.5f;
-                shoreAimZ = sz + dirz / dl * 1.5f;
+                shoreAimX = aim.x; shoreAimZ = aim.y;
+                shoreCamX = aim.x + dirx / dl * 4.5f; // camera on the land side
+                shoreCamZ = aim.y + dirz / dl * 4.5f;
                 haveShoreCam = true;
+            } else {
+                // fallback: nearest sub-water cell to the hamlet
+                int bi = -1, bj = -1;
+                float bd = 1e9f;
+                for (int j = 0; j < world.gridH; ++j)
+                    for (int i = 0; i < world.gridW; ++i) {
+                        if (world.heightmap[static_cast<std::size_t>(i) + world.gridW * j] >= p.waterLevel) continue;
+                        const float x = (static_cast<float>(i) / (world.gridW - 1) - 0.5f) * world.sizeX;
+                        const float z = (static_cast<float>(j) / (world.gridH - 1) - 0.5f) * world.sizeZ;
+                        const float d = std::hypot(x - topSite.x, z - topSite.y);
+                        if (d < bd) { bd = d; bi = i; bj = j; }
+                    }
+                if (bi >= 0) {
+                    const float sx = (static_cast<float>(bi) / (world.gridW - 1) - 0.5f) * world.sizeX;
+                    const float sz = (static_cast<float>(bj) / (world.gridH - 1) - 0.5f) * world.sizeZ;
+                    const float dirx = topSite.x - sx, dirz = topSite.y - sz;
+                    const float dl = std::hypot(dirx, dirz) + 1e-6f;
+                    shoreAimX = sx; shoreAimZ = sz;
+                    shoreCamX = sx + dirx / dl * 5.f;
+                    shoreCamZ = sz + dirz / dl * 5.f;
+                    haveShoreCam = true;
+                }
             }
         }
         auto eraseClutterNear = [&](float ex, float ez, float r) {
@@ -1078,18 +1118,9 @@ int main(int argc, char** argv) {
         // building-ring clutter + road-rim weeds at the hamlet, reeds/pebbles at the waterline.
         // (camera positions + near-camera clutter erase were computed before the bake above)
         if (haveClutterCam) {
-            std::size_t hi = 0;
-            float hd = 1e9f;
-            for (std::size_t i = 0; i < world.buildings.size(); ++i) {
-                const float d = std::hypot(world.buildings[i].position.x - topSite.x,
-                                           world.buildings[i].position.z - topSite.y);
-                if (d < hd) { hd = d; hi = i; }
-            }
-            const auto& hp = world.buildings[hi].position;
             cam.position = {clutterCamX, std::max(world.heightAt(clutterCamX, clutterCamZ),
                                                   world.waterLevelWorld) + 2.2f, clutterCamZ};
-            const float mx = (hp.x + topSite.x) * 0.5f, mz = (hp.z + topSite.y) * 0.5f;
-            aimAt(cam, {mx, world.heightAt(mx, mz) + 0.25f, mz});
+            aimAt(cam, {clutterAimX, world.heightAt(clutterAimX, clutterAimZ) + 0.15f, clutterAimZ});
             const std::string cpath = args.prefix + "_clutter.png";
             if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, cpath,
                              water ? &water->surface : nullptr, &env)) {
@@ -1101,7 +1132,8 @@ int main(int argc, char** argv) {
         if (haveShoreCam) {
             cam.position = {shoreCamX, std::max(world.heightAt(shoreCamX, shoreCamZ),
                                                 world.waterLevelWorld) + 1.8f, shoreCamZ};
-            aimAt(cam, {shoreAimX, world.waterLevelWorld + 0.05f, shoreAimZ});
+            aimAt(cam, {shoreAimX, std::max(world.heightAt(shoreAimX, shoreAimZ), world.waterLevelWorld) + 0.1f,
+                        shoreAimZ});
             const std::string spath = args.prefix + "_shore.png";
             if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, spath,
                              water ? &water->surface : nullptr, &env)) {

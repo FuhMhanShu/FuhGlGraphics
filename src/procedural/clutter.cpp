@@ -88,27 +88,43 @@ float sampleMap(const std::vector<float>* m, int g, float size, float x, float z
     return (*m)[static_cast<std::size_t>(gc.x) + g * static_cast<std::size_t>(gc.y)];
 }
 
-/// @brief Compact weighted poisson-disk scatter (dart throwing + spatial hash).
-std::vector<fuhgl::math::Vec2> poissonScatter(float half, float minDist, int maxPoints,
-                                              const std::function<float(float, float)>& weight,
-                                              Rng& rng) {
+/// @brief Compact weighted poisson-disk scatter (dart throwing + spatial hash) over
+/// [minX,maxX]x[minZ,maxZ]. When `zones` is non-null, candidates are jittered around zone
+/// centers instead of uniform over the map — used for thin features (riverbeds, waterline
+/// bands) that uniform sampling would almost never hit.
+std::vector<fuhgl::math::Vec2> poissonScatter(float minX, float minZ, float maxX, float maxZ,
+                                              float minDist, int maxPoints,
+                                              const std::function<float(float, float)>& weight, Rng& rng,
+                                              const std::vector<fuhgl::math::Vec2>* zones = nullptr,
+                                              float zoneJitter = 0.f) {
     std::vector<fuhgl::math::Vec2> pts;
+    if (maxPoints <= 0) return pts;
+    const float w = std::max(1.f, maxX - minX), h = std::max(1.f, maxZ - minZ);
     const float cell = minDist * 0.7071f;
-    const int gw = std::max(1, static_cast<int>(std::ceil(2.f * half / cell)));
-    std::vector<int> head(static_cast<std::size_t>(gw) * gw, -1);
+    const int gw = std::max(1, static_cast<int>(std::ceil(w / cell)));
+    const int gh = std::max(1, static_cast<int>(std::ceil(h / cell)));
+    std::vector<int> head(static_cast<std::size_t>(gw) * gh, -1);
     std::vector<int> next;
     const int attempts = maxPoints * 40;
     for (int a = 0; a < attempts && static_cast<int>(pts.size()) < maxPoints; ++a) {
-        const float x = (rng.nextf() - 0.5f) * 2.f * half;
-        const float z = (rng.nextf() - 0.5f) * 2.f * half;
+        float x, z;
+        if (zones && !zones->empty()) {
+            const fuhgl::math::Vec2& zn = (*zones)[rng.next() % zones->size()];
+            x = zn.x + (rng.nextf() - 0.5f) * 2.f * zoneJitter;
+            z = zn.y + (rng.nextf() - 0.5f) * 2.f * zoneJitter;
+        } else {
+            x = minX + rng.nextf() * w;
+            z = minZ + rng.nextf() * h;
+        }
         if (weight(x, z) < rng.nextf()) continue;
-        const int cx = static_cast<int>((x + half) / cell), cz = static_cast<int>((z + half) / cell);
+        const int cx = std::min(gw - 1, std::max(0, static_cast<int>((x - minX) / cell)));
+        const int cz = std::min(gh - 1, std::max(0, static_cast<int>((z - minZ) / cell)));
         bool tooClose = false;
         const int r = static_cast<int>(std::ceil(minDist / cell));
         for (int dz = -r; dz <= r && !tooClose; ++dz)
             for (int dx = -r; dx <= r && !tooClose; ++dx) {
                 const int qx = cx + dx, qz = cz + dz;
-                if (qx < 0 || qz < 0 || qx >= gw || qz >= gw) continue;
+                if (qx < 0 || qz < 0 || qx >= gw || qz >= gh) continue;
                 for (int idx = head[static_cast<std::size_t>(qx) + gw * qz]; idx >= 0; idx = next[idx]) {
                     const float ddx = pts[idx].x - x, ddz = pts[idx].y - z;
                     if (ddx * ddx + ddz * ddz < minDist * minDist) { tooClose = true; break; }
@@ -328,6 +344,19 @@ std::vector<ClutterItem> ClutterGenerator::generate(const ClutterInput& in,
     if (!in.heightmap || in.gridW < 3 || in.gridH < 3 || p.maxItems <= 0) return out;
     Rng rng(p.seed);
     const float half = in.sizeX * 0.5f;
+    // target zones for the thin features: riverbed cells (high flow at/below the waterline) and
+    // waterline-band cells — uniform map-wide dart throwing would almost never hit them
+    const float cellW = in.sizeX / (in.gridW - 1);
+    std::vector<fuhgl::math::Vec2> riverZones, shoreZones;
+    for (int j = 0; j < in.gridH; ++j)
+        for (int i = 0; i < in.gridW; ++i) {
+            const std::size_t idx = static_cast<std::size_t>(i) + in.gridW * j;
+            const float h = (*in.heightmap)[idx];
+            const float fl = in.flow ? (*in.flow)[idx] : 0.f;
+            const fuhgl::math::Vec2 wp = gridToWorld(in, static_cast<float>(i), static_cast<float>(j));
+            if (fl >= 0.35f && h <= in.waterLevel + 0.04f) riverZones.push_back(wp);
+            if (h >= in.waterLevel - 0.02f && h <= in.waterLevel + 0.08f && fl >= 0.15f) shoreZones.push_back(wp);
+        }
     const auto slope = slopeMapOf(in);
     auto slopeAt = [&](float x, float z) {
         const fuhgl::math::Vec2 g = worldToGrid(in, x, z);
@@ -360,31 +389,69 @@ std::vector<ClutterItem> ClutterGenerator::generate(const ClutterInput& in,
             const float base = smoothstep(p.cliffSlope * 0.55f, p.cliffSlope * 1.35f, s);
             return base * clusterMask(p, p.seed ^ 0xA1u, x, z);
         };
-        for (const auto& s : poissonScatter(half, p.minDist * 1.2f, p.rockfallCount, w, rng))
+        for (const auto& s : poissonScatter(-half, -half, half, half, p.minDist * 1.2f, p.rockfallCount, w, rng))
             pushItem(ClutterKind::Rockfall, s.x, s.y, 0.02f, 0.7f + 0.9f * rng.nextf());
     }
-    // 2. riverbed: pebbles + driftwood where the flow map is high (clustered nests)
+    // 2. riverbed: pebbles + driftwood in the high-flow channels (zone-targeted nests)
     {
         auto w = [&](float x, float z) {
             return riverbedWeight(in, x, z) * clusterMask(p, p.seed ^ 0xB2u, x, z);
         };
-        for (const auto& s : poissonScatter(half, p.minDist, p.pebbleCount + p.driftwoodCount, w, rng)) {
+        for (const auto& s : poissonScatter(-half, -half, half, half, p.minDist,
+                                             p.pebbleCount + p.driftwoodCount, w, rng,
+                                             &riverZones, cellW * 1.2f)) {
             const float fl = sampleMap(in.flow, in.gridW, in.sizeX, s.x, s.y);
             const bool wood = fl > 0.7f && rng.nextf() < 0.3f;
             pushItem(wood ? ClutterKind::Driftwood : ClutterKind::Pebble, s.x, s.y,
                      wood ? 0.05f : -0.01f, 0.8f + 0.7f * rng.nextf());
         }
     }
-    // 3. reeds at the waterline
+    // 3. reeds at the waterline (zone-targeted at the shore band)
     {
         auto w = [&](float x, float z) {
             return waterlineWeight(in, x, z) * clusterMask(p, p.seed ^ 0xC3u, x, z);
         };
-        for (const auto& s : poissonScatter(half, p.minDist * 0.8f, p.reedCount, w, rng))
+        for (const auto& s : poissonScatter(-half, -half, half, half, p.minDist * 0.8f, p.reedCount, w, rng,
+                                             &shoreZones, cellW * 1.2f))
             pushItem(ClutterKind::Reed, s.x, s.y, 0.f, 0.8f + 0.6f * rng.nextf());
     }
-    // 4. parent-child: litter under trees (branch/cone/bark/leaf pile) + mushrooms on the
-    //    wet north side (humidity-driven)
+    // 4. building clutter: weeds / gravel / roof tiles / crates in a ring around buildings —
+    //    own budget, so the numerous tree-litter pass (last) cannot starve it
+    {
+        int buildingBudget = p.buildingClutterCount;
+        for (const auto& b : in.buildingSpots) {
+            for (int k = 0; k < 6 && buildingBudget > 0 && static_cast<int>(out.size()) < p.maxItems;
+                 ++k, --buildingBudget) {
+                const float ang = rng.nextf() * 2.f * fuhgl::math::kPi;
+                const float r = 2.5f + rng.nextf() * 4.5f;
+                const float x = b.x + std::cos(ang) * r, z = b.y + std::sin(ang) * r;
+                if (heightN(in, x, z) < in.waterLevel + 0.02f) continue;
+                const float roll = rng.nextf();
+                ClutterKind kind = ClutterKind::WeedTuft;
+                if (roll < 0.4f) kind = ClutterKind::WeedTuft;
+                else if (roll < 0.6f) kind = ClutterKind::GravelPile;
+                else if (roll < 0.8f) kind = ClutterKind::RoofTile;
+                else kind = ClutterKind::Crate;
+                pushItem(kind, x, z, 0.02f, 0.8f + 0.5f * rng.nextf());
+            }
+        }
+    }
+    // 5. road-edge clutter at the frayed road rim
+    if (in.roadMask && !in.roadMask->empty()) {
+        auto w = [&](float x, float z) {
+            if (roadEdgeDistance(in, x, z) > 0.5f) return 0.f;
+            if (heightN(in, x, z) < in.waterLevel + 0.02f) return 0.f;
+            return 0.6f * clusterMask(p, p.seed ^ 0xD4u, x, z) + 0.15f;
+        };
+        for (const auto& s : poissonScatter(-half, -half, half, half, p.minDist * 0.8f,
+                                             p.roadEdgeClutterCount, w, rng)) {
+            const bool gravel = rng.nextf() < 0.25f;
+            pushItem(gravel ? ClutterKind::GravelPile : ClutterKind::WeedTuft, s.x, s.y, 0.02f,
+                     0.8f + 0.5f * rng.nextf());
+        }
+    }
+    // 6. parent-child: litter under trees (branch/cone/bark/leaf pile) + mushrooms on the
+    //    wet north side (humidity-driven) — runs last and fills the remaining budget
     for (std::size_t ti = 0; ti < in.treeSpots.size(); ++ti) {
         const float tr = ti < in.treeRadii.size() ? in.treeRadii[ti] : 3.f;
         const fuhgl::math::Vec2& t = in.treeSpots[ti];
@@ -415,38 +482,6 @@ std::vector<ClutterItem> ClutterGenerator::generate(const ClutterInput& in,
             pushItem(ClutterKind::Mushroom, x, z, 0.01f, 0.7f + 0.7f * rng.nextf());
         }
     }
-    // 5. building clutter: weeds / gravel / roof tiles / crates in a ring around buildings
-    for (const auto& b : in.buildingSpots) {
-        for (int k = 0; k < 6 && static_cast<int>(out.size()) < p.maxItems; ++k) {
-            const float ang = rng.nextf() * 2.f * fuhgl::math::kPi;
-            const float r = 2.5f + rng.nextf() * 4.5f;
-            const float x = b.x + std::cos(ang) * r, z = b.y + std::sin(ang) * r;
-            if (heightN(in, x, z) < in.waterLevel + 0.02f) continue;
-            const float roll = rng.nextf();
-            ClutterKind kind = ClutterKind::WeedTuft;
-            if (roll < 0.4f) kind = ClutterKind::WeedTuft;
-            else if (roll < 0.6f) kind = ClutterKind::GravelPile;
-            else if (roll < 0.8f) kind = ClutterKind::RoofTile;
-            else kind = ClutterKind::Crate;
-            pushItem(kind, x, z, 0.02f, 0.8f + 0.5f * rng.nextf());
-        }
-    }
-    // limit the building pass to its budget
-    // (the per-building loop above is bounded by maxItems; scale down if needed)
-    // 6. road-edge clutter at the frayed road rim
-    if (in.roadMask && !in.roadMask->empty()) {
-        auto w = [&](float x, float z) {
-            if (roadEdgeDistance(in, x, z) > 0.5f) return 0.f;
-            if (heightN(in, x, z) < in.waterLevel + 0.02f) return 0.f;
-            return 0.6f * clusterMask(p, p.seed ^ 0xD4u, x, z) + 0.15f;
-        };
-        for (const auto& s : poissonScatter(half, p.minDist * 0.8f, p.roadEdgeClutterCount, w, rng)) {
-            const bool gravel = rng.nextf() < 0.25f;
-            pushItem(gravel ? ClutterKind::GravelPile : ClutterKind::WeedTuft, s.x, s.y, 0.02f,
-                     0.8f + 0.5f * rng.nextf());
-        }
-    }
-    (void)p.buildingClutterCount; // building loop is per-building; budget enforced via maxItems
     return out;
 }
 
