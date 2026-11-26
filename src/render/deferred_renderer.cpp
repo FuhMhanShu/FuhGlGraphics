@@ -1409,6 +1409,11 @@ void DeferredRenderer::drawVolumetric(fuhgl::render::RenderGraph::PassContext& c
         p.setUniform("uStrength", weatherStrength);
         p.setUniform(p.uniformLocation("uSteps"), std::min(std::max(volumetricSteps, 1), 64));
         p.setUniform("uTime", volumetricTime);
+        // G38: lightning flash lights the fog volume (sky flash would be attenuated by T)
+        const float flash = (curWeather_ && effectEnabled(Effect::Lightning))
+                                ? curWeather_->lightningFlash() : 0.f;
+        p.setUniform("uLightningFlash", flash);
+        p.setUniform("uFlashTint", fuhgl::math::Vec3{0.75f, 0.82f, 1.0f});
         p.setUniform("uZNear", s.camera->zNear());
         p.setUniform("uZFar", s.camera->zFar());
     });

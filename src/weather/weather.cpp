@@ -307,18 +307,18 @@ void WeatherSystem::applyTo(fuhglgraphics::scene::EffectParams& p) const {
 
 particles::EmitterConfig rainEmitterConfig(const WeatherParams& w) {
     particles::EmitterConfig cfg;
-    // spawn volume above the emitter: a wide flat box the camera looks through; the
-    // emitter origin sits above the scene center and the streaks fall along -Y
-    cfg.position = {0.f, 24.f, 0.f};
+    // rain shaft above/around the scene center: streaks fall along -Y and drift apart with
+    // the spread cone + wind, so the camera looks through a diffuse field of streaks
+    cfg.position = {0.f, 20.f, -2.f};
     cfg.direction = {0.f, -1.f, 0.f};
     cfg.speed = 22.f;                 // fast fall
-    cfg.spread = 0.06f;               // narrow cone -> streaks stay vertical
+    cfg.spread = 0.28f;               // cone width -> lateral drift while falling
     cfg.rate = 40.f + 1400.f * clamp(w.rainIntensity, 0.f, 1.f); // spawn proportional to rain
     cfg.lifetime = 1.1f;
-    cfg.size = 0.055f;                // thin streak billboard (visible at screenshot distance)
+    cfg.size = 0.06f;                 // thin streak billboard (visible at screenshot distance)
     cfg.grow = 0.02f;
     cfg.color = {0.66f, 0.74f, 0.86f};
-    cfg.alpha = 0.22f + 0.38f * clamp(w.rainIntensity, 0.f, 1.f);
+    cfg.alpha = 0.25f + 0.40f * clamp(w.rainIntensity, 0.f, 1.f);
     cfg.gravity = -6.f;               // accelerating drizzle
     const float wd = w.windDirection; // radians in the XZ plane, 0 = +Z
     cfg.wind = {std::sin(wd) * w.windSpeed * 0.6f, 0.f, std::cos(wd) * w.windSpeed * 0.6f};

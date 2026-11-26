@@ -178,7 +178,10 @@ int main(int argc, char** argv) {
         const fuhgl::math::Vec3 dir = wcomp.system.lightningDirection();
         boltMesh.setMeshData(weather::makeLightningBolt(args.seed * 7u + 1u, dir, 60.f));
         boltNode = &scene.root().createChild("bolt");
-        boltNode->translation = cam.position - dir * 42.f + fuhgl::math::Vec3{0.f, 6.f, 0.f};
+        // place the bolt root high IN FRONT of the camera (the random strike azimuth would
+        // otherwise put it outside the view cone); it grows along dir toward the ground
+        const fuhgl::math::Vec3 fwd = fuhgl::math::normalize(look - cam.position);
+        boltNode->translation = cam.position + fwd * 24.f + fuhgl::math::Vec3{0.f, 28.f, 0.f};
         scene::MeshEntry& be = boltNode->attach<scene::MeshComponent>().addMesh(&boltMesh);
         be.emissive = {14.f, 16.f, 22.f}; // HDR-bright: bloom picks it up
         be.castShadow = false;

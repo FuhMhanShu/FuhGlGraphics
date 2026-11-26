@@ -580,6 +580,8 @@ uniform float uMaxDist;       // sky march end
 uniform float uStrength;
 uniform int uSteps;
 uniform float uTime;
+uniform float uLightningFlash; // G38: lightning flash lights up the fog/cloud volume itself
+uniform vec3 uFlashTint;
 uniform float uZNear, uZFar;
 out vec4 FragColor;
 float linearize(float d) { return 2.0 * uZNear * uZFar / max(uZFar + uZNear - d * (uZFar - uZNear), 1e-6); }
@@ -644,7 +646,10 @@ void main() {
         inscatter += (uSunColor * phase + uAmbient) * (d * ds) * T * uStrength;
         T *= exp(-d * ds);
     }
-    FragColor = vec4(hdr * T + inscatter, 1.0);
+    // G38: the flash illuminates the volume (fills the remaining transmittance gap, so a
+    // strike is visible through the storm fog instead of being attenuated to zero)
+    vec3 flashGlow = uFlashTint * uLightningFlash * (1.0 - T);
+    FragColor = vec4(hdr * T + inscatter + flashGlow * 0.9, 1.0);
 }
 )GLSL";
 
