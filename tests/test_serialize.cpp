@@ -5,7 +5,9 @@
 #include "test_framework.hpp"
 
 #include <fuhglgraphics/io/json.hpp>
+#include <fuhglgraphics/scene/component.hpp>
 #include <fuhglgraphics/scene/serialize.hpp>
+#include <fuhglgraphics/weather/weather.hpp>
 
 #include <cstdio>
 #include <filesystem>
@@ -111,6 +113,20 @@ void runSerializeTests() {
         clip.channels.push_back(ch);
         anim.attach<scene::AnimationComponent>().player.addClip(clip);
 
+        // G38 weather component (pure CPU state) round-trips through the scene JSON
+        scene::Node& weatherNode = scene.root().createChild("weather");
+        scene::WeatherComponent& wcomp = weatherNode.attach<scene::WeatherComponent>();
+        wcomp.system = weather::WeatherSystem(1234u);
+        wcomp.system.setTarget(weather::WeatherType::Rain, 0.f);
+        wcomp.system.setTimeOfDay(17.5f);
+        wcomp.system.setDayLengthSeconds(300.f);
+        wcomp.system.setLatitudeDeg(52.f);
+        weather::WeatherParams wp = wcomp.system.params();
+        wp.rainIntensity = 0.65f;
+        wp.cloudCoverage = 0.9f;
+        wp.windSpeed = 9.f;
+        wcomp.system.setParams(wp);
+
         const io::Json j = scene::sceneToJson(scene);
         const std::string text = io::writeJson(j, 2);
 
@@ -171,6 +187,20 @@ void runSerializeTests() {
         CHECK_NEAR(ac->player.clip("spin")->duration, 1.f, 1e-6);
         CHECK(ac->player.clip("spin")->channels.size() == 1);
         CHECK(ac->player.clip("spin")->channels[0].rotations.size() == 2);
+        const scene::Node* wnode2 = nullptr;
+        for (const auto& c : scene2.root().children())
+            if (c->name() == "weather") wnode2 = c.get();
+        CHECK(wnode2 != nullptr);
+        const scene::WeatherComponent* wc2 = wnode2 ? wnode2->find<scene::WeatherComponent>() : nullptr;
+        CHECK(wc2 != nullptr);
+        CHECK(wc2->system.seed() == 1234u);
+        CHECK(wc2->system.targetType() == weather::WeatherType::Rain);
+        CHECK_NEAR(wc2->system.timeOfDay(), 17.5, 1e-4);
+        CHECK_NEAR(wc2->system.dayLengthSeconds(), 300.f, 1e-4);
+        CHECK_NEAR(wc2->system.latitudeDeg(), 52.f, 1e-4);
+        CHECK_NEAR(wc2->system.params().rainIntensity, 0.65, 1e-6);
+        CHECK_NEAR(wc2->system.params().cloudCoverage, 0.9, 1e-6);
+        CHECK_NEAR(wc2->system.params().windSpeed, 9.f, 1e-5);
 
         // --- save/load file round-trip ---
         const auto dir = std::filesystem::temp_directory_path() / "fgg-test-serialize";

@@ -14,7 +14,7 @@ using namespace fuhglgraphics::render;
 void runWetnessTests() {
     // --- effect registry: G22 present ---
     {
-        CHECK(kEffectCount == 28); // + Weathering (G31)
+        CHECK(kEffectCount == 30); // + Weathering (G31)
         Effect e;
         CHECK(effectFromName("wetness", e) && e == Effect::Wetness);
         CHECK(effectSupported(Effect::Wetness, 3, 3));

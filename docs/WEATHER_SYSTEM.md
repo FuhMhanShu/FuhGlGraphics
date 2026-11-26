@@ -1,6 +1,9 @@
 # FuhGlGraphics — Weather System (G38) design
 
-Status: **requirement + task list agreed, implementation planned in phases A2–A9.**
+Status: **implemented (A2–A9 done).** Renderer side: `render::Effect::Sky` + `Effect::Lightning`
+(kEffectCount 28 → 30), weather uniform block in the lighting pass, `DeferredRenderer::render(...,
+weather)`, `scene::WeatherComponent` → `FrameData::weather` → renderer, G19 serialization of the
+weather state. CPU twins of the procedural sky: `render/sky.hpp`.
 Language of this document: English (docs at this level are English-only, see [README.md](README.md)).
 
 Numbering note: G38 follows the PR/design-doc sequence (G32 creature generation …
@@ -47,7 +50,7 @@ transitions.**
    weather → renderer params (volumetric fog/cloudiness, wetness, exposure, bloom
    threshold; lens flare/god rays scale with sunVisibility).
 4. **Renderer adaptation (G3 deferred renderer, explicitly in scope)**: new
-   `render::Effect::Sky` and `render::Effect::Lightning` (kEffectCount 27 → 29), a shared
+   `render::Effect::Sky` and `render::Effect::Lightning` (kEffectCount 28 → 30), a shared
    weather uniform block (coverage, density, wind, time, sun dir, lightning flash) bound
    to the sky and volumetric passes, a procedural-sky branch in the lighting pass for
    background pixels (G-buffer depth == far) that replaces the sky cubemap when
@@ -102,27 +105,36 @@ derived:     sunDirection/sunColor/sunIntensity, ambient*, EffectParams mapping,
       path, seeded lightning schedule, derived outputs incl. `applyTo(EffectParams&)`);
       `tests/test_weather.cpp` (deterministic transitions, param mapping, sun path,
       lightning timing). Pure CPU, no GL.
-- [ ] **A3 — Sky pass in the G3 renderer**: `Effect::Sky` + weather uniform block +
-      procedural-sky branch in the lighting pass (gradient/sun disc/cloud layer,
-      cubemap fallback); `tests/gl_smoke_weather.cpp` (sky pixels differ with/without
-      the effect and between weather states).
-- [ ] **A4 — Clouds**: 2D cloud layer in the sky pass + G21 volumetric coverage driven
-      by `cloudCoverage`/`cloudDensity`; wind scrolling. Unit test on the noise field
-      (G24), gl_smoke on coverage 0 vs 1.
-- [ ] **A5 — Rain**: `weather::makeRainEmitter(...)` (G5 streaks + optional splashes),
-      spawn ∝ `rainIntensity`, wind vector; G22 `wetnessAmount` coupling with decay
-      tail; `tests/gl_smoke_weather.cpp` rain on/off, wetness follows intensity.
-- [ ] **A6 — Thunderstorm**: `Effect::Lightning`, seeded flash schedule, point-light
-      flash + sky flash uniform + optional G26 L-system emissive bolt mesh; unit test
-      on the schedule, gl_smoke on a flash frame (brightness spike).
-- [ ] **A7 — Scene wiring**: `scene::WeatherComponent` → `FrameData::weather` →
-      `DeferredRenderer::render(..., weather)`, G19 serialization of the weather state,
+- [x] **A3 — Sky pass in the G3 renderer**: `Effect::Sky` + weather uniform block
+      (`uCloudCoverage`/`uCloudDensity`/`uStormIntensity`/`uWind*`/`uSkyTime`/`uSunVisibility`)
+      + procedural-sky branch in the lighting pass (`kLightFragSky`: gradient/sun disc/halo/
+      cloud layer, cubemap fallback stays); `tests/gl_smoke_weather.cpp` (sky pixels differ
+      with/without the effect and between weather states). CPU twins: `render/sky.hpp`.
+- [x] **A4 — Clouds**: 2D fBm cloud layer in the sky pass + G21 volumetric coverage driven
+      by `cloudCoverage`/`cloudDensity` via `WeatherSystem::applyVolumetricParams()` (single
+      source of truth for `applyTo(EffectParams&)` and `DeferredRenderer::drawVolumetric`);
+      wind scrolling. Unit tests on the noise field (`test_weather.cpp::testSkyTwins`),
+      gl_smoke on clear vs storm coverage.
+- [x] **A5 — Rain**: `weather::rainEmitterConfig(WeatherParams)` / `weather::makeRainEmitter(...)`
+      (G5 streaks, spawn ∝ `rainIntensity`, wind vector, alpha blend); G22 `wetnessAmount`
+      coupled to the lagged `WeatherParams::wetness` in the lighting pass
+      (`max(wetnessAmount, weather.wetness)`); `tests/gl_smoke_weather.cpp` rain on/off.
+- [x] **A6 — Thunderstorm**: `Effect::Lightning`, seeded flash schedule, point-light
+      flash (temporary light appended to the frame copy in `render()`) + sky flash uniform
+      (`uLightningFlash`) + optional G26 L-system emissive bolt mesh
+      (`weather::makeLightningBolt(seed, dir, length)`); unit test on the schedule + bolt
+      mesh, gl_smoke on a flash frame (brightness spike).
+- [x] **A7 — Scene wiring**: `scene::WeatherComponent` → `FrameData::weather` →
+      `DeferredRenderer::render(..., weather)`; `Scene::fillFrame()` applies the state to
+      `frame.view` + `frame.effects.params` after the traversal; G19 serialization of the
+      weather state (seed, target type, params, time of day, day length, latitude);
       debug-HUD toggle (G10 HUD lists the new effects automatically via kEffectCount).
-- [ ] **A8 — Demo + CI**: `examples/weather_screenshot` (`--weather
-      clear|partly|overcast|rain|storm`, `--tod 8`, `--transition 6 --frames N` renders
-      a transition sequence), reference screenshots `docs/images/g38_weather_*.png`
-      wired into the `docs-screenshots` CI job with the perceptual diff.
-- [ ] **A9 — Docs**: tutorials `docs/en/tutorials/g38_weather.md` +
+- [x] **A8 — Demo + CI**: `examples/weather_screenshot` (`--weather
+      clear|partly|overcast|rain|storm`, `--tod`, `--transition`, `--frames`, `--flash`),
+      reference screenshots `docs/images/g38_weather_*.png`
+      wired into the `docs-screenshots` CI job (PSNR gate picks them up once the
+      checked-in references are copied from the CI artifacts).
+- [x] **A9 — Docs**: tutorials `docs/en/tutorials/g38_weather.md` +
       `docs/de/tutorials/g38_weather.md`, entries in USER_GUIDE.md, README.md /
       README.de.md, CHANGELOG.md and the G38 status line in REQUIREMENTS.md;
       Doxygen comments in the new headers (N3/N6).

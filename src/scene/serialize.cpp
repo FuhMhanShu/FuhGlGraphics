@@ -338,6 +338,31 @@ io::Json nodeToJson(const Node& n) {
             for (const anim::AnimationClip& cl : ac->player.clips()) clips.arr.push_back(clipToJson(cl));
             m.obj["clips"] = clips;
             comps.arr.push_back(m);
+        } else if (const WeatherComponent* wc = dynamic_cast<const WeatherComponent*>(c.get())) {
+            // G38: weather state (pure CPU, no GL) round-trips fully: seed, target type,
+            // current params, time of day, day length, latitude
+            io::Json m;
+            m.type = io::Json::Type::Object;
+            m.obj["type"] = strJson("weather");
+            m.obj["target"] = strJson(weather::weatherTypeName(wc->system.targetType()));
+            m.obj["seed"] = numJson(static_cast<double>(wc->system.seed()));
+            m.obj["timeOfDay"] = numJson(wc->system.timeOfDay());
+            m.obj["dayLengthSeconds"] = numJson(wc->system.dayLengthSeconds());
+            m.obj["latitudeDeg"] = numJson(wc->system.latitudeDeg());
+            const weather::WeatherParams& wp = wc->system.params();
+            io::Json p;
+            p.type = io::Json::Type::Object;
+            p.obj["cloudCoverage"] = numJson(wp.cloudCoverage);
+            p.obj["cloudDensity"] = numJson(wp.cloudDensity);
+            p.obj["fogDensity"] = numJson(wp.fogDensity);
+            p.obj["rainIntensity"] = numJson(wp.rainIntensity);
+            p.obj["stormIntensity"] = numJson(wp.stormIntensity);
+            p.obj["windSpeed"] = numJson(wp.windSpeed);
+            p.obj["windDirection"] = numJson(wp.windDirection);
+            p.obj["sunVisibility"] = numJson(wp.sunVisibility);
+            p.obj["wetness"] = numJson(wp.wetness);
+            m.obj["params"] = p;
+            comps.arr.push_back(m);
         }
         // ParticleEmitterComponent / LightProbeComponent / WaterComponent: GL resources, skipped
     }
@@ -470,6 +495,30 @@ bool nodeFromJson(Node& n, const io::Json& j, const MeshResolver& resolveMesh,
                         ac.player.addClip(clip);
                     }
                 }
+            } else if (type == "weather") {
+                // G38: reconstruct the WeatherSystem with the saved seed, then restore the
+                // exact state (target type, params, time of day, day length, latitude)
+                WeatherComponent& wc = n.attach<WeatherComponent>();
+                wc.system = weather::WeatherSystem(
+                    static_cast<std::uint32_t>(c.at("seed").asNumber(wc.system.seed())));
+                weather::WeatherType t;
+                if (weather::weatherTypeFromName(c.at("target").asString().c_str(), t))
+                    wc.system.setTarget(t, 0.f);
+                const io::Json& p = c.at("params");
+                weather::WeatherParams wp = wc.system.params();
+                wp.cloudCoverage = static_cast<float>(p.at("cloudCoverage").asNumber(wp.cloudCoverage));
+                wp.cloudDensity = static_cast<float>(p.at("cloudDensity").asNumber(wp.cloudDensity));
+                wp.fogDensity = static_cast<float>(p.at("fogDensity").asNumber(wp.fogDensity));
+                wp.rainIntensity = static_cast<float>(p.at("rainIntensity").asNumber(wp.rainIntensity));
+                wp.stormIntensity = static_cast<float>(p.at("stormIntensity").asNumber(wp.stormIntensity));
+                wp.windSpeed = static_cast<float>(p.at("windSpeed").asNumber(wp.windSpeed));
+                wp.windDirection = static_cast<float>(p.at("windDirection").asNumber(wp.windDirection));
+                wp.sunVisibility = static_cast<float>(p.at("sunVisibility").asNumber(wp.sunVisibility));
+                wp.wetness = static_cast<float>(p.at("wetness").asNumber(wp.wetness));
+                wc.system.setParams(wp);
+                wc.system.setTimeOfDay(static_cast<float>(c.at("timeOfDay").asNumber(12)));
+                wc.system.setDayLengthSeconds(static_cast<float>(c.at("dayLengthSeconds").asNumber(600)));
+                wc.system.setLatitudeDeg(static_cast<float>(c.at("latitudeDeg").asNumber(45)));
             }
         }
     }

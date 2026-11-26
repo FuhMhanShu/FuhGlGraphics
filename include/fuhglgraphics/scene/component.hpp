@@ -6,7 +6,7 @@
 /// with its own local offset, material parameters, textures, castShadow flag and material
 /// ID), LightComponent, CameraComponent, ParticleEmitterComponent (G5),
 /// AnimationComponent (G6), LightProbeComponent (G7), DecalComponent (G8),
-/// WaterComponent (G13), TerrainComponent (G20).
+/// WaterComponent (G13), TerrainComponent (G20), WeatherComponent (G38).
 
 #include "../anim/animation.hpp"
 #include "../anim/gpu_skinner.hpp"
@@ -14,6 +14,7 @@
 #include "../probes/light_probes.hpp"
 #include "../water/water_surface.hpp"
 #include "../render/decals.hpp"
+#include "../weather/weather.hpp"
 
 #include <fuhgl/cam/camera.hpp>
 #include <fuhgl/math.hpp>
@@ -169,6 +170,20 @@ public:
 class WaterComponent : public Component {
 public:
     water::WaterSurface surface;
+
+    void fill(const Node& node, FrameData& frame) const override; // defined in component.cpp
+};
+
+/// @brief G38 weather component: owns one weather::WeatherSystem (the CPU state machine,
+/// A2). fill() registers it in FrameData::weather (the first component in the graph wins);
+/// Scene::fillFrame() then applies it to frame.view (sun/ambient/fog/sun light) and
+/// frame.effects.params (G21 volumetric, G22 wetness, exposure) and the app passes
+/// frame.weather to DeferredRenderer::render(..., frame.weather), which drives
+/// Effect::Sky / Effect::Lightning / the weather uniform block. Advance the state yourself
+/// per frame: `component.system.update(dt)` (and setTarget() for transitions).
+class WeatherComponent : public Component {
+public:
+    weather::WeatherSystem system;
 
     void fill(const Node& node, FrameData& frame) const override; // defined in component.cpp
 };

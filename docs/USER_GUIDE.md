@@ -253,6 +253,22 @@ The technical part is in [DEVELOPMENT.md](DEVELOPMENT.md); the agreed requiremen
   Pure CPU twins in `render/wetness.hpp`. Quick start: [G22 tutorial](en/tutorials/g22_wetness.md),
   demo `examples/wetness_screenshot`, screenshots: [dry](images/g22_wetness_dry.png),
   [wet](images/g22_wetness_wet.png), [puddles](images/g22_wetness_puddles.png).
+- **Weather system (G38).** `weather::WeatherSystem` (`weather/weather.hpp`, pure CPU, seeded):
+  `WeatherType` presets (`clear`/`partly_cloudy`/`overcast`/`rain`/`thunderstorm`) blended by
+  `setTarget(type, seconds)` + `update(dt)` (smoothstep transitions, time-of-day sun path via
+  `setTimeOfDay`, wetness lag, seeded lightning schedule, optional `setAutoAdvance`).
+  Attach a `scene::WeatherComponent`; `Scene::fillFrame()` applies it to `frame.view`
+  (sun/ambient/fog/lights) + `frame.effects.params` and exposes `frame.weather` — pass it to
+  `DeferredRenderer::render(..., frame.weather)`. Renderer side: `Effect::Sky` (procedural sky
+  with wind-scrolled fBm clouds for background pixels; cubemap stays fallback),
+  `Effect::Lightning` (sky flash + temporary point light + optional G26 bolt mesh via
+  `weather::makeLightningBolt(seed, dir, length)`), G21 volumetric coverage and G22 wetness
+  follow the weather automatically, exposure scales with `exposureScale()`. Rain:
+  `weather::makeRainEmitter(particleSystem, ws.params())` (G5, spawn ∝ `rainIntensity`).
+  The state serializes via G19 (`"weather"` component JSON). CPU sky twins: `render/sky.hpp`.
+  Quick start: [G38 weather tutorial](en/tutorials/g38_weather.md), demo
+  `examples/weather_screenshot`, design: [docs/WEATHER_SYSTEM.md](WEATHER_SYSTEM.md),
+  screenshots: [rain](images/g38_weather_rain.png), [storm + flash](images/g38_weather_storm.png).
 - **Tonemapping operators (G23).** `render::TonemapOperator` (ACES default / Reinhard /
   Uncharted2 / linear) selected per frame: `renderer.tonemapOperator` (shader `uOperator` in
   the tonemap pass) or `effects.params.tonemapOperator` (int, serialized by G19). Pure CPU

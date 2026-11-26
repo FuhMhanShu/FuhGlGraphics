@@ -9,6 +9,28 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G38 weather system — renderer side (A3–A9)** (`weather/weather.hpp` core was A2; design:
+  `docs/WEATHER_SYSTEM.md`, tutorials `docs/{en,de}/tutorials/g38_weather.md`): new
+  `render::Effect::Sky` + `render::Effect::Lightning` (kEffectCount 28 → 30) with a shared
+  weather uniform block in the G3 lighting pass. `Effect::Sky` replaces the sky cubemap/gradient
+  for background pixels with a procedural sky (day/night gradient by sun elevation, HDR sun disc
+  + halo, wind-scrolled 2D fBm cloud layer driven by cloudCoverage/cloudDensity; CPU twins in the
+  new `render/sky.hpp`). G21 volumetric coverage is driven by the weather via the single-source
+  mapping `WeatherSystem::applyVolumetricParams()`; G22 wetness couples to the lagged ground
+  wetness (`max(wetnessAmount, weather.wetness)`); the tonemap exposure scales with
+  `exposureScale()` (storms darken the frame). `Effect::Lightning` adds the sky-flash uniform +
+  a temporary point light at the bolt for 1–2 frames during a strike, plus the optional G26
+  L-system bolt mesh `weather::makeLightningBolt(seed, dir, length)`. Rain: `weather::rainEmitterConfig()`
+  / `weather::makeRainEmitter()` configure a G5 emitter (spawn ∝ rainIntensity, wind vector).
+  Scene wiring (A7): `scene::WeatherComponent` → `FrameData::weather` →
+  `DeferredRenderer::render(..., weather)` (applies sun/ambient/fog/lights to the frame copy);
+  `Scene::fillFrame()` applies the state to `frame.view` + `frame.effects.params`; G19
+  serialization of the full weather state. Demo + CI (A8): `examples/weather_screenshot`
+  (`--weather clear|partly|overcast|rain|storm`, `--tod`, `--transition`, `--frames`, `--flash`)
+  rendered by the `docs-screenshots` job as `docs/images/ci/g38_weather_*.png`. Tests:
+  `tests/test_weather.cpp` extended (rain emitter, bolt mesh, exposure/volumetric mapping, sky
+  twins, seed) + new `tests/gl_smoke_weather.cpp` (sky on/off, weather states, rain + wetness,
+  flash-frame brightness); `test_serialize.cpp` covers the weather component round-trip.
 - **G38 organic road/path network** (`procedural/roadgen.{hpp,cpp}`, integrated in the G31
   landscape pipeline; design: `docs/ROAD_GENERATION.md`, tutorials `docs/{en,de}/tutorials/g38_roads.md`):
   `procedural::RoadGenerator` routes a highway/country-road/desire-path hierarchy between

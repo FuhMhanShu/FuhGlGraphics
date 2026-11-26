@@ -7,6 +7,7 @@
 #include <fuhglgraphics/particles/particle_system.hpp>
 #include <fuhglgraphics/probes/light_probes.hpp>
 #include <fuhglgraphics/water/water_surface.hpp>
+#include <fuhglgraphics/weather/weather.hpp>
 
 #include "deferred_glsl.hpp"
 
@@ -273,7 +274,7 @@ bool DeferredRenderer::createInternal() {
     if (!im.decalBox.create()) return false;
     im.decalBox.setMeshData(fuhgl::render::shapes::boxData({1.f, 1.f, 1.f}, {1.f, 1.f, 1.f}));
     const std::string lightFrag = std::string(kLightFragHead) + kLightFragKit +
-                                  fuhgl::render::kSkFuncs + kLightFragProbes + kLightFragSsao + kLightFragWetness + kLightFragWeathering + kLightFragPbr + kLightFragTail;
+                                  fuhgl::render::kSkFuncs + kLightFragProbes + kLightFragSsao + kLightFragWetness + kLightFragWeathering + kLightFragPbr + kLightFragSky + kLightFragTail;
     im.ssaoKernel = ssaoKernel(std::min(ssaoSamples > 0 ? ssaoSamples : 24, 64), 1337u);
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
         !compilePostFs(im.ssaoMat, kSsaoFrag, "ssao") ||
@@ -787,11 +788,27 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
                               const std::vector<Decal>* decals,
                               const water::WaterSurface* water,
                               const std::vector<const anim::GpuSkinner*>* skins,
-                              const std::vector<float>* subsurface) {
+                              const std::vector<float>* subsurface,
+                              const weather::WeatherSystem* weather) {
     if (!scene.camera || width_ <= 0) return;
     const auto t0 = std::chrono::steady_clock::now();
     fuhgl::render::SceneView s = scene;
     applyCapabilities();
+
+    // G38 weather: push the state onto the frame copy (sun/ambient/fog/directional light),
+    // remember it for the passes below, and add the lightning flash as a temporary point
+    // light at the bolt while Effect::Lightning is on and a strike is active
+    curWeather_ = weather;
+    if (curWeather_) {
+        curWeather_->applyTo(s);
+        const float flash = effectEnabled(Effect::Lightning) ? curWeather_->lightningFlash() : 0.f;
+        if (flash > 0.01f && s.lights.size() < static_cast<std::size_t>(fuhgl::render::kMaxLights)) {
+            const fuhgl::math::Vec3 boltDir = curWeather_->lightningDirection();
+            const fuhgl::math::Vec3 boltPos = s.camera->eye() - boltDir * 55.f;
+            s.lights.push_back(fuhgl::render::Light::point(
+                boltPos, fuhgl::math::Vec3{0.75f, 0.82f, 1.0f} * (flash * 60.f), flash * 420.f, 220.f));
+        }
+    }
     curParticles_ = particleSystems;
     curProbes_ = lightProbes;
     curDecals_ = decals;
@@ -922,6 +939,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     curDecals_ = nullptr;
     curSkins_ = nullptr;
     curWater_ = nullptr;
+    curWeather_ = nullptr;
 }
 
 // G5 particles post pass: copy hdr -> hdrP, then draw each system's instanced billboards
@@ -1169,9 +1187,11 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
         p.setUniform("uSssPower", sssPower);
         p.setUniform("uSssScale", sssScale);
         p.setUniform("uSssThickness", sssThickness);
-        // G22 wetness
+        // G22 wetness (G38: the lagged ground wetness of the weather state wins when set)
+        float wetAmt = wetnessAmount;
+        if (curWeather_) wetAmt = std::max(wetAmt, curWeather_->params().wetness);
         p.setUniform(p.uniformLocation("uWetnessEnabled"), effectEnabled(Effect::Wetness) ? 1 : 0);
-        p.setUniform("uWetness", wetnessAmount);
+        p.setUniform("uWetness", wetAmt);
         p.setUniform("uWetnessPuddle", wetnessPuddle);
         p.setUniform("uWetnessNoiseScale", wetnessNoiseScale);
         // G31 weathering
@@ -1224,6 +1244,25 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
         p.setUniform("uSunDir", s.sunDirection);
         p.setUniform("uSunColor", s.sunColor);
         p.setUniform("uSunCos", s.sunCos);
+        // G38 weather block for the procedural sky (Effect::Sky) + lightning sky flash;
+        // without an active WeatherSystem the default (clear) params are used
+        {
+            const weather::WeatherParams defW;
+            const weather::WeatherParams& w = curWeather_ ? curWeather_->params() : defW;
+            p.setUniform(p.uniformLocation("uSkyEnabled"), effectEnabled(Effect::Sky) ? 1 : 0);
+            p.setUniform("uCloudCoverage", w.cloudCoverage);
+            p.setUniform("uCloudDensity", w.cloudDensity);
+            p.setUniform("uStormIntensity", w.stormIntensity);
+            p.setUniform("uWindSpeed", w.windSpeed);
+            p.setUniform("uWindDir", w.windDirection);
+            p.setUniform("uSkyTime", skyTime);
+            p.setUniform("uSunVisibility", w.sunVisibility);
+            const float flash = (curWeather_ && effectEnabled(Effect::Lightning))
+                                    ? curWeather_->lightningFlash() : 0.f;
+            p.setUniform(p.uniformLocation("uLightningEnabled"), effectEnabled(Effect::Lightning) ? 1 : 0);
+            p.setUniform("uLightningFlash", flash);
+            p.setUniform("uFlashTint", fuhgl::math::Vec3{0.75f, 0.82f, 1.0f});
+        }
         p.setUniform(p.uniformLocation("uEnvEnabled"), (s.env && effectEnabled(Effect::Ibl)) ? 1 : 0);
         p.setUniform("uPrefilterMaxLod", s.env ? static_cast<float>(s.env->prefilterMaxLod()) : 0.f);
         p.setUniform("uEnvIntensity", s.env ? s.env->intensity : 1.f);
@@ -1346,6 +1385,12 @@ void DeferredRenderer::drawVolumetric(fuhgl::render::RenderGraph::PassContext& c
     const fuhgl::render::SceneView& s = *curScene_;
     const bool on = effectEnabled(Effect::VolumetricFog);
     const fuhgl::math::Vec3 ambient = (skyTop + skyBottom) * 0.25f;
+    // G38: an active WeatherSystem drives the volume coverage/density (storm clouds build
+    // up in the volume too) via the same mapping as WeatherSystem::applyTo(EffectParams)
+    float weatherDensity = volumetricDensity;
+    float weatherCloudiness = volumetricCloudiness;
+    float weatherStrength = volumetricStrength;
+    if (curWeather_) curWeather_->applyVolumetricParams(weatherDensity, weatherCloudiness, weatherStrength);
     drawFs(impl_->volumetricMat, [&](fuhgl::Program& p) {
         p.setUniform(p.uniformLocation("uHdr"), 0);
         p.setUniform(p.uniformLocation("uGDepth"), 1);
@@ -1355,13 +1400,13 @@ void DeferredRenderer::drawVolumetric(fuhgl::render::RenderGraph::PassContext& c
         p.setUniform("uSunDir", s.sunDirection);
         p.setUniform("uSunColor", s.sunColor);
         p.setUniform("uAmbient", ambient);
-        p.setUniform("uDensity", volumetricDensity);
-        p.setUniform("uCloudiness", volumetricCloudiness);
+        p.setUniform("uDensity", weatherDensity);
+        p.setUniform("uCloudiness", weatherCloudiness);
         p.setUniform("uHeightFalloff", volumetricHeightFalloff);
         p.setUniform("uNoiseScale", volumetricNoiseScale);
         p.setUniform("uAnisotropy", volumetricAnisotropy);
         p.setUniform("uMaxDist", volumetricMaxDist);
-        p.setUniform("uStrength", volumetricStrength);
+        p.setUniform("uStrength", weatherStrength);
         p.setUniform(p.uniformLocation("uSteps"), std::min(std::max(volumetricSteps, 1), 64));
         p.setUniform("uTime", volumetricTime);
         p.setUniform("uZNear", s.camera->zNear());
@@ -1518,7 +1563,8 @@ void DeferredRenderer::drawTonemap(fuhgl::render::RenderGraph::PassContext& ctx)
     drawFs(impl_->tonemapMat, [&](fuhgl::Program& p) {
         p.setUniform(p.uniformLocation("uHdr"), 0);
         p.setUniform(p.uniformLocation("uGDepth"), 1);
-        p.setUniform("uExposure", exposure);
+        // G38: an active WeatherSystem scales the exposure (storms darken the frame)
+        p.setUniform("uExposure", exposure * (curWeather_ ? curWeather_->exposureScale() : 1.f));
         p.setUniform(p.uniformLocation("uUseTonemap"), effectEnabled(Effect::Tonemap) ? 1 : 0);
         p.setUniform(p.uniformLocation("uOperator"), static_cast<int>(tonemapOperator)); // G23
         p.setUniform("uSunScreen", sunScreen);
@@ -1595,6 +1641,8 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::Subsurface, sssEnabled_);
     gate(Effect::Gi, giEnabled_);
     gate(Effect::Weathering, weatheringEnabled_);
+    gate(Effect::Sky, skyEnabled_);
+    gate(Effect::Lightning, lightningEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -1629,6 +1677,8 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::Subsurface: sssEnabled_ = on; break;
         case Effect::Gi: giEnabled_ = on; break;
         case Effect::Weathering: weatheringEnabled_ = on; break;
+        case Effect::Sky: skyEnabled_ = on; break;
+        case Effect::Lightning: lightningEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -1673,6 +1723,8 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::Subsurface: return sssEnabled_;
         case Effect::Gi: return giEnabled_;
         case Effect::Weathering: return weatheringEnabled_;
+        case Effect::Sky: return skyEnabled_;
+        case Effect::Lightning: return lightningEnabled_;
     }
     return false;
 }
@@ -1685,6 +1737,7 @@ void DeferredRenderer::setAllEffects(bool on) {
     wetnessEnabled_ = on;
     lensFlareEnabled_ = anamorphicEnabled_ = hbaoEnabled_ = on;
     caEnabled_ = sssEnabled_ = giEnabled_ = on;
+    skyEnabled_ = lightningEnabled_ = on;
     applyCapabilities();
 }
 

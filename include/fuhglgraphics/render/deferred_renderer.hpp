@@ -54,6 +54,10 @@ namespace fuhglgraphics::water {
 class WaterSurface;
 }
 
+namespace fuhglgraphics::weather {
+class WeatherSystem;
+}
+
 namespace fuhglgraphics::render {
 
 /// @brief Texture unit of the optional sky cubemap in the lighting pass. 16 because the
@@ -102,6 +106,12 @@ public:
     /// scene.items: when set for an item and Effect::GpuSkinning is enabled (GL >= 4.3), the
     /// item is drawn with the skinning vertex shader (matrix-palette SSBO) instead of the
     /// plain mesh — otherwise the plain mesh is drawn (CPU-skinning fallback, G6).
+    /// @param weather optional G38 weather state (e.g. FrameData::weather from a
+    /// scene::WeatherComponent): applied to the frame copy (sun/ambient/fog/lights via
+    /// WeatherSystem::applyTo), drives the Effect::Sky procedural sky + the weather uniform
+    /// block, the Effect::VolumetricFog coverage (G21), the G22 wetness coupling, the
+    /// exposure in the tonemap pass, and - while Effect::Lightning is on - a temporary
+    /// point light + sky flash during a lightning strike.
     void render(const fuhgl::render::SceneView& scene,
                 const std::vector<std::uint32_t>* materialIds = nullptr,
                 const std::vector<bool>* castShadow = nullptr,
@@ -110,7 +120,8 @@ public:
                 const std::vector<Decal>* decals = nullptr,
                 const water::WaterSurface* water = nullptr, // G13 water surface (FrameData::water)
                 const std::vector<const anim::GpuSkinner*>* skins = nullptr, // G14 (FrameData::skins)
-                const std::vector<float>* subsurface = nullptr); // G33 SSS factors, parallel to scene.items (FrameData::subsurface)
+                const std::vector<float>* subsurface = nullptr, // G33 SSS factors, parallel to scene.items (FrameData::subsurface)
+                const weather::WeatherSystem* weather = nullptr); // G38 (FrameData::weather)
 
     /// @brief LDR output target (RGBA8, tonemapped when Effect::Tonemap is on).
     fuhgl::Framebuffer& output();
@@ -290,6 +301,10 @@ public:
     int volumetricSteps = 24;              ///< march samples (max 64)
     float volumetricTime = 0.f;            ///< noise field drift (world units/frame step)
 
+    /// @brief G38 Effect::Sky: cloud-field drift time in seconds (advance per frame; the
+    /// wind itself scrolls via the weather block).
+    float skyTime = 0.f;
+
     /// @brief G22 wetness / rain (Effect::Wetness): modulates the PBR inputs in the lighting
     /// pass — up-facing surfaces get a glossy film (roughness toward 0.06), the albedo
     /// darkens ~35 % at full wetness, and a noise puddle mask deepens depressions. Also adds
@@ -431,6 +446,9 @@ private:
     bool sssEnabled_ = false;        ///< Effect::Subsurface (off by default)
     bool giEnabled_ = false;         ///< Effect::Gi (off by default)
     bool weatheringEnabled_ = false; ///< Effect::Weathering (off by default)
+    bool skyEnabled_ = false;        ///< Effect::Sky (off by default)
+    bool lightningEnabled_ = false;  ///< Effect::Lightning (off by default)
+    const weather::WeatherSystem* curWeather_ = nullptr; ///< G38: active weather state this frame
     const water::WaterSurface* curWater_ = nullptr; ///< G13: active water surface this frame
     fuhgl::math::Mat4 waterModel_{};                 ///< its draw item's model matrix
     fuhgl::math::Vec4 waterClipPlane_{0.f, 1.f, 0.f, 0.f}; ///< world plane (n, d) for clipping

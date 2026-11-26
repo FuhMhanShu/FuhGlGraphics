@@ -2,6 +2,7 @@
 
 #include "fuhglgraphics/scene/component.hpp"
 #include "fuhglgraphics/scene/node.hpp"
+#include "fuhglgraphics/weather/weather.hpp"
 
 namespace fuhglgraphics::scene {
 
@@ -40,6 +41,13 @@ void Scene::fillFrame(FrameData& frame, const fuhgl::Camera* camera, int width, 
         frustumPtr = &frustum;
     }
     fillNode(root_, frame, frustumPtr);
+
+    // G38: apply the weather state of the first WeatherComponent after the traversal, so
+    // it wins over the merged node effect params (volumetric/wetness/exposure mapping)
+    if (frame.weather) {
+        frame.weather->applyTo(frame.view);
+        frame.weather->applyTo(frame.effects.params);
+    }
 }
 
 void Scene::fillNode(const Node& node, FrameData& frame, const fuhgl::math::Frustum* frustum) const {

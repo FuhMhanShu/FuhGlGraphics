@@ -201,3 +201,10 @@ target_link_libraries(fuhglgraphics_postfx2_screenshot PRIVATE fuhglgraphics)
 # glow + IBL — wide + crystals + entrance shots, headless to PNG.
 add_executable(fuhglgraphics_cave_screenshot cave_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_cave_screenshot PRIVATE fuhglgraphics)
+
+# G38 weather screenshot tool: plaza driven by a weather::WeatherSystem through a
+# scene::WeatherComponent -> FrameData::weather -> DeferredRenderer (Effect::Sky procedural
+# sky + clouds, weather-driven G21 volumetric coverage, G5 rain + G22 wetness, Effect::Lightning
+# flash + optional L-system bolt, bloom) — one PNG per --weather state, headless to PNG.
+add_executable(fuhglgraphics_weather_screenshot weather_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_weather_screenshot PRIVATE fuhglgraphics)

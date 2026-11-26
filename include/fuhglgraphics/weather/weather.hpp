@@ -11,6 +11,8 @@
 
 #include <fuhgl/math.hpp>
 #include <fuhgl/render/light.hpp>
+#include <fuhgl/render/mesh.hpp>
+#include <fuhglgraphics/particles/particle_system.hpp>
 
 #include <cstdint>
 
@@ -107,6 +109,16 @@ public:
     /// wetness (G22), exposure. Call per frame after update().
     void applyTo(fuhglgraphics::scene::EffectParams& params) const;
 
+    /// @brief Exposure scale of the current state (storms darken the frame) — used by
+    /// applyTo(EffectParams&) and by the G3 tonemap pass when a WeatherSystem is active.
+    float exposureScale() const;
+    /// @brief Maps the weather onto the G21 volumetric params (single source of truth for
+    /// applyTo(EffectParams&) and DeferredRenderer::drawVolumetric): cloud coverage drives
+    /// the cloudiness, density*coverage drives the volume density, plus the distance fog.
+    void applyVolumetricParams(float& density, float& cloudiness, float& strength) const;
+    /// @brief Construction seed (serialization round-trip).
+    std::uint32_t seed() const { return seed_; }
+
 private:
     float rand();                 ///< splitmix32, deterministic per seed
     void scheduleNextFlash();     ///< seeded time until the next lightning strike
@@ -128,6 +140,28 @@ private:
     float flash_ = 0.f;           ///< current flash envelope 0..1
     float flashEnergy_ = 0.f;
     fuhgl::math::Vec3 flashDir_{0.f, -1.f, 0.f};
+    std::uint32_t seed_;          ///< construction seed (serialization round-trip)
 };
+
+// --- GL-side helpers (consumed by the G3 renderer / examples) -------------------------
+
+/// @brief G5 rain-emitter preset derived from the weather state (A5): streaks falling
+/// along -Y + wind, spawn rate proportional to rainIntensity, alpha-blended bluish-white
+/// streaks, short lifetime, strong drag. Deterministic per params; no GL.
+particles::EmitterConfig rainEmitterConfig(const WeatherParams& w);
+
+/// @brief Configures an existing G5 particle system as the rain emitter of `w`
+/// (calls system.setEmitter(rainEmitterConfig(w))). The system still needs create() once
+/// with a GL context; call system.update(dt) per frame.
+inline void makeRainEmitter(particles::ParticleSystem& system, const WeatherParams& w) {
+    system.setEmitter(rainEmitterConfig(w));
+}
+
+/// @brief G26-based lightning bolt mesh (A6): a branching L-system grown along +Y and
+/// rotated onto `dir` (normalized, usually steeply downward), `length` world units long.
+/// Tapered cylinders, 11 floats/vertex (pos/normal/color/uv). Deterministic per seed;
+/// render it as an emissive MeshEntry during a flash (bloom G17 picks it up).
+fuhgl::render::MeshData makeLightningBolt(std::uint32_t seed, const fuhgl::math::Vec3& dir,
+                                          float length);
 
 } // namespace fuhglgraphics::weather
