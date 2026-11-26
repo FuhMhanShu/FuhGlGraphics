@@ -102,7 +102,7 @@ bool AssetDocument::save(const QString& path, std::string* err) {
     doc.type = io::Json::Type::Object;
     doc.obj["format"] = [] { io::Json j; j.type = io::Json::Type::String; j.str = "fuhglgraphics-asset"; return j; }();
     doc.obj["version"] = [] { io::Json j; j.type = io::Json::Type::Number; j.number = 1; return j; }();
-    doc.obj["name"] = [] { io::Json j; j.type = io::Json::Type::String; j.str = QFileInfo(path).baseName().toStdString(); return j; }();
+    doc.obj["name"] = [&] { io::Json j; j.type = io::Json::Type::String; j.str = QFileInfo(path).baseName().toStdString(); return j; }();
 
     // collect referenced file assets (assetRef "file:<path>") for the assets list
     io::Json assets;
@@ -113,7 +113,7 @@ bool AssetDocument::save(const QString& path, std::string* err) {
                 if (e.assetRef.rfind("file:", 0) == 0) {
                     io::Json a;
                     a.type = io::Json::Type::Object;
-                    a.obj["path"] = [] { io::Json j; j.type = io::Json::Type::String; j.str = e.assetRef.substr(5); return j; }();
+                    a.obj["path"] = [&] { io::Json j; j.type = io::Json::Type::String; j.str = e.assetRef.substr(5); return j; }();
                     assets.arr.push_back(a);
                 }
         for (const auto& c : n.children()) walk(*c);

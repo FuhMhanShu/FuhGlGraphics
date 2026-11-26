@@ -11,6 +11,8 @@
 #include <QMenuBar>
 #include <QMessageBox>
 
+MainWindow::~MainWindow() = default;
+
 MainWindow::MainWindow(const QString& projectPath, QWidget* parent) : QMainWindow(parent) {
     setWindowTitle(QStringLiteral("Asset Creator"));
     resize(1600, 1000);

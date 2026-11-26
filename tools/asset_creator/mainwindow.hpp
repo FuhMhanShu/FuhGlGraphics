@@ -18,8 +18,9 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     explicit MainWindow(const QString& projectPath = {}, QWidget* parent = nullptr);
+    ~MainWindow() override; // defined in the .cpp: AssetDocument is only forward-declared here
 
-private slots:
+private Q_SLOTS: // Q_SLOTS: the tool is built with QT_NO_KEYWORDS (particle_system.hpp::emit)
     void onNew();
     void onOpen();
     void onSave();
