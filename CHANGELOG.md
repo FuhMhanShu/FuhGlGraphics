@@ -41,6 +41,17 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   spline min-radius, hierarchy+carving+meshes+determinism) and
   `testLandscapeSettlementsAndRoads` in `tests/test_procedural_worldgen.cpp`
   (fuhglgraphics_tests: 6,417,825 checks, 0 failures).
+- **G38 water crossings are bridges only + reworked worldgen screenshots**: a road never runs
+  through water at ground level anymore — every path point below the water level is flagged
+  `bridge` and rendered as a bridge/steg deck above the water (`max(terrain, waterLevel+0.7)` +
+  posts); shallow/narrow spots (`fordMaxDepth`/`fordMaxFlow`/`fordCost`) now only make the A*-
+  prefer them as bridge locations. Terrain carving already skips water cells, so the riverbed
+  under a bridge stays intact. Test: every sub-water path point must carry `bridge = 1`.
+  `examples/worldgen_screenshot` landscape mode now renders two images: `<prefix>_landscape.png`
+  (overview framed at the most important hamlet, looking along its main road) and the new
+  `<prefix>_roads.png` (street-level close-up: road ribbon, ruts, houses, milestones/lanterns,
+  bridges over water); CI renders both via `--mode both`. Docs updated (ROAD_GENERATION.md,
+  g38 tutorials en/de, README rows point at `g31_worldgen_roads.png`).
 - **G31 HouseGenerator BuildingContext rules** (`procedural/house.hpp`): a small
   `BuildingContext` (temperature, precipitation, humidity, water proximity, wealth, density,
   biome, local material, soil color) now drives the architecture automatically —

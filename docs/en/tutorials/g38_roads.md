@@ -48,13 +48,17 @@ Per step of length `d` into cell `b` (slope = world `dh/dx` of the heightmap):
 ```
 step = d · (1 + slopeWeight · slope(b)²)               // quadratic slope cost
 if slope(b) > critSlope(class)  step *= criticalPenalty // >~15° for highways → switchbacks
-water cell:  ford (depth ≤ fordMaxDepth && flow ≤ fordMaxFlow) → d·fordCost
-             else                                            → d·waterCost (flagged bridge)
+water cell:  shallow+narrow (depth ≤ fordMaxDepth && flow ≤ fordMaxFlow) → d·fordCost
+             (preferred BRIDGE location) — every water crossing is rendered as a bridge/steg
+             deck above the water, never as a sunken ford ribbon
+             else                                            → d·waterCost (bridge if forced)
 swamp (high flow near water) → ·swampCost;  forest biome → ·forestCost;  rock → ·rockCost
 existing road mask m → step *= 1 − existingRoadDiscount·m  // new paths merge, not parallel
 ```
 
-Cells of a path forced across deep water get `bridge = 1` (rendered as bridge/steg).
+**Every** path point below the water level gets `bridge = 1` — roads cross water only as a
+bridge/steg deck (`max(terrain, waterLevel+0.7)` + posts in `net.bridgeMesh`); the terrain
+carving skips water, so the riverbed under the bridge stays intact.
 
 ## Geometry & blending
 
@@ -106,9 +110,10 @@ w.roadDistanceAt(x, z);       // distance to the nearest road — creature fast 
 
 ## Screenshot
 
-The G31 landscape render now shows the feature end-to-end (hamlets connected by the road
-network): [g31_worldgen_landscape.png](../../images/g31_worldgen_landscape.png) — CI-rendered
-reference from the PR run.
+The G31 renders show the feature end-to-end — hamlets connected by the road network, bridges
+only over water: [g31_worldgen_landscape.png](../../images/g31_worldgen_landscape.png)
+(overview at the main hamlet) and [g31_worldgen_roads.png](../../images/g31_worldgen_roads.png)
+(street-level along the main road) — CI-rendered references from the PR run.
 
 ## Tests
 

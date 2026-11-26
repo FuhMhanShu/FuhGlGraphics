@@ -80,10 +80,12 @@ if existingMask(b) > 0:  step *= 1 − existingRoadDiscount · existingMask(b)  
   `0.95`) the cost explodes (`criticalPenalty`), so A\* automatically proposes realistic
   **switchbacks (Serpentinen)** on steep hillsides — for trails the threshold is high, so
   they may go straight up.
-- **Ford detection**: a water cell is cheap only when it is shallow (`depth ≤ fordMaxDepth`)
-  **and** narrow (`flow ≤ fordMaxFlow`, the erosion flow accumulation as a width proxy) —
-  a *Furt*. Everything deeper/wider costs `waterCost`; when the route is *forced* across
-  such a cell (no affordable detour), the path points there are flagged `bridge`.
+- **Water = bridge only**: a road NEVER runs through water at ground level (no sunken ford
+  ribbon). Every path point below the water level is flagged `bridge` and rendered as a
+  bridge/steg deck above the water (`max(terrain, waterLevel + 0.7)`). Shallow + narrow
+  spots (`depth ≤ fordMaxDepth`, `flow ≤ fordMaxFlow`) only make the A* *prefer* them as
+  bridge locations (`fordCost` instead of `waterCost`) — real bridges sit at the narrow,
+  shallow crossings.
 - **Existing-road discount** (`cost *= 1 − 0.85·mask`): new paths merge into the network
   instead of running parallel — the network grows organically.
 - Heuristic: euclidean distance × `(1 − existingRoadDiscount)` (admissible, because every
@@ -112,9 +114,10 @@ if existingMask(b) > 0:  step *= 1 − existingRoadDiscount · existingMask(b)  
   - *Country road*: two wheel ruts at `t = ±rutOffset` (`−rutDepth`) with a grass ridge in
     the middle (5 points).
   - *Trail*: one narrow trodden depression (3 points).
-- **Bridge runs**: points flagged `bridge` get a flat deck at
+- **Bridge runs** (every water crossing): points flagged `bridge` get a flat deck at
   `max(terrain, waterLevelWorld + 0.7)` in a separate `bridgeMesh`, plus posts down to the
-  ground every few samples.
+  ground/water every few samples. Terrain carving skips water cells, so the riverbed under a
+  bridge stays intact.
 - Vertex colors carry the **material**: per class + local biome (mountains → stone slabs,
   forest country road → dirt, flatland highway → asphalt); rut vertices are darkened
   (`color·0.5`) so the shader can lower roughness there and **puddles form in the ruts**
