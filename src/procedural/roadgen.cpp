@@ -387,12 +387,12 @@ RoadNetwork RoadGenerator::generate(const RoadInput& in, const RoadGenParams& p)
     std::vector<float> built(n, 0.f); // existing-road mask for the merge discount
     if (in.existingMask && in.existingMask->size() == n) built = *in.existingMask;
 
-    // bridge flag per grid cell: water too deep/wide for a ford -> bridge or footbridge
+    // bridge flag per grid cell: roads cross water ONLY as a bridge/footbridge (deck above
+    // the water level) — never as a sunken ford ribbon. Shallow/narrow spots (ford criteria)
+    // only make the A* prefer them as bridge locations (cheap fordCost), the geometry is
+    // always a bridge deck.
     auto isBridgeCell = [&](int idx) {
-        const float hv = (*in.heightmap)[static_cast<std::size_t>(idx)];
-        if (hv >= in.waterLevel) return false;
-        const float fl = in.flow ? (*in.flow)[static_cast<std::size_t>(idx)] : 0.f;
-        return (in.waterLevel - hv) > p.fordMaxDepth || fl > p.fordMaxFlow;
+        return (*in.heightmap)[static_cast<std::size_t>(idx)] < in.waterLevel;
     };
 
     // stamps one routed path into the network (smoothed spline, bridge flags, masks)

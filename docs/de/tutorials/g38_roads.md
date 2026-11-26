@@ -50,14 +50,18 @@ Pro Schritt der Länge `d` in Zelle `b` (Steigung = Welt-`dh/dx` der Heightmap):
 ```
 step = d · (1 + slopeWeight · slope(b)²)               // quadratische Steigungskosten
 if slope(b) > critSlope(class)  step *= criticalPenalty // >~15° bei Highways → Serpentinen
-Wasserzelle:  Furt (Tiefe ≤ fordMaxDepth && flow ≤ fordMaxFlow) → d·fordCost
-             sonst                                          → d·waterCost (als Brücke markiert)
+Wasserzelle:  seicht+schmal (Tiefe ≤ fordMaxDepth && flow ≤ fordMaxFlow) → d·fordCost
+             (bevorzugter BRÜCKEN-Standort) — jede Wasserquerung wird als Brücken-/Steg-Deck
+             über dem Wasser gerendert, nie als abgesenkte Furt
+             sonst                                          → d·waterCost (Brücke falls erzwungen)
 Sumpf (hoher Flow nahe Wasser) → ·swampCost;  Wald-Biome → ·forestCost;  Fels → ·rockCost
 bestehende Straße (Maske m) → step *= 1 − existingRoadDiscount·m  // verschmelzen, nicht parallel
 ```
 
-Pfadzellen, die gezwungenermaßen durch tiefes Wasser führen, bekommen `bridge = 1`
-(als Brücke/Steg gerendert).
+**Jeder** Pfadpunkt unterhalb des Wasserspiegels bekommt `bridge = 1` — Straßen überqueren
+Wasser nur als Brücke/Steg (Deck bei `max(terrain, waterLevel+0.7)` + Pfosten in
+`net.bridgeMesh`); das Terrain-Carving spart Wasserzellen aus, das Flussbett unter der
+Brücke bleibt intakt.
 
 ## Geometrie & Blending
 
@@ -110,8 +114,10 @@ w.roadDistanceAt(x, z);       // Distanz zur nächsten Straße — schnelle Krea
 
 ## Screenshot
 
-Das G31-Landschafts-Render zeigt das Feature komplett (Weiler, verbunden durch das Straßennetz):
-[g31_worldgen_landscape.png](../../images/g31_worldgen_landscape.png) — CI-gerenderte Referenz aus dem PR-Lauf.
+Die G31-Render zeigen das Feature komplett — Weiler, verbunden durch das Straßennetz, Brücken
+nur über Wasser: [g31_worldgen_landscape.png](../../images/g31_worldgen_landscape.png)
+(Übersicht am Hauptweiler) und [g31_worldgen_roads.png](../../images/g31_worldgen_roads.png)
+(Straßenniveau entlang der Hauptstraße) — CI-gerenderte Referenzen aus dem PR-Lauf.
 
 ## Tests
 

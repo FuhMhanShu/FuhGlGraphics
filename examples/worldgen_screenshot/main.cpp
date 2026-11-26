@@ -17,8 +17,9 @@
 //          [--frames 16] [--seed 777] [--mode both|landscape|city|pipeline|village] [--style town]
 //          [--fx all|none|hbao,ssr,bloom,volumetric,wetness] (village extra-effect selection)
 //          [--surface asphalt|cobble|paving|dirt] [--wet]
-//   writes <prefix>_landscape.png, <prefix>_city.png, <prefix>_city_street.png,
-//   <prefix>_village.png and <prefix>_pipeline*.png (skipping unselected modes).
+//   writes <prefix>_landscape.png, <prefix>_roads.png (street-level at the main hamlet),
+//   <prefix>_city.png, <prefix>_city_street.png, <prefix>_village.png and <prefix>_pipeline*.png
+//   (skipping unselected modes).
 //   --mode village: big landscape + small procedural village on the lake shore with many
 //   effects (water, CSM shadows, IBL, HBAO, SSR, bloom, volumetric fog, wetness).
 //
@@ -703,14 +704,11 @@ int main(int argc, char** argv) {
                      world.rocks.size(), world.settlements.size(), world.buildings.size(),
                      world.roadProps.size());
 
-        // composition derived from the heightmap: camera on the south rim of the lake,
-        // looking NW across the water toward the far shore with the mountains behind —
-        // this guarantees the lake is always in frame. Scatter is removed around the camera
-        // so no tree can cross the near plane (that renders as a green star blob).
-        float lakeCx = 0.f, lakeCz = 0.f, lakeSouthZ = -1e9f;
+        // lake center of the central basin (fallback frame when no settlements were placed).
+        // Only the central basin counts as "lake" (the island falloff puts the whole border
+        // ring below the water level — that is the outer sea, not the lake)
+        float lakeCx = 0.f, lakeCz = 0.f;
         int lakeN = 0;
-        // only the central basin counts as "lake" (the island falloff puts the whole
-        // border ring below the water level — that is the outer sea, not the lake)
         const float lakeSearchR =
             p.lakeRadius > 0.f ? p.lakeRadius * 1.25f : p.worldSize * 0.38f;
         for (int j = 0; j < world.gridH; ++j)
@@ -722,17 +720,35 @@ int main(int argc, char** argv) {
                     lakeCx += x;
                     lakeCz += z;
                     ++lakeN;
-                    lakeSouthZ = std::max(lakeSouthZ, z);
                 }
             }
         if (lakeN > 0) {
             lakeCx /= lakeN;
             lakeCz /= lakeN;
-        } else {
-            lakeSouthZ = world.sizeZ * 0.25f;
         }
-        const float camX = lakeCx + 30.f, camZ = lakeSouthZ + 14.f;
-        const float camY = std::max(world.heightAt(camX, camZ), world.waterLevelWorld) + 18.f;
+        // Scatter is removed around the camera so no tree can cross the near plane
+        // (that renders as a green star blob).
+        // frame the most important settlement: its hamlet houses, the road corridor with
+        // milestones/lanterns and bridges over water — from a low vantage looking along the
+        // main road that leaves the hamlet toward the nearest other settlement (the lake and
+        // mountains stay in the background; falls back to the lake center without settlements)
+        fuhgl::math::Vec2 topSite{lakeCx, lakeCz};
+        float topImp = -1.f;
+        for (const auto& s : world.settlements)
+            if (s.importance > topImp) { topImp = s.importance; topSite = s.center; }
+        fuhgl::math::Vec2 roadDir{0.f, -1.f}; // direction of the main road out of the hamlet
+        float bestD = 1e9f;
+        for (const auto& s : world.settlements) {
+            const float d = std::hypot(s.center.x - topSite.x, s.center.y - topSite.y);
+            if (d > 1.f && d < bestD) {
+                bestD = d;
+                roadDir = {(s.center.x - topSite.x) / d, (s.center.y - topSite.y) / d};
+            }
+        }
+        const float siteH = world.heightAt(topSite.x, topSite.y);
+        const float camX = topSite.x - roadDir.x * 26.f + 9.f;
+        const float camZ = topSite.y - roadDir.y * 26.f + 12.f;
+        const float camY = std::max(world.heightAt(camX, camZ), world.waterLevelWorld) + 14.f;
         const auto nearCam = [&](const procedural::PlacedMesh& pm) {
             return std::hypot(pm.position.x - camX, pm.position.z - camZ) < 14.f;
         };
@@ -897,10 +913,9 @@ int main(int argc, char** argv) {
         // warm sun in the south (behind the shore camera) so the seen slopes are lit
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.30f, 0.50f, 0.85f}));
 
-        // low vantage on the south shore looking NW: sky + mountains on top, lake band in
-        // the middle, shore with trees/grass in the foreground (camX/camY/camZ above)
+        // overview: hamlet + road corridor from a low vantage behind it (camX/camY/camZ above)
         cam.position = {camX, camY, camZ};
-        aimAt(cam, {lakeCx - 20.f, world.waterLevelWorld + 8.f, lakeCz - 35.f});
+        aimAt(cam, {topSite.x, siteH + 3.f, topSite.y});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
                          water ? &water->surface : nullptr, &env)) {
@@ -908,6 +923,19 @@ int main(int argc, char** argv) {
             return 1;
         }
         std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", path.c_str());
+
+        // street-level close-up along the main road at the hamlet -> <prefix>_roads.png
+        // (road ribbon, wheel ruts, houses, milestones/lanterns, bridges over water)
+        const float rx = topSite.x - roadDir.x * 9.f, rz = topSite.y - roadDir.y * 9.f;
+        cam.position = {rx, std::max(world.heightAt(rx, rz), world.waterLevelWorld) + 4.5f, rz};
+        aimAt(cam, {topSite.x + roadDir.x * 8.f, siteH + 1.6f, topSite.y + roadDir.y * 8.f});
+        const std::string rpath = args.prefix + "_roads.png";
+        if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, rpath,
+                         water ? &water->surface : nullptr, &env)) {
+            std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", rpath.c_str());
+            return 1;
+        }
+        std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", rpath.c_str());
     }
 
     // --- village: big landscape + a small procedural village on the lake shore ----------
