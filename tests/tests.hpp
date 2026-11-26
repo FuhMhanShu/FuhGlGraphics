@@ -33,3 +33,4 @@ void runProceduralWorldgenTests();
 void runProceduralHouseTests();
 void runProceduralCitygenTests();
 void runProceduralPlantTests();
+void runWeatherTests();

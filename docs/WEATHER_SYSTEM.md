@@ -96,7 +96,7 @@ derived:     sunDirection/sunColor/sunIntensity, ambient*, EffectParams mapping,
 
 - [x] **A1 — Requirement + tasks** (this document + G38 row in
       [REQUIREMENTS.md](REQUIREMENTS.md)).
-- [ ] **A2 — Weather core**: `include/fuhglgraphics/weather/weather.hpp` +
+- [x] **A2 — Weather core**: `include/fuhglgraphics/weather/weather.hpp` +
       `src/weather/weather.cpp`: `WeatherType`, `WeatherParams`, `WeatherSystem`
       (presets per type, `setTarget`/`update` smoothstep transitions, time-of-day sun
       path, seeded lightning schedule, derived outputs incl. `applyTo(EffectParams&)`);
