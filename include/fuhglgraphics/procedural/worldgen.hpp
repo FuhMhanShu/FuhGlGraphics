@@ -11,7 +11,9 @@
 /// scene::Scene (upload via Mesh::setMeshData, place via node transforms — see
 /// examples/wfc_screenshot for the scene side).
 
+#include "clutter.hpp"
 #include "house.hpp"
+#include "lifegen.hpp"
 #include "lsystem.hpp"
 #include "noise.hpp"
 #include "roadgen.hpp"
@@ -90,6 +92,13 @@ struct WorldGenParams {
     int housesPerSettlement = 7;  ///< houses per settlement (land in GeneratedWorld::buildings)
     float settlementMinDist = 26.f; ///< min distance between settlement centers (world units)
     RoadGenParams roads;          ///< G38 road network: A* costs, hierarchy, widths, carving, props
+
+    // --- ambient life (landscape): causal clutter scatter + life zones + shared wind ---
+    int clutterCount = 700;       ///< max G39a clutter items, causally scattered (0 = off)
+    ClutterGenParams clutterParams; ///< nested G39a knobs (per-kind budgets, cluster mask)
+    bool lifeZones = true;        ///< derive G39b LifeZone descriptors (birds/fish/insects/...)
+    WindFieldParams wind;         ///< shared 3D wind field — echoed in the result; the app mirrors
+                                  ///< the same formula in the vertex shader (grass/trees sway)
 
     // --- city (mode == City) ---
     int cityGrid = 12;            ///< WFC cells per side
@@ -227,6 +236,17 @@ struct GeneratedWorld {
     /// @brief World-unit distance to the nearest road at (x, z) (bilinear sample of
     /// roadDistance); ~1e9 when the world has no roads. Landscape only.
     float roadDistanceAt(float x, float z) const;
+
+    // --- ambient life (mode == Landscape) ---
+    /// @brief G39a causal clutter: kind + local mesh + placement (rockfall at cliff feet,
+    /// riverbed pebbles/driftwood/reeds, litter under trees, building/road-edge clutter).
+    std::vector<ClutterItem> clutter;
+    /// @brief G39b life zones derived from the world data (bird flock over the lake, fish
+    /// school in the strongest river, insect swarm over meadow/forest, fireflies in wet
+    /// forest, ambient particles per dominant biome) — the app spawns GPU particles /
+    /// instanced critters here and drives them with the G39b CPU sims + the wind field.
+    std::vector<LifeZone> lifeZones;
+    WindFieldParams windParams;   ///< echo of WorldGenParams::wind (app-side vertex-shader wind)
 };
 
 /// @brief City tile set for the WFC solver: edge tags "r" = road, "s" = lot/sidewalk edge

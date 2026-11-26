@@ -33,6 +33,8 @@ int main() {
     runProceduralCreaturegenTests();
     runProceduralWorldgenTests();
     runProceduralRoadgenTests();
+    runProceduralClutterTests();
+    runProceduralLifegenTests();
     runProceduralHouseTests();
     runProceduralCitygenTests();
     runProceduralPlantTests();

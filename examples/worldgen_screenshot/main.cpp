@@ -5,7 +5,11 @@
 // water surface, GPU-instanced grass weighted by the splatmap, L-system trees/bushes and
 // scattered rocks, plus G38 settlements connected by an organic A* road network (road ribbons,
 // bridges, milestones/lanterns/signs/walls props, hamlet houses). Roads carve their bench into
-// the terrain; vegetation keeps off the road mask. City: ground, sidewalk/asphalt roads, voronoi district plates, procedural
+// the terrain; vegetation keeps off the road mask. G39 ambient life: causal clutter scatter
+// (rockfall at cliff feet, riverbed pebbles/reeds, litter under trees, building + road-rim
+// clutter) baked into one mesh, plus life zones (bird flock / fish school / insect swarm /
+// fireflies / biome particles) derived from the world data and driven by a shared wind field.
+// City: ground, sidewalk/asphalt roads, voronoi district plates, procedural
 // houses with per-facade POM walls (Backstein/Rauhputz/Stein), reflective window glass,
 // shingle roofs, park lawns with bushes. Roads use the selectable surface (Asphalt /
 // Kopfsteinpflaster with POM / Pflasterstein / Matsch) with irregular edges + potholes, and
@@ -149,6 +153,77 @@ void addMeshNode(fuhglgraphics::scene::Scene& scene, MeshArena& arena, const std
     e.roughness = roughness;
     e.materialId = materialId;
     e.castShadow = castShadow;
+}
+
+// --- G39 ambient life: causal clutter (G39a) + life zones (G39b) --------------------------
+
+// Bakes all clutter items into one static mesh (per-item transform applied, vertex colors
+// already encode the kind) so the whole scatter costs a single draw call.
+fuhgl::render::MeshData bakeClutterMesh(const std::vector<fuhglgraphics::procedural::ClutterItem>& clutter) {
+    fuhgl::render::MeshData out;
+    for (const auto& c : clutter) {
+        const fuhgl::math::Mat4 m = fuhgl::math::translate(c.position) *
+                                    fuhgl::math::rotateY(c.rotY) *
+                                    fuhgl::math::scale({c.scale, c.scale, c.scale});
+        const fuhgl::math::Mat3 m3(m);
+        const std::uint32_t base = static_cast<std::uint32_t>(out.vertexCount());
+        for (std::size_t i = 0; i < c.mesh.vertexCount(); ++i) {
+            const float* v = &c.mesh.vertices[i * 11];
+            const fuhgl::math::Vec4 p = m * fuhgl::math::Vec4{v[0], v[1], v[2], 1.f};
+            const fuhgl::math::Vec3 n = fuhgl::math::normalize(m3 * fuhgl::math::Vec3{v[3], v[4], v[5]});
+            const float nv[11] = {p.x, p.y, p.z, n.x, n.y, n.z, v[6], v[7], v[8], v[9], v[10]};
+            out.vertices.insert(out.vertices.end(), nv, nv + 11);
+        }
+        for (const std::uint32_t idx : c.mesh.indices) out.indices.push_back(base + idx);
+    }
+    return out;
+}
+
+void attachClutter(fuhglgraphics::scene::Scene& scene, MeshArena& arena,
+                   const std::vector<fuhglgraphics::procedural::ClutterItem>& clutter) {
+    if (clutter.empty()) return;
+    addMeshNode(scene, arena, "clutter", bakeClutterMesh(clutter), {1.f, 1.f, 1.f}, 0.95f, 32, false);
+}
+
+// Re-scatters causal clutter on a post-processed world (village/panorama flatten pads and
+// carve roads after generateWorld): reads the FINAL heightmap/flow/humidity/biome/road mask
+// and the current tree + building spots.
+std::vector<fuhglgraphics::procedural::ClutterItem>
+rescatterClutter(const fuhglgraphics::procedural::GeneratedWorld& world,
+                 const std::vector<float>* roadMask,
+                 const std::vector<fuhglgraphics::procedural::PlacedMesh>& trees,
+                 const std::vector<fuhgl::math::Vec2>& buildingSpots,
+                 int maxItems, unsigned seed) {
+    namespace pr = fuhglgraphics::procedural;
+    pr::ClutterInput in;
+    in.heightmap = &world.heightmap;
+    in.gridW = world.gridW;
+    in.gridH = world.gridH;
+    in.sizeX = world.sizeX;
+    in.sizeZ = world.sizeZ;
+    in.heightScale = world.heightScale;
+    in.waterLevel = world.waterLevelWorld / world.heightScale;
+    in.flow = &world.flowmap;
+    in.humidity = world.humidity.empty() ? nullptr : &world.humidity;
+    in.biome = world.biome.empty() ? nullptr : &world.biome;
+    in.roadMask = roadMask;
+    for (const auto& t : trees) in.treeSpots.push_back({t.position.x, t.position.z});
+    in.treeRadii.assign(trees.size(), 3.2f);
+    in.buildingSpots = buildingSpots;
+    pr::ClutterGenParams cp;
+    cp.maxItems = maxItems;
+    cp.seed = seed;
+    pr::ClutterGenerator cg;
+    return cg.generate(in, cp);
+}
+
+void printLifeZones(const std::vector<fuhglgraphics::procedural::LifeZone>& zones) {
+    static const char* names[] = {"bird-flock", "fish-school", "insect-swarm", "fireflies", "ambient-particles"};
+    for (const auto& z : zones)
+        std::fprintf(stderr,
+                     "worldgen_screenshot: lifezone %s at (%.1f, %.1f, %.1f) r=%.1f count=%d ambientKind=%d\n",
+                     names[static_cast<int>(z.kind)], z.center.x, z.center.y, z.center.z, z.radius,
+                     z.count, z.ambientKind);
 }
 
 // --- procedural textures for the houses (POM brick walls, shingle roofs) ----------------
@@ -701,10 +776,11 @@ int main(int argc, char** argv) {
         procedural::GeneratedWorld world = procedural::generateWorld(p);
         std::fprintf(stderr,
                      "worldgen_screenshot: landscape seed %u: grid %d, %zu trees, %zu bushes, %zu rocks, "
-                     "%zu settlements, %zu hamlet houses, %zu road props\n",
+                     "%zu settlements, %zu hamlet houses, %zu road props, %zu clutter items, %zu life zones\n",
                      args.seed, world.gridW, world.trees.size(), world.bushes.size(),
                      world.rocks.size(), world.settlements.size(), world.buildings.size(),
-                     world.roadProps.size());
+                     world.roadProps.size(), world.clutter.size(), world.lifeZones.size());
+        printLifeZones(world.lifeZones);
 
         // lake center of the central basin (fallback frame when no settlements were placed).
         // Only the central basin counts as "lake" (the island falloff puts the whole border
@@ -760,6 +836,11 @@ int main(int argc, char** argv) {
                            world.bushes.end());
         world.rocks.erase(std::remove_if(world.rocks.begin(), world.rocks.end(), nearCam),
                           world.rocks.end());
+        world.clutter.erase(std::remove_if(world.clutter.begin(), world.clutter.end(),
+                                           [&](const procedural::ClutterItem& c) {
+                                               return std::hypot(c.position.x - camX, c.position.z - camZ) < 14.f;
+                                           }),
+                            world.clutter.end());
 
         scene::Scene scene;
         MeshArena arena;
@@ -850,6 +931,7 @@ int main(int argc, char** argv) {
         addPlant("tree", world.trees, 30);
         addPlant("bush", world.bushes, 31);
         addPlant("rock", world.rocks, 32);
+        attachClutter(scene, arena, world.clutter); // G39a causal clutter, one baked mesh
 
         // G38 organic road network: extruded road ribbons (vertex colors carry the surface
         // material), bridge decks/posts over water, and spline props (milestones, lanterns,
@@ -959,7 +1041,9 @@ int main(int argc, char** argv) {
         p.grassBlades = 6000;
         p.treeMinDist = 6.f;
         p.riverCount = 14;
+        p.clutterCount = 0;        // G39a: re-scattered below on the flattened village plateau
         procedural::GeneratedWorld world = procedural::generateWorld(p);
+        printLifeZones(world.lifeZones);
 
         // lake south shore (same search as the landscape shot)
         float lakeCx = 0.f, lakeCz = 0.f, lakeSouthZ = -1e9f;
@@ -1010,6 +1094,14 @@ int main(int argc, char** argv) {
                            world.bushes.end());
         world.rocks.erase(std::remove_if(world.rocks.begin(), world.rocks.end(), notInVillage),
                           world.rocks.end());
+        // G39a: re-scatter the causal clutter on the final (flattened) terrain, around the
+        // village disc and the hamlet houses
+        std::vector<fuhgl::math::Vec2> clutterBuildings{{vc.x, vc.y}};
+        for (const auto& b : world.buildings) clutterBuildings.push_back({b.position.x, b.position.z});
+        const std::vector<procedural::ClutterItem> clutter =
+            rescatterClutter(world, world.roadMask.empty() ? nullptr : &world.roadMask, world.trees,
+                             clutterBuildings, 500, args.seed ^ 0xC17u);
+        std::fprintf(stderr, "worldgen_screenshot: village clutter: %zu items\n", clutter.size());
         // keep the village camera itself clear of trees (a tree crossing the near plane
         // renders as a green star blob)
         const auto nearVillageCam = [&](const procedural::PlacedMesh& pm) {
@@ -1088,6 +1180,7 @@ int main(int argc, char** argv) {
         addPlant("tree", world.trees, 30);
         addPlant("bush", world.bushes, 31);
         addPlant("rock", world.rocks, 32);
+        attachClutter(scene, arena, clutter); // G39a causal clutter on the flattened terrain
 
         // the village: a loose grid of procedural houses (HouseGenerator, Village style) on the
         // plateau, facade material + roof per house, reflective glass panes. The BuildingContext
@@ -1266,7 +1359,9 @@ int main(int argc, char** argv) {
         p.grassBlades = 14000;
         p.treeMinDist = 4.5f;
         p.settlementCount = 0;     // city + village are placed explicitly below
+        p.clutterCount = 0;        // G39a: re-scattered below on the flattened + road-carved terrain
         procedural::GeneratedWorld world = generateWorld(p);
+        printLifeZones(world.lifeZones);
         const int g = world.gridW;
         const float waterN = p.waterLevel;
         std::fprintf(stderr,
@@ -1372,6 +1467,13 @@ int main(int argc, char** argv) {
         world.bushes.erase(std::remove_if(world.bushes.begin(), world.bushes.end(), notInPad), world.bushes.end());
         world.rocks.erase(std::remove_if(world.rocks.begin(), world.rocks.end(), notInPad), world.rocks.end());
 
+        // G39a: re-scatter the causal clutter on the final terrain (pads flattened, road bench
+        // carved), using the road mask of the freshly routed city<->village road
+        const std::vector<procedural::ClutterItem> clutter =
+            rescatterClutter(world, &net.mask, world.trees, {{cityC.x, cityC.y}, {vilC.x, vilC.y}},
+                             600, args.seed ^ 0xC17u);
+        std::fprintf(stderr, "worldgen_screenshot: panorama clutter: %zu items\n", clutter.size());
+
         // WFC city for the riverbank pad
         procedural::WorldGenParams cp;
         cp.mode = procedural::WorldGenParams::Mode::City;
@@ -1452,6 +1554,7 @@ int main(int argc, char** argv) {
         addPlant("tree", world.trees, 30);
         addPlant("bush", world.bushes, 31);
         addPlant("rock", world.rocks, 32);
+        attachClutter(scene, arena, clutter); // G39a causal clutter, one baked mesh
 
         // G38 connecting road: ribbons (vertex colors), bridge decks over water, props
         if (net.roadMesh.vertexCount() > 0) {
