@@ -1637,18 +1637,20 @@ int main(int argc, char** argv) {
                 }
         }
 
-        // vista camera: from the city side toward the lake — the city at the river in the
-        // foreground, the connecting road across the middle ground, the village at the lake
-        // in the background
+        // vista camera: on the perpendicular bisector of the city-village axis, pulled back
+        // far enough that BOTH endpoints stay inside the horizontal half-FOV (~48 deg at
+        // 16:9) — city at the river on one side, village at the lake on the other, the
+        // connecting road across the middle ground
         const fuhgl::math::Vec2 d{vilC.x - cityC.x, vilC.y - cityC.y};
         const float dl = std::hypot(d.x, d.y);
         const fuhgl::math::Vec2 dn{d.x / dl, d.y / dl};
         const fuhgl::math::Vec2 perp{-dn.y, dn.x};
         const fuhgl::math::Vec2 mid{(cityC.x + vilC.x) * 0.5f, (cityC.y + vilC.y) * 0.5f};
-        const float camX = mid.x - dn.x * 55.f + perp.x * 22.f;
-        const float camZ = mid.y - dn.y * 55.f + perp.y * 22.f;
-        cam.position = {camX, std::max(world.heightAt(camX, camZ), world.waterLevelWorld) + 30.f, camZ};
-        aimAt(cam, {mid.x + dn.x * 12.f, world.waterLevelWorld + 4.f, mid.y + dn.y * 12.f});
+        const float back = std::max(95.f, dl * 0.62f); // atan(dl/2 / back) < ~48 deg
+        const float camX = mid.x + perp.x * back;
+        const float camZ = mid.y + perp.y * back;
+        cam.position = {camX, std::max(world.heightAt(camX, camZ), world.waterLevelWorld) + 38.f, camZ};
+        aimAt(cam, {mid.x, world.waterLevelWorld + 4.f, mid.y});
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.35f, 0.62f, 0.45f}));
         const std::string ppath = args.prefix + "_panorama.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, ppath,
