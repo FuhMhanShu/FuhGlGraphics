@@ -882,34 +882,50 @@ int main(int argc, char** argv) {
         float shoreCamX = 0.f, shoreCamZ = 0.f, shoreAimX = 0.f, shoreAimZ = 0.f;
         bool haveShoreCam = false;
         {
-            // nearest water clutter item to the hamlet (reed/pebble/driftwood), skipping aims
-            // with a rock near the camera->aim line (a rock would fill the whole frame)
+            // best water-clutter NEST (reed/pebble/driftwood): maximize the item count within
+            // 6 wu, on flat ground, without a rock near the camera line (a rock would fill the
+            // whole frame); tie-break by distance to the hamlet
+            auto isWaterKind = [](int k) {
+                return k == static_cast<int>(procedural::ClutterKind::Reed) ||
+                       k == static_cast<int>(procedural::ClutterKind::Pebble) ||
+                       k == static_cast<int>(procedural::ClutterKind::Driftwood);
+            };
+            auto slopeAt = [&](float x, float z) {
+                const float e = 1.5f, cw = world.sizeX / (world.gridW - 1);
+                const float gx = (world.heightAt(x + e, z) - world.heightAt(x - e, z)) * 0.5f * world.heightScale / cw;
+                const float gz = (world.heightAt(x, z + e) - world.heightAt(x, z - e)) * 0.5f * world.heightScale / cw;
+                return std::hypot(gx, gz);
+            };
             auto rockNear = [&](float x, float z, float r) {
                 for (const auto& rk : world.rocks)
                     if (std::hypot(rk.position.x - x, rk.position.z - z) < r) return true;
                 return false;
             };
-            float ad = 1e9f;
-            fuhgl::math::Vec2 aim{-1e9f, -1e9f};
+            const procedural::ClutterItem* best = nullptr;
+            int bestNest = -1;
+            float bestD = 1e9f;
             for (const auto& c : world.clutter) {
-                const int k = static_cast<int>(c.kind);
-                if (k != static_cast<int>(procedural::ClutterKind::Reed) &&
-                    k != static_cast<int>(procedural::ClutterKind::Pebble) &&
-                    k != static_cast<int>(procedural::ClutterKind::Driftwood)) continue;
-                const float d = std::hypot(c.position.x - topSite.x, c.position.z - topSite.y);
-                if (d >= ad) continue;
+                if (!isWaterKind(static_cast<int>(c.kind))) continue;
+                if (slopeAt(c.position.x, c.position.z) > 1.2f) continue;
                 const float dirx = topSite.x - c.position.x, dirz = topSite.y - c.position.z;
                 const float dl = std::hypot(dirx, dirz) + 1e-6f;
                 const float camx = c.position.x + dirx / dl * 6.f, camz = c.position.z + dirz / dl * 6.f;
-                if (rockNear(c.position.x, c.position.z, 3.5f) || rockNear(camx, camz, 3.5f)) continue;
-                ad = d; aim = {c.position.x, c.position.z};
+                if (rockNear(c.position.x, c.position.z, 5.f) || rockNear(camx, camz, 5.f)) continue;
+                int nest = 0;
+                for (const auto& o : world.clutter)
+                    if (isWaterKind(static_cast<int>(o.kind)) &&
+                        std::hypot(o.position.x - c.position.x, o.position.z - c.position.z) < 6.f) ++nest;
+                const float d = std::hypot(c.position.x - topSite.x, c.position.z - topSite.y);
+                if (nest > bestNest || (nest == bestNest && d < bestD)) {
+                    bestNest = nest; bestD = d; best = &c;
+                }
             }
-            if (ad < 1e8f) {
-                const float dirx = topSite.x - aim.x, dirz = topSite.y - aim.y;
+            if (best) {
+                const float dirx = topSite.x - best->position.x, dirz = topSite.y - best->position.z;
                 const float dl = std::hypot(dirx, dirz) + 1e-6f;
-                shoreAimX = aim.x; shoreAimZ = aim.y;
-                shoreCamX = aim.x + dirx / dl * 6.f; // camera on the land side
-                shoreCamZ = aim.y + dirz / dl * 6.f;
+                shoreAimX = best->position.x; shoreAimZ = best->position.z;
+                shoreCamX = best->position.x + dirx / dl * 6.f; // camera on the land side
+                shoreCamZ = best->position.z + dirz / dl * 6.f;
                 haveShoreCam = true;
             } else {
                 // fallback: nearest sub-water cell to the hamlet
