@@ -7,6 +7,7 @@ int main() {
     runVersionTests();
     runRenderTests();
     runSceneTests();
+    runSceneSerializeTests();
     runIoTests();
     runParticlesTests();
     runAnimTests();

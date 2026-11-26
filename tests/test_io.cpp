@@ -218,8 +218,59 @@ void testGltfImageDecode() {
 
 } // namespace
 
+void testJsonWrite() {
+    std::string err;
+    Json v;
+    CHECK(parseJson(R"({"a": 1, "b": [true, null, "x\nyA"], "c": {"d": -2.5, "e": 0.1}, "f": "quo\"te\\"})", v, &err));
+
+    // compact roundtrip: write -> parse -> identical value
+    std::string compact;
+    CHECK(writeJson(v, compact, false, &err));
+    Json back;
+    CHECK(parseJson(compact, back, &err));
+    std::string compact2;
+    CHECK(writeJson(back, compact2, false, &err));
+    CHECK(compact == compact2);
+    CHECK(back.at("a").asInt() == 1);
+    CHECK(back.at("b")[2].asString() == std::string("x\nyA"));
+    CHECK(std::fabs(back.at("c").at("e").asNumber() - 0.1) < 1e-17); // double round-trips
+
+    // integral numbers print without decimal point, strings are escaped
+    Json n;
+    n.type = Json::Type::Object;
+    n.obj["i"] = [] { Json j; j.type = Json::Type::Number; j.number = 42; return j; }();
+    n.obj["s"] = [] { Json j; j.type = Json::Type::String; j.str = "a\"b\\c\nd\te"; return j; }();
+    std::string s;
+    CHECK(writeJson(n, s, false, &err));
+    CHECK(s == R"({"i":42,"s":"a\"b\\c\nd\te"})");
+
+    // pretty printing is parseable and indented
+    std::string pretty;
+    CHECK(writeJson(v, pretty, true, &err));
+    Json backP;
+    CHECK(parseJson(pretty, backP, &err));
+    CHECK(backP.at("a").asInt() == 1);
+    CHECK(pretty.find("\n") != std::string::npos);
+
+    // empty containers
+    Json empty;
+    empty.type = Json::Type::Object;
+    std::string es;
+    CHECK(writeJson(empty, es, true, &err));
+    CHECK(es == "{}");
+
+    // non-finite numbers are rejected (bool + err, no exceptions)
+    Json bad;
+    bad.type = Json::Type::Number;
+    bad.number = std::nan("");
+    std::string bs;
+    CHECK(!writeJson(bad, bs, false, &err));
+    CHECK(!err.empty());
+}
+
 void runIoTests() {
     testJson();
+    testJsonWrite();
     testBase64();
     testGltf();
 #ifdef FUHGLGRAPHICS_WITH_QT

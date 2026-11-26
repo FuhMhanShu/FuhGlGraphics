@@ -1,6 +1,7 @@
 #include "fuhglgraphics/io/json.hpp"
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 
 namespace fuhglgraphics::io {
@@ -233,6 +234,100 @@ bool base64Decode(const std::string& in, std::vector<unsigned char>& out) {
         }
     }
     if (pad > 2) return false;
+    return true;
+}
+
+namespace {
+
+void writeEscaped(std::string& out, const std::string& s) {
+    out.push_back('"');
+    char buf[8];
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 0x20) {
+                    std::snprintf(buf, sizeof buf, "\\u%04x", static_cast<unsigned>(c));
+                    out += buf;
+                } else {
+                    out.push_back(static_cast<char>(c)); // UTF-8 passes through
+                }
+        }
+    }
+    out.push_back('"');
+}
+
+void writeNumber(std::string& out, double n, bool& ok) {
+    if (!std::isfinite(n)) {
+        ok = false;
+        return;
+    }
+    char buf[40];
+    if (n == std::floor(n) && std::fabs(n) < 1e15) {
+        std::snprintf(buf, sizeof buf, "%lld", static_cast<long long>(n));
+    } else {
+        std::snprintf(buf, sizeof buf, "%.17g", n); // round-trips every double
+    }
+    out += buf;
+}
+
+void writeValue(const Json& v, std::string& out, bool pretty, int depth, bool& ok) {
+    const std::string pad = pretty ? std::string(static_cast<std::size_t>(depth) * 2, ' ') : "";
+    const std::string padIn = pretty ? std::string(static_cast<std::size_t>(depth + 1) * 2, ' ') : "";
+    const char* sep = pretty ? ": " : ":";
+    switch (v.type) {
+        case Json::Type::Null: out += "null"; break;
+        case Json::Type::Bool: out += v.boolean ? "true" : "false"; break;
+        case Json::Type::Number: writeNumber(out, v.number, ok); break;
+        case Json::Type::String: writeEscaped(out, v.str); break;
+        case Json::Type::Array: {
+            if (v.arr.empty()) { out += "[]"; break; }
+            out += '[';
+            for (std::size_t i = 0; i < v.arr.size(); ++i) {
+                if (i) out += ',';
+                if (pretty) { out += '\n'; out += padIn; }
+                writeValue(v.arr[i], out, pretty, depth + 1, ok);
+            }
+            if (pretty) { out += '\n'; out += pad; }
+            out += ']';
+            break;
+        }
+        case Json::Type::Object: {
+            if (v.obj.empty()) { out += "{}"; break; }
+            out += '{';
+            bool first = true;
+            for (const auto& [k, val] : v.obj) { // std::map: deterministic key order
+                if (!first) out += ',';
+                first = false;
+                if (pretty) { out += '\n'; out += padIn; }
+                writeEscaped(out, k);
+                out += sep;
+                writeValue(val, out, pretty, depth + 1, ok);
+            }
+            if (pretty) { out += '\n'; out += pad; }
+            out += '}';
+            break;
+        }
+    }
+}
+
+} // namespace
+
+bool writeJson(const Json& v, std::string& out, bool pretty, std::string* err) {
+    out.clear();
+    bool ok = true;
+    writeValue(v, out, pretty, 0, ok);
+    if (!ok) {
+        out.clear();
+        if (err) *err = "cannot serialize non-finite number (NaN/inf)";
+        return false;
+    }
     return true;
 }
 

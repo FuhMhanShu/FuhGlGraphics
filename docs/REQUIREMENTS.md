@@ -139,6 +139,11 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   differ), `examples/animation_screenshot`, `docs/images/g6_animation_*.png` and the
   [G6 tutorial](en/tutorials/g6_animation.md).
 - G2, G7, G8, G10, G11 — planned.
-- **G12 — asset creator Qt tool** — planned; design agreed in
-  [docs/ASSET_CREATOR.md](ASSET_CREATOR.md) (`tools/asset_creator/`, MVC, `.fasset` JSON
-  project files, MCP stdio chat). Implementation in phases P1–P5 after review.
+- **G12 — asset creator Qt tool** — **P1 implemented**: `tools/asset_creator/`
+  (`fuhglgraphics_asset_creator`, built with `FUHGLGRAPHICS_WITH_QT=ON` +
+  `FUHGLGRAPHICS_BUILD_TOOLS=ON`): MainWindow (G3 viewport + placeholder docks), orbit
+  camera, `.fasset` new/open/save. Library extensions: `io::writeJson` (JSON writer),
+  `scene::serialize` (.fasset scene serialization; `MeshEntry` gained `assetRef` /
+  texture-path reference fields) — unit tests `test_io.cpp` / `test_scene_serialize.cpp`.
+  Design: [docs/ASSET_CREATOR.md](ASSET_CREATOR.md); P2–P5 (scene tree/inspector, asset
+  browser, MCP chat, 3D gizmo) still planned.

@@ -26,6 +26,7 @@
 #include <fuhglgraphics/scene/effects.hpp>
 #include <fuhglgraphics/scene/node.hpp>
 #include <fuhglgraphics/scene/scene.hpp>
+#include <fuhglgraphics/scene/serialize.hpp>
 
 #include <fuhglgraphics/io/json.hpp>
 #include <fuhglgraphics/io/gltf.hpp>

@@ -170,8 +170,10 @@ All three keep the `WITH_QT=OFF` CI jobs green (no Qt includes).
 
 ## 9. Phases
 
-1. **P1 skeleton:** CMake/qmake target, `io::writeJson`, `scene/serialize`,
-   MainWindow + `ViewportWidget` + new/open/save `.fasset` — runnable tool rendering a scene.
+1. **P1 skeleton — implemented:** CMake/qmake target (`FUHGLGRAPHICS_BUILD_TOOLS`),
+   `io::writeJson`, `scene/serialize` (+ unit tests), MainWindow + `ViewportWidget`
+   (QOpenGLWidget + G3 renderer + orbit camera) + new/open/save `.fasset` — runnable
+   tool rendering a scene. Dev MCP server: `tools/asset_creator/mcp_server.py`.
 2. **P2 data structures:** SceneTreeModel, inspector, selection, QUndoCommands,
    context menu, primitives (box/plane/sphere from `MeshData`).
 3. **P3 assets:** asset browser, glTF drag&drop, project asset folder.

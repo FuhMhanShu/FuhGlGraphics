@@ -5,6 +5,7 @@
 void runVersionTests();
 void runRenderTests();
 void runSceneTests();
+void runSceneSerializeTests();
 void runIoTests();
 void runParticlesTests();
 void runAnimTests();

@@ -61,6 +61,13 @@ struct Json {
 /// @brief Parses `text` into `out`. Returns false and fills `err` on syntax errors.
 bool parseJson(const std::string& text, Json& out, std::string* err = nullptr);
 
+/// @brief Serializes `v` to JSON text (inverse of parseJson; needed for MCP JSON-RPC
+/// requests and .fasset project files, G12). `pretty` adds newlines + 2-space
+/// indentation. Integral numbers print without a decimal point; other doubles use
+/// "%.17g" (always round-trips). Returns false and fills `err` only for non-finite
+/// numbers (NaN/inf are not valid JSON).
+bool writeJson(const Json& v, std::string& out, bool pretty = false, std::string* err = nullptr);
+
 /// @brief Base64 decode (glTF `data:` URIs). Whitespace is ignored; returns false on
 /// invalid characters or bad padding.
 bool base64Decode(const std::string& in, std::vector<unsigned char>& out);

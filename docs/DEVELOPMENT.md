@@ -24,7 +24,8 @@ include/fuhglgraphics/   public API (headers)
   scene/                  G9 scene graph (implemented: component.hpp, effects.hpp,
                           node.hpp, scene.hpp)
   editor/                 G2+G11 minimal Qt6 editor (planned, WITH_QT only)
-  tools/                  G12 asset creator Qt tool (planned: tools/asset_creator/,
+  tools/                  G12 asset creator Qt tool (P1 implemented: tools/asset_creator/
+                          main window + G3 viewport + .fasset + mcp_server.py; P2-P5 planned;
                           design in docs/ASSET_CREATOR.md, WITH_QT + BUILD_TOOLS only)
 src/                      implementations (PIMPL targets)
   version.cpp

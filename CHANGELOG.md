@@ -7,16 +7,38 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **G12 P1 — asset creator Qt tool skeleton** (`tools/asset_creator/`, executable
+  `fuhglgraphics_asset_creator`; built with `FUHGLGRAPHICS_WITH_QT=ON` + new option
+  `FUHGLGRAPHICS_BUILD_TOOLS=ON`, qmake alternative `tools/asset_creator/asset_creator.pro`):
+  MainWindow with central `ViewportWidget` (QOpenGLWidget rendering the `scene::Scene`
+  through the G3 `DeferredRenderer`, output blitted via `Framebuffer::blitToDefault`,
+  LMB-orbit / RMB-pan / wheel-zoom camera) and placeholder docks for the data-structures
+  and MCP-chat areas (P2/P4). `AssetDocument` (model) does new/open/save of `.fasset`
+  project files. Library extensions (Qt-free): `io::writeJson` (JSON writer, inverse of
+  `parseJson`) in `io/json.hpp`; `scene::serialize` (`serializeScene`/`deserializeScene`
+  in `scene/serialize.hpp`) for the `.fasset` scene graph — `MeshEntry` gained
+  `assetRef`/`albedoTexturePath`/`normalMapPath` reference fields (GL objects are
+  recreated on load). Unit tests: `tests/test_scene_serialize.cpp` (roundtrip + errors),
+  `writeJson` cases in `tests/test_io.cpp`.
+- **G12 dev MCP server** — `tools/asset_creator/mcp_server.py`: Python-stdlib-only MCP
+  stdio server (line-delimited JSON-RPC 2.0) with tools `chat` (Mistral API via
+  `MISTRAL_API_KEY` env, offline stub without key), `list_assets`, `inspect_gltf`,
+  `render_preview` (runs the compiled `fuhglgraphics_gltf_demo` headless through the G3
+  renderer, PNG back as MCP image content), `asset_action` (LLM→editor command JSON),
+  `editor_command` (bridge file); optional `--http` loopback mode (127.0.0.1).
+  Tests: `tools/asset_creator/test_mcp_server.py` (9 unittest cases).
+- Design doc for the full tool (G12, phases P2–P5):
+  [docs/ASSET_CREATOR.md](docs/ASSET_CREATOR.md) + UI mockup
+  [docs/images/g12_asset_creator_mockup.png](docs/images/g12_asset_creator_mockup.png);
+  requirement entry G12 in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
 ### Planned
 
-- **G12 — asset creator Qt tool** — design agreed, implementation in phases after review:
-  `tools/asset_creator/` (executable `fuhglgraphics_asset_creator`, built with
-  `FUHGLGRAPHICS_WITH_QT=ON` + new option `FUHGLGRAPHICS_BUILD_TOOLS`) to create/load/edit
-  assets: data-structures panel (scene tree + inspector + asset browser), viewport with
-  editing tools on the G3 `DeferredRenderer`, LLM chat over MCP (stdio JSON-RPC 2.0,
-  configurable server command). Project files are own `.fasset` JSON. Design doc:
-  [docs/ASSET_CREATOR.md](docs/ASSET_CREATOR.md); requirement entry G12 in
-  [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+- **G12 P2–P5** — asset creator: scene tree + inspector + selection/undo (P2), asset
+  browser + glTF drag&drop (P3), MCP chat panel wired to `McpClient` (P4), 3D gizmo,
+  thumbnails, glb export (P5). See [docs/ASSET_CREATOR.md](docs/ASSET_CREATOR.md).
 
 ### Added
 

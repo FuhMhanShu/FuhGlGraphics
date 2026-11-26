@@ -4,6 +4,7 @@ project(FuhGlGraphics VERSION 0.1.0 LANGUAGES CXX)
 option(FUHGLGRAPHICS_BUILD_TESTS "Build FuhGlGraphics tests" ON)
 option(FUHGLGRAPHICS_BUILD_EXAMPLES "Build FuhGlGraphics examples (screenshot tool)" ON)
 option(FUHGLGRAPHICS_WITH_QT "Use Qt6 for editors/tools (OFF = Qt-free headless core)" ON)
+option(FUHGLGRAPHICS_BUILD_TOOLS "Build the Qt tools (tools/asset_creator) — requires FUHGLGRAPHICS_WITH_QT" ON)
 option(FUHGLGRAPHICS_ENABLE_HARDENING "Compiler/linker hardening (stack protector, FORTIFY, RELRO) for GNU/Clang" ON)
 
 # --- FuhGLCore dependency (resolution order, see docs/REQUIREMENTS.md G1) ---------
@@ -42,6 +43,7 @@ add_library(fuhglgraphics STATIC
     src/scene/effects.cpp
     src/scene/node.cpp
     src/scene/scene.cpp
+    src/scene/serialize.cpp
     src/io/json.cpp
     src/io/gltf.cpp
     src/particles/particle_system.cpp
@@ -141,4 +143,9 @@ endif()
 # --- examples -----------------------------------------------------------------------
 if(FUHGLGRAPHICS_BUILD_EXAMPLES)
     add_subdirectory(examples)
+endif()
+
+# --- Qt tools (asset creator, G12) — only with Qt6 ------------------------------------
+if(FUHGLGRAPHICS_WITH_QT AND FUHGLGRAPHICS_BUILD_TOOLS)
+    add_subdirectory(tools)
 endif()

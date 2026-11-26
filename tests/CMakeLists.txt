@@ -3,6 +3,7 @@ add_executable(fuhglgraphics_tests
     test_version.cpp
     test_render.cpp
     test_scene.cpp
+    test_scene_serialize.cpp
     test_io.cpp
     test_particles.cpp
     test_anim.cpp
