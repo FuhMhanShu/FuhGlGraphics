@@ -1282,6 +1282,7 @@ int main(int argc, char** argv) {
         p.roadGrid = 9;
         p.roadSurface = surfaceFromName(args.surface);
         p.wetRoads = args.wet;
+        p.houseClutter = 0.35f; // thousands of houses: keep the prop density moderate
         const procedural::CityWorld world = procedural::generateCityWorld(p);
         std::fprintf(stderr,
                      "worldgen_screenshot: pipeline seed %u: %zu road nodes, %zu edges, %zu lots, %zu houses\n",

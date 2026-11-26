@@ -28,6 +28,19 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   RainStreaks/SoilColor/MossColor`). Tests: climate/material/socio-economy/stilt rules in
   `tests/test_procedural_house.cpp` (864,862 checks, 0 failures; worldgen/citygen 102,748 checks,
   0 failures).
+- **G31 organic houses** (`procedural/house.cpp`): additive building history (core + docked
+  volumes: overhanging upper floor on struts, stair tower with CSG cone roof, garage/annex/bay),
+  roof penetrations (solar panels + flush roof windows on the slopes), controlled imperfection
+  (chamfered/beveled wall edges `Params::bevelEdges`, low-freq fbm3 vertex warp `warpAmount`
+  with sagging roof ridge, micro-jitter on shutters + tilted chimneys), visible statics
+  (protruding soil-colored plinth on every house, corner pilasters, lintels + recessed reveals
+  on windows/door), and human clutter (`Params::clutter`: CSG flower boxes with sphere flowers,
+  AC unit, CSG satellite dish, CSG firewood stack, clothesline at the fence) plus humidity-driven
+  ivy growth on the front wall (`Params::ivy`). `Effect::Weathering` additionally chips plaster
+  on walls (material ID 5) exposing brick-colored masonry (`weatherBrickColor`). CSG solids come
+  from FuhGLCore `fuhgl/render/solid.hpp` (marching tetrahedra). `CityGenParams::houseClutter`
+  scales prop density for large pipeline cities. Tests: `testOrganicFeatures` (house suite
+  4,334,828 checks, 0 failures; worldgen 29,420 + citygen 73,328, 0 failures).
 
 ### Fixed
 

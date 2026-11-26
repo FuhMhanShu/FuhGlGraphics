@@ -40,7 +40,10 @@ std::string specSignature(const HouseSpec& s) {
            (s.hasGutter ? "G" : "") + (s.hasShutters ? "S" : "") + (s.hasGarage ? "X" : "") +
            (s.hasBalcony ? "K" : "") + (s.wallIrregular ? "I" : "") + (s.hasParapet ? "p" : "") +
            (s.onStilts ? "T" : "") + (s.hasShopFront ? "L" : "") + (s.hasFence ? "Z" : "") +
-           (s.hasPatches ? "W" : "") + (s.hasCornice ? "O" : "");
+           (s.hasPatches ? "W" : "") + (s.hasCornice ? "O" : "") +
+           (s.beveled ? "b" : "") + (s.warped ? "v" : "") + (s.hasPlinth ? "s" : "") +
+           (s.hasLintels ? "t" : "") + (s.hasOverhang ? "u" : "") + (s.hasSolar ? "y" : "") +
+           (s.hasRoofWindow ? "f" : "") + (s.hasIvy ? "e" : "") + std::to_string(s.props);
 }
 
 void testValidityAndDeterminism() {
@@ -285,6 +288,76 @@ void testStilts() {
     checkMeshValid(h.roof);
 }
 
+void testOrganicFeatures() {
+    HouseGenerator gen;
+    // bevel: chamfered wall body has many more vertices than a plain box (24) and outward normals
+    HouseGenerator::Params p;
+    p.style = HouseStyle::Town;
+    p.width = 6.f; p.depth = 4.5f; p.floors = 2; p.seed = 21u;
+    const HouseMesh bv = gen.generate(p);
+    CHECK(bv.spec.beveled);
+    CHECK(bv.walls.vertexCount() > 24); // 96 for the chamfered box
+    CHECK(bv.spec.warped);
+    CHECK(bv.spec.hasPlinth);  // every house gets the massive plinth
+    CHECK(bv.spec.hasLintels); // lintels above door/windows
+    const float cy = bv.spec.wallHeight * 0.5f; // box center after the shiftY
+    for (std::size_t i = 0; i < 96 && i < bv.walls.vertexCount(); ++i) { // bevel box = first 96 verts (annexes follow)
+        const float* v = &bv.walls.vertices[i * 11];
+        // bevel verts: normal points away from the (shifted) box center
+        CHECK(v[3] * v[0] + v[4] * (v[1] - cy) + v[5] * v[2] > -0.01f);
+    }
+    p.bevelEdges = false;
+    p.warpAmount = 0.f;
+    const HouseMesh pl = gen.generate(p);
+    CHECK(!pl.spec.beveled && !pl.spec.warped);
+    CHECK(pl.walls.vertexCount() < bv.walls.vertexCount()); // plain box (24) + annexes < chamfered
+    p.bevelEdges = true;
+    p.warpAmount = 0.045f;
+
+    // growth phases + roof penetrations + clutter occur across seeds; ivy follows humidity
+    int overhangs = 0, solars = 0, roofWins = 0, props = 0, ivies = 0;
+    for (unsigned seed = 1; seed <= 40; ++seed) {
+        HouseGenerator::Params q = HouseGenerator::randomParams(HouseStyle::Village, 8.f, seed);
+        q.seed = seed * 13u + 3u;
+        q.clutter = 1.f;
+        BuildingContext hum;
+        hum.humidity = 0.9f; // humid -> ivy
+        q.context = hum;
+        const HouseMesh h = gen.generate(q);
+        checkMeshValid(h.walls);
+        checkMeshValid(h.details);
+        checkMeshValid(h.roof);
+        if (h.glass.vertexCount() > 0) checkMeshValid(h.glass);
+        if (h.spec.hasOverhang) ++overhangs;
+        if (h.spec.hasSolar) ++solars;
+        if (h.spec.hasRoofWindow) ++roofWins;
+        props += h.spec.props;
+        if (h.spec.hasIvy) ++ivies;
+    }
+    CHECK(overhangs > 0);   // overhanging upper floors occur
+    CHECK(solars > 0);      // solar panels occur
+    CHECK(roofWins > 0);    // roof windows occur
+    CHECK(props > 20);      // clutter props occur (flower boxes, AC, dish, firewood, line)
+    CHECK(ivies > 20);      // humid climate -> ivy on most houses
+    // dry climate -> no ivy
+    HouseGenerator::Params q = HouseGenerator::randomParams(HouseStyle::Village, 8.f, 5u);
+    BuildingContext dry;
+    dry.humidity = 0.1f;
+    q.context = dry;
+    const HouseMesh d = gen.generate(q);
+    CHECK(!d.spec.hasIvy);
+    // clutter off -> no props
+    HouseGenerator::Params q2 = HouseGenerator::randomParams(HouseStyle::Town, 8.f, 5u);
+    q2.clutter = 0.f;
+    const HouseMesh c0 = gen.generate(q2);
+    CHECK(c0.spec.props == 0);
+    // determinism with the new features
+    const HouseMesh a = gen.generate(p);
+    const HouseMesh b = gen.generate(p);
+    CHECK(a.details.vertices == b.details.vertices);
+    CHECK(specSignature(a.spec) == specSignature(b.spec));
+}
+
 } // namespace
 
 void runProceduralHouseTests() {
@@ -296,4 +369,5 @@ void runProceduralHouseTests() {
     testMaterialRules();
     testSocioEconomyRules();
     testStilts();
+    testOrganicFeatures();
 }

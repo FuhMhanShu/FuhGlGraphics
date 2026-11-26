@@ -707,8 +707,9 @@ uniform float uWeatherBaseY;
 uniform float uWeatherRainStreaks;
 uniform vec3 uWeatherSoil;
 uniform vec3 uWeatherMoss;
+uniform vec3 uWeatherBrick;   // exposed masonry under chipped plaster
 uniform sampler2D uGMatId;   // unit 25: G-buffer material ID
-void applyWeathering(inout vec3 albedo, vec3 worldPos, vec3 N, float matId) {
+void applyWeathering(inout vec3 albedo, inout float roughness, vec3 worldPos, vec3 N, float matId) {
     if (uWeatheringEnabled != 1 || uWeatherStrength <= 0.0) return;
     float building = (matId > 4.5 && matId < 8.5) ? 1.0 : 0.0;
     if (building < 0.5) return;
@@ -730,6 +731,14 @@ void applyWeathering(inout vec3 albedo, vec3 worldPos, vec3 N, float matId) {
     float wall = 1.0 - clamp(N.y, 0.0, 1.0);
     float streak = smoothstep(0.62, 0.95, streakN) * wall * hum * clamp(uWeatherRainStreaks, 0.0, 1.0) * s;
     albedo *= 1.0 - 0.38 * clamp(streak, 0.0, 1.0);
+    // plaster chipping on walls (matId 5): noise-masked patches near the ground flake off and
+    // expose the masonry underneath (brick color + rough, matte surface)
+    if (matId > 4.5 && matId < 5.5) {
+        float chipN = wetNoise(worldPos.xz * 6.0 + vec2(0.0, worldPos.y * 3.0));
+        float chip = smoothstep(0.55, 0.85, chipN) * (0.35 + 0.65 * smoothstep(1.2, 0.1, h)) * s;
+        albedo = mix(albedo, uWeatherBrick * (0.8 + 0.4 * chipN), clamp(chip * 0.9, 0.0, 0.9));
+        roughness = mix(roughness, 0.95, clamp(chip, 0.0, 1.0));
+    }
 }
 )GLSL";
 
@@ -1100,8 +1109,8 @@ void main() {
     vec3 V = normalize(uCamPos - worldPos);
     // G22: wetness/rain film modulates albedo + roughness before shading
     applyWetness(albedo, pbr.g, worldPos, N);
-    // G31: building weathering (moss / soil splash stain / rain streaks) on building material IDs
-    applyWeathering(albedo, worldPos, N, texture(uGMatId, vUV).r);
+    // G31: building weathering (moss / soil splash stain / rain streaks / plaster chips)
+    applyWeathering(albedo, pbr.g, worldPos, N, texture(uGMatId, vUV).r);
     // G15/G31: multiply the material AO with the screen-space AO factor (HBAO preferred when on)
     float ssao = (uHbaoEnabled == 1) ? texture(uHbao, vUV).r
                                      : ((uSsaoEnabled == 1) ? texture(uSsao, vUV).r : 1.0);

@@ -461,6 +461,7 @@ CityWorld generateCityWorld(const CityGenParams& p) {
                     hp.width = std::max(2.5f, obb.halfU * 2.f * p.houseCoverage);
                     hp.depth = std::max(2.5f, obb.halfV * 2.f * p.houseCoverage);
                     if (style == HouseStyle::Highrise) hp.floors = 5 + static_cast<int>(dens * 8.f);
+                    hp.clutter = p.houseClutter;
                     const HouseMesh hm = houseGen.generate(hp);
                     PlacedMesh pm;
                     pm.mesh = hm.walls;
