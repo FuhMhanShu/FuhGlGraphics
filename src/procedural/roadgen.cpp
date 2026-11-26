@@ -726,14 +726,18 @@ void RoadGenerator::buildGeometry(RoadNetwork& net, const RoadInput& in,
             fuhgl::render::MeshData& md = br ? net.bridgeMesh : net.roadMesh;
             std::uint32_t& base = br ? baseBridge[i] : baseRoad[i];
             base = static_cast<std::uint32_t>(md.vertexCount());
-            const float yc = br ? deckY[i] : c.y;
             const int b = biomeAt(in, c.x, c.z);
             for (const ProfPt& pp : prof) {
                 fuhgl::math::Vec3 col;
                 float uvScale = 0.4f;
                 roadClassStyle(path.cls, b, pp.rut, col, uvScale);
                 const float off = pp.t * hw;
-                const fuhgl::math::Vec3 pos{c.x + nx * off, yc + pp.y, c.z + nz * off};
+                const float px = c.x + nx * off, pz = c.z + nz * off;
+                // per-vertex terrain sampling: on a cross-slope the uphill ribbon edge must
+                // not sink below the terrain surface (bridge decks stay flat)
+                const float y = br ? deckY[i] + pp.y
+                                   : heightWorld(in, px, pz) + 0.07f + pp.y;
+                const fuhgl::math::Vec3 pos{px, y, pz};
                 pushVertex(md, pos, up, col, pos.x * uvScale, pos.z * uvScale);
             }
         }
