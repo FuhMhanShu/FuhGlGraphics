@@ -24,6 +24,7 @@
 #include <fuhgl/render/terrain.hpp>
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace fuhglgraphics::scene {
@@ -78,6 +79,13 @@ struct MeshEntry {
     bool hasAabb = false;
     fuhgl::math::Vec3 aabbMin{0.f, 0.f, 0.f};
     fuhgl::math::Vec3 aabbMax{0.f, 0.f, 0.f};
+
+    // --- G12 asset creator: serialization references (scene/serialize.hpp) -----------
+    // GL objects (mesh/textures) are not serializable — store path references instead;
+    // the editor recreates the GL objects on load (needs a current GL context).
+    std::string assetRef;          ///< e.g. "primitive:box", "primitive:quad", "file:assets/ship.glb"
+    std::string albedoTexturePath; ///< texture file reference for albedoTexture
+    std::string normalMapPath;     ///< texture file reference for normalMap
 };
 
 /// @brief Mesh component: all MeshEntry meshes of the node, drawn at the node's world

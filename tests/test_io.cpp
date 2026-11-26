@@ -218,8 +218,47 @@ void testGltfImageDecode() {
 
 } // namespace
 
+void testJsonWrite() {
+    // main's API (PR #40): writeJson(const Json&, int indent) -> std::string
+    Json v;
+    std::string err;
+    CHECK(parseJson(R"({"a": 1, "b": [true, null, "x\nyA"], "c": {"d": -2.5, "e": 0.1}, "f": "quo\"te\\"})", v, &err));
+
+    // compact roundtrip: write -> parse -> identical value
+    const std::string compact = writeJson(v, 0);
+    Json back;
+    CHECK(parseJson(compact, back, &err));
+    CHECK(writeJson(back, 0) == compact);
+    CHECK(back.at("a").asInt() == 1);
+    CHECK(back.at("b")[2].asString() == std::string("x\nyA"));
+    CHECK(std::fabs(back.at("c").at("e").asNumber() - 0.1) < 1e-17); // double round-trips
+
+    // pretty printing is parseable and indented
+    const std::string pretty = writeJson(v, 2);
+    Json backP;
+    CHECK(parseJson(pretty, backP, &err));
+    CHECK(backP.at("a").asInt() == 1);
+    CHECK(pretty.find('\n') != std::string::npos);
+
+    // compact output contains integral number without decimal point + escaped string
+    Json n;
+    n.type = Json::Type::Object;
+    n.obj["i"] = [] { Json j; j.type = Json::Type::Number; j.number = 42; return j; }();
+    n.obj["s"] = [] { Json j; j.type = Json::Type::String; j.str = "a\"b\\c\nd\te"; return j; }();
+    const std::string cs = writeJson(n, 0);
+    CHECK(cs.find("42") != std::string::npos);
+    CHECK(cs.find("\\n") != std::string::npos); // escaped newline
+    CHECK(cs.find("\\"") != std::string::npos); // escaped quote
+
+    // empty containers
+    Json empty;
+    empty.type = Json::Type::Object;
+    CHECK(writeJson(empty, 2) == "{}");
+}
+
 void runIoTests() {
     testJson();
+    testJsonWrite();
     testBase64();
     testGltf();
 #ifdef FUHGLGRAPHICS_WITH_QT
