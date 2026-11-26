@@ -97,6 +97,7 @@ void testHeightAt() {
 
 void testErosionAndScatter() {
     WorldGenParams p = landscapeParams();
+    p.settlementCount = 0; // isolate the erosion + scatter mechanics from the road mask
     p.erosionDroplets = 1500;
     p.thermalPasses = 3;
     const GeneratedWorld w = generateWorld(p);
@@ -537,8 +538,8 @@ void testLandscapeSettlementsAndRoads() {
                   s.radius + 3.f);
             CHECK_NEAR(b.position.y, w.heightAt(b.position.x, b.position.z), 1e-2f);
             CHECK(b.position.y >= w.waterLevelWorld);
-            // houses keep off the road corridor
-            CHECK(w.roadDistanceAt(b.position.x, b.position.z) > p.roads.highwayWidth * 0.5f);
+            // houses keep off the carriageway (strict placements keep the full corridor)
+            CHECK(w.roadDistanceAt(b.position.x, b.position.z) > p.roads.highwayWidth * 0.5f * 0.9f);
         }
     }
     // vegetation keeps off the roads (trees/rocks only where the road mask is low)

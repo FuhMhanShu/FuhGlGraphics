@@ -730,15 +730,22 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
                 for (int k = 0; k < p.housesPerSettlement; ++k) {
                     float hx = s.pos.x, hz = s.pos.y;
                     bool ok = false;
-                    for (int t = 0; t < 14 && !ok; ++t) {
-                        const float ang = roadRng.nextf() * 2.f * fuhgl::math::kPi;
-                        const float r = 2.5f + roadRng.nextf() * set.radius;
-                        hx = s.pos.x + std::cos(ang) * r;
-                        hz = s.pos.y + std::sin(ang) * r;
-                        if (std::fabs(hx) > half3 * 0.97f || std::fabs(hz) > half3 * 0.97f) continue;
-                        if (w.heightAt(hx, hz) < w.waterLevelWorld + 0.25f) continue;
-                        if (w.roadDistanceAt(hx, hz) < p.roads.highwayWidth * 0.5f + 2.f) continue;
-                        ok = true;
+                    // strict pass: off the whole road corridor; fallback pass: still off the
+                    // carriageway itself, so every settlement keeps houses on every platform
+                    const float hw = p.roads.highwayWidth * 0.5f;
+                    for (int pass = 0; pass < 2 && !ok; ++pass) {
+                        const int tries = pass == 0 ? 20 : 10;
+                        const float minDist = pass == 0 ? hw + 2.f : hw;
+                        for (int t = 0; t < tries && !ok; ++t) {
+                            const float ang = roadRng.nextf() * 2.f * fuhgl::math::kPi;
+                            const float r = 2.5f + roadRng.nextf() * set.radius;
+                            hx = s.pos.x + std::cos(ang) * r;
+                            hz = s.pos.y + std::sin(ang) * r;
+                            if (std::fabs(hx) > half3 * 0.97f || std::fabs(hz) > half3 * 0.97f) continue;
+                            if (w.heightAt(hx, hz) < w.waterLevelWorld + 0.25f) continue;
+                            if (w.roadDistanceAt(hx, hz) < minDist) continue;
+                            ok = true;
+                        }
                     }
                     if (!ok) continue;
                     const std::uint32_t houseSeed =

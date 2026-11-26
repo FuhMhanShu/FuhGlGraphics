@@ -104,6 +104,12 @@ const GeneratedWorld w = generateWorld(p);
 w.roadDistanceAt(x, z);       // distance to the nearest road — creature fast routes
 ```
 
+## Screenshot
+
+The G31 landscape render now shows the feature end-to-end (hamlets connected by the road
+network): [g31_worldgen_landscape.png](../../images/g31_worldgen_landscape.png) — CI-rendered
+reference from the PR run.
+
 ## Tests
 
 `tests/test_procedural_roadgen.cpp`: A\* slope detour through a ridge gap, ford vs. deep

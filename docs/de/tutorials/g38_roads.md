@@ -108,6 +108,11 @@ const GeneratedWorld w = generateWorld(p);
 w.roadDistanceAt(x, z);       // Distanz zur nächsten Straße — schnelle Kreaturen-Routen
 ```
 
+## Screenshot
+
+Das G31-Landschafts-Render zeigt das Feature komplett (Weiler, verbunden durch das Straßennetz):
+[g31_worldgen_landscape.png](../../images/g31_worldgen_landscape.png) — CI-gerenderte Referenz aus dem PR-Lauf.
+
 ## Tests
 
 `tests/test_procedural_roadgen.cpp`: A*-Umweg durch eine Gebirgslücke, Furt vs. tiefer Fluss,
