@@ -315,10 +315,10 @@ particles::EmitterConfig rainEmitterConfig(const WeatherParams& w) {
     cfg.spread = 0.06f;               // narrow cone -> streaks stay vertical
     cfg.rate = 40.f + 1400.f * clamp(w.rainIntensity, 0.f, 1.f); // spawn proportional to rain
     cfg.lifetime = 1.1f;
-    cfg.size = 0.035f;                // thin streak billboard
+    cfg.size = 0.055f;                // thin streak billboard (visible at screenshot distance)
     cfg.grow = 0.02f;
-    cfg.color = {0.62f, 0.70f, 0.82f};
-    cfg.alpha = 0.16f + 0.30f * clamp(w.rainIntensity, 0.f, 1.f);
+    cfg.color = {0.66f, 0.74f, 0.86f};
+    cfg.alpha = 0.22f + 0.38f * clamp(w.rainIntensity, 0.f, 1.f);
     cfg.gravity = -6.f;               // accelerating drizzle
     const float wd = w.windDirection; // radians in the XZ plane, 0 = +Z
     cfg.wind = {std::sin(wd) * w.windSpeed * 0.6f, 0.f, std::cos(wd) * w.windSpeed * 0.6f};

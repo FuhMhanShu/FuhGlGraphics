@@ -185,7 +185,10 @@ int main(int argc, char** argv) {
         be.materialId = 30;
     }
 
-    for (int i = 0; i < args.frames; ++i) {
+    // --flash: the strike envelope decays in ~0.6 s of sim time, so render exactly the
+    // frame in which the strike was found (not a later, decayed one)
+    const int renderFrames = args.flash ? 1 : args.frames;
+    for (int i = 0; i < renderFrames; ++i) {
         const float dt = 1.f / 30.f;
         wcomp.system.update(dt);
         weather::makeRainEmitter(rainComp.system, wcomp.system.params());
