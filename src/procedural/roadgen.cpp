@@ -684,7 +684,7 @@ void RoadGenerator::buildGeometry(RoadNetwork& net, const RoadInput& in,
         const std::vector<ProfPt> prof = profileOf(path.cls);
         const float hw = roadHalfWidth(p, path.cls);
         // refresh the path heights to the (possibly carved) terrain so the road sits on the bench
-        for (auto& pt : path.points) pt.y = heightWorld(in, pt.x, pt.z) + 0.02f;
+        for (auto& pt : path.points) pt.y = heightWorld(in, pt.x, pt.z) + 0.07f; // ribbon rides above the terrain mesh (no z-fighting)
         // bridge runs get a flat deck above the water
         std::vector<float> deckY(path.points.size(), 0.f);
         for (std::size_t i = 0; i < path.points.size(); ++i) {
