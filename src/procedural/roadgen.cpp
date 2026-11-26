@@ -387,12 +387,12 @@ RoadNetwork RoadGenerator::generate(const RoadInput& in, const RoadGenParams& p)
     std::vector<float> built(n, 0.f); // existing-road mask for the merge discount
     if (in.existingMask && in.existingMask->size() == n) built = *in.existingMask;
 
-    // bridge flag per grid cell: water too deep/wide for a ford -> bridge or footbridge
+    // bridge flag per grid cell: roads cross water ONLY as a bridge/footbridge (deck above
+    // the water level) — never as a sunken ford ribbon. Shallow/narrow spots (ford criteria)
+    // only make the A* prefer them as bridge locations (cheap fordCost), the geometry is
+    // always a bridge deck.
     auto isBridgeCell = [&](int idx) {
-        const float hv = (*in.heightmap)[static_cast<std::size_t>(idx)];
-        if (hv >= in.waterLevel) return false;
-        const float fl = in.flow ? (*in.flow)[static_cast<std::size_t>(idx)] : 0.f;
-        return (in.waterLevel - hv) > p.fordMaxDepth || fl > p.fordMaxFlow;
+        return (*in.heightmap)[static_cast<std::size_t>(idx)] < in.waterLevel;
     };
 
     // stamps one routed path into the network (smoothed spline, bridge flags, masks)
@@ -684,7 +684,7 @@ void RoadGenerator::buildGeometry(RoadNetwork& net, const RoadInput& in,
         const std::vector<ProfPt> prof = profileOf(path.cls);
         const float hw = roadHalfWidth(p, path.cls);
         // refresh the path heights to the (possibly carved) terrain so the road sits on the bench
-        for (auto& pt : path.points) pt.y = heightWorld(in, pt.x, pt.z) + 0.02f;
+        for (auto& pt : path.points) pt.y = heightWorld(in, pt.x, pt.z) + 0.07f; // ribbon rides above the terrain mesh (no z-fighting)
         // bridge runs get a flat deck above the water
         std::vector<float> deckY(path.points.size(), 0.f);
         for (std::size_t i = 0; i < path.points.size(); ++i) {
@@ -726,14 +726,18 @@ void RoadGenerator::buildGeometry(RoadNetwork& net, const RoadInput& in,
             fuhgl::render::MeshData& md = br ? net.bridgeMesh : net.roadMesh;
             std::uint32_t& base = br ? baseBridge[i] : baseRoad[i];
             base = static_cast<std::uint32_t>(md.vertexCount());
-            const float yc = br ? deckY[i] : c.y;
             const int b = biomeAt(in, c.x, c.z);
             for (const ProfPt& pp : prof) {
                 fuhgl::math::Vec3 col;
                 float uvScale = 0.4f;
                 roadClassStyle(path.cls, b, pp.rut, col, uvScale);
                 const float off = pp.t * hw;
-                const fuhgl::math::Vec3 pos{c.x + nx * off, yc + pp.y, c.z + nz * off};
+                const float px = c.x + nx * off, pz = c.z + nz * off;
+                // per-vertex terrain sampling: on a cross-slope the uphill ribbon edge must
+                // not sink below the terrain surface (bridge decks stay flat)
+                const float y = br ? deckY[i] + pp.y
+                                   : heightWorld(in, px, pz) + 0.07f + pp.y;
+                const fuhgl::math::Vec3 pos{px, y, pz};
                 pushVertex(md, pos, up, col, pos.x * uvScale, pos.z * uvScale);
             }
         }

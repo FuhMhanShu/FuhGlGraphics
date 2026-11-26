@@ -355,7 +355,9 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
 ```
 
 ![G31 Landschaft](../../images/g31_worldgen_landscape.png)
+![G31 Straßenansicht am Hauptweiler](../../images/g31_worldgen_roads.png)
 ![G31 Dorf am Seeufer](../../images/g31_worldgen_village.png)
+![G31 Panorama: bewaldete Landschaft mit WFC-Stadt am Fluss und Dorf am See, verbunden durch eine G38-Straße](../../images/g31_worldgen_panorama.png)
 ![G31 Stadt Übersicht](../../images/g31_worldgen_city.png)
 ![G31 Stadt Straßenebene](../../images/g31_worldgen_city_street.png)
 ![G31 Kopfsteinpflaster + nasse Straßen Übersicht](../../images/g31_cobble_city.png)

@@ -11,9 +11,10 @@
 ///   1. Route: least-cost path (A* with physics rules) — slope enters the cost
 ///      quadratically (cost += slopeWeight * slope^2) and explodes above a class-specific
 ///      critical slope, so steep hillsides automatically produce switchbacks (Serpentinen);
-///      water is very expensive except at shallow, narrow spots (fords / Furten); a path
-///      that is forced across deeper water is flagged as bridge (Bruecke) or footbridge
-///      (Steg); swamp, dense forest and rock cost extra; existing roads get a strong
+///      water is very expensive except at shallow, narrow spots (ford criteria — those are
+///      the preferred bridge locations), and EVERY water crossing is flagged bridge
+///      (Bruecke / Steg): roads cross water only as a deck above the water level, never as
+///      a sunken ford ribbon; swamp, dense forest and rock cost extra; existing roads get a strong
 ///      discount so new paths merge into the network instead of running parallel.
 ///   2. Hierarchy: highways (Handelsstrassen) between the most important sites, country
 ///      roads (Landstrassen/Dorfwege) from every other site to the network, desire paths
@@ -93,9 +94,9 @@ struct RoadGenParams {
     float critSlopeTrail = 0.95f;       ///< automatically picks switchbacks on steep slopes
     float criticalPenalty = 90.f;
     float waterCost = 500.f;            ///< per unit across water (forces bridges/detours)
-    float fordMaxDepth = 0.025f;        ///< normalized water depth that is still a ford (Furt)
-    float fordMaxFlow = 0.2f;           ///< max flow accumulation for a ford (narrow stream)
-    float fordCost = 5.f;
+    float fordMaxDepth = 0.025f;        ///< shallow water = preferred bridge location (A* cost)
+    float fordMaxFlow = 0.2f;           ///< narrow stream (low flow) = preferred bridge location
+    float fordCost = 5.f;               ///< cheap crossing cost at shallow/narrow spots (bridge site)
     float swampCost = 9.f;              ///< wet lowland: high flow near the water level
     float forestCost = 2.2f;            ///< dense woods (biome 4/5/6)
     float rockCost = 5.f;               ///< rock cells (biome 8 / very steep)
@@ -130,7 +131,8 @@ struct RoadGenParams {
 };
 
 /// @brief One routed road: smoothed spline in world space (y = terrain height) + per-point
-/// bridge flags (1 = the segment there is a bridge / footbridge over water).
+/// bridge flags (1 = the segment there crosses water and is rendered as a bridge /
+/// footbridge deck above the water level — roads never run through water at ground level).
 struct RoadPath {
     RoadClass cls = RoadClass::Trail;
     int fromSite = -1;                 ///< RoadSite::id of the endpoints (-1 = free POI target)

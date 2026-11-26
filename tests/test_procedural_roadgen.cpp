@@ -220,6 +220,14 @@ void testGenerateHierarchyAndBridge() {
     }
     CHECK(highways >= 1 && countries >= 1 && trails >= 1);
     CHECK(bridgeFlagged > 0); // the forced river crossing is flagged as bridge
+    // roads cross water ONLY as bridges: every path point below the water level is flagged
+    for (const auto& path : net.paths)
+        for (std::size_t i = 0; i < path.points.size(); ++i) {
+            const int gx = static_cast<int>(std::min(1.f, std::max(0.f, path.points[i].x / w.in.sizeX + 0.5f)) * (g - 1));
+            const int gz = static_cast<int>(std::min(1.f, std::max(0.f, path.points[i].z / w.in.sizeZ + 0.5f)) * (g - 1));
+            const float hv = w.h[static_cast<std::size_t>(gx) + static_cast<std::size_t>(g) * gz];
+            if (hv < w.in.waterLevel) CHECK(path.bridge[i] == 1); // never a sunken ford ribbon
+        }
     int bridgeCells = 0;
     for (const unsigned char b : net.bridgeMask) if (b) ++bridgeCells;
     CHECK(bridgeCells > 0);

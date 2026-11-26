@@ -14,10 +14,12 @@
 // Rendered headless (surfaceless EGL) to PNG for docs/images/.
 //
 // Usage: fuhglgraphics_worldgen_screenshot --prefix g31_worldgen [--width 1280] [--height 720]
-//          [--frames 16] [--seed 777] [--mode both|landscape|city|pipeline|village] [--style town]
+//          [--frames 16] [--seed 777] [--mode both|landscape|city|pipeline|village|panorama] [--style town]
 //          [--fx all|none|hbao,ssr,bloom,volumetric,wetness] (village extra-effect selection)
 //          [--surface asphalt|cobble|paving|dirt] [--wet]
-//   writes <prefix>_landscape.png, <prefix>_city.png, <prefix>_city_street.png,
+//   writes <prefix>_landscape.png, <prefix>_roads.png (street-level at the main hamlet),
+//   <prefix>_panorama.png (vegetated landscape + WFC city at a river + village at the lake,
+//   connected by a G38 road with bridges), <prefix>_city.png, <prefix>_city_street.png,
 //   <prefix>_village.png and <prefix>_pipeline*.png (skipping unselected modes).
 //   --mode village: big landscape + small procedural village on the lake shore with many
 //   effects (water, CSM shadows, IBL, HBAO, SSR, bloom, volumetric fog, wetness).
@@ -66,7 +68,7 @@ struct Args {
     std::string prefix = "g31_worldgen";
     int width = 1280, height = 720, frames = 16;
     unsigned seed = 777u;
-    std::string mode = "both"; // both | landscape | city | pipeline | village
+    std::string mode = "both"; // both | landscape | city | pipeline | village | panorama
     std::string style = "town"; // village | town | highrise (city house style)
     std::string surface = "asphalt"; // asphalt | cobble | paving | dirt (city road surface)
     std::string fx = "all"; // village extra effects: all | none | comma list (hbao,ssr,bloom,volumetric,wetness)
@@ -672,6 +674,7 @@ int main(int argc, char** argv) {
     const bool doLandscape = args.mode == "both" || args.mode == "landscape";
     const bool doCity = args.mode == "both" || args.mode == "city";
     const bool doPipeline = args.mode == "pipeline";
+    const bool doPanorama = args.mode == "both" || args.mode == "panorama";
 
     // --- landscape: generateWorld(Landscape) -> terrain + water + grass + trees + bushes ---
     if (doLandscape) {
@@ -703,14 +706,11 @@ int main(int argc, char** argv) {
                      world.rocks.size(), world.settlements.size(), world.buildings.size(),
                      world.roadProps.size());
 
-        // composition derived from the heightmap: camera on the south rim of the lake,
-        // looking NW across the water toward the far shore with the mountains behind —
-        // this guarantees the lake is always in frame. Scatter is removed around the camera
-        // so no tree can cross the near plane (that renders as a green star blob).
-        float lakeCx = 0.f, lakeCz = 0.f, lakeSouthZ = -1e9f;
+        // lake center of the central basin (fallback frame when no settlements were placed).
+        // Only the central basin counts as "lake" (the island falloff puts the whole border
+        // ring below the water level — that is the outer sea, not the lake)
+        float lakeCx = 0.f, lakeCz = 0.f;
         int lakeN = 0;
-        // only the central basin counts as "lake" (the island falloff puts the whole
-        // border ring below the water level — that is the outer sea, not the lake)
         const float lakeSearchR =
             p.lakeRadius > 0.f ? p.lakeRadius * 1.25f : p.worldSize * 0.38f;
         for (int j = 0; j < world.gridH; ++j)
@@ -722,17 +722,35 @@ int main(int argc, char** argv) {
                     lakeCx += x;
                     lakeCz += z;
                     ++lakeN;
-                    lakeSouthZ = std::max(lakeSouthZ, z);
                 }
             }
         if (lakeN > 0) {
             lakeCx /= lakeN;
             lakeCz /= lakeN;
-        } else {
-            lakeSouthZ = world.sizeZ * 0.25f;
         }
-        const float camX = lakeCx + 30.f, camZ = lakeSouthZ + 14.f;
-        const float camY = std::max(world.heightAt(camX, camZ), world.waterLevelWorld) + 18.f;
+        // Scatter is removed around the camera so no tree can cross the near plane
+        // (that renders as a green star blob).
+        // frame the most important settlement: its hamlet houses, the road corridor with
+        // milestones/lanterns and bridges over water — from a low vantage looking along the
+        // main road that leaves the hamlet toward the nearest other settlement (the lake and
+        // mountains stay in the background; falls back to the lake center without settlements)
+        fuhgl::math::Vec2 topSite{lakeCx, lakeCz};
+        float topImp = -1.f;
+        for (const auto& s : world.settlements)
+            if (s.importance > topImp) { topImp = s.importance; topSite = s.center; }
+        fuhgl::math::Vec2 roadDir{0.f, -1.f}; // direction of the main road out of the hamlet
+        float bestD = 1e9f;
+        for (const auto& s : world.settlements) {
+            const float d = std::hypot(s.center.x - topSite.x, s.center.y - topSite.y);
+            if (d > 1.f && d < bestD) {
+                bestD = d;
+                roadDir = {(s.center.x - topSite.x) / d, (s.center.y - topSite.y) / d};
+            }
+        }
+        const float siteH = world.heightAt(topSite.x, topSite.y);
+        const float camX = topSite.x - roadDir.x * 26.f + 9.f;
+        const float camZ = topSite.y - roadDir.y * 26.f + 12.f;
+        const float camY = std::max(world.heightAt(camX, camZ), world.waterLevelWorld) + 14.f;
         const auto nearCam = [&](const procedural::PlacedMesh& pm) {
             return std::hypot(pm.position.x - camX, pm.position.z - camZ) < 14.f;
         };
@@ -897,10 +915,9 @@ int main(int argc, char** argv) {
         // warm sun in the south (behind the shore camera) so the seen slopes are lit
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{0.30f, 0.50f, 0.85f}));
 
-        // low vantage on the south shore looking NW: sky + mountains on top, lake band in
-        // the middle, shore with trees/grass in the foreground (camX/camY/camZ above)
+        // overview: hamlet + road corridor from a low vantage behind it (camX/camY/camZ above)
         cam.position = {camX, camY, camZ};
-        aimAt(cam, {lakeCx - 20.f, world.waterLevelWorld + 8.f, lakeCz - 35.f});
+        aimAt(cam, {topSite.x, siteH + 3.f, topSite.y});
         const std::string path = args.prefix + "_landscape.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, path,
                          water ? &water->surface : nullptr, &env)) {
@@ -908,6 +925,19 @@ int main(int argc, char** argv) {
             return 1;
         }
         std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", path.c_str());
+
+        // oblique close-up of the hamlet and its road hub -> <prefix>_roads.png
+        // (road ribbons with ruts, houses, milestones/lanterns, bridges over water)
+        const float rx = topSite.x + 12.f, rz = topSite.y + 14.f;
+        cam.position = {rx, std::max(world.heightAt(rx, rz), world.waterLevelWorld) + 22.f, rz};
+        aimAt(cam, {topSite.x - roadDir.x * 4.f, siteH + 2.f, topSite.y - roadDir.y * 4.f});
+        const std::string rpath = args.prefix + "_roads.png";
+        if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, rpath,
+                         water ? &water->surface : nullptr, &env)) {
+            std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", rpath.c_str());
+            return 1;
+        }
+        std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", rpath.c_str());
     }
 
     // --- village: big landscape + a small procedural village on the lake shore ----------
@@ -1212,6 +1242,423 @@ int main(int argc, char** argv) {
             return 1;
         }
         std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", vPath.c_str());
+    }
+
+    // --- panorama: big vegetated landscape + WFC city at a river + village at the lake,
+    //     connected by a G38 least-cost road (bridges over water) ------------------------
+    if (doPanorama) {
+        procedural::WorldGenParams p;
+        p.mode = procedural::WorldGenParams::Mode::Landscape;
+        p.seed = args.seed;
+        p.worldSize = 340.f;
+        p.terrainGrid = 193;
+        p.terrainHeight = 30.f;
+        p.warpStrength = 0.6f;
+        p.heightExponent = 0.85f;
+        p.waterLevel = 0.30f;      // lake + river channels
+        p.lakeRadius = 62.f;
+        p.erosionDroplets = 4000;
+        p.thermalPasses = 4;
+        p.riverCount = 18;
+        p.treeCount = 500;         // lots of vegetation
+        p.bushCount = 600;
+        p.rockCount = 90;
+        p.grassBlades = 14000;
+        p.treeMinDist = 4.5f;
+        p.settlementCount = 0;     // city + village are placed explicitly below
+        procedural::GeneratedWorld world = generateWorld(p);
+        const int g = world.gridW;
+        const float waterN = p.waterLevel;
+        std::fprintf(stderr,
+                     "worldgen_screenshot: panorama seed %u: grid %d, %zu trees, %zu bushes, %zu rocks\n",
+                     args.seed, g, world.trees.size(), world.bushes.size(), world.rocks.size());
+
+        // central lake basin: center + south rim (same search as the other landscape shots)
+        float lakeCx = 0.f, lakeCz = 0.f, lakeSouthZ = -1e9f;
+        int lakeN = 0;
+        const float lakeSearchR = p.lakeRadius * 1.25f;
+        for (int j = 0; j < world.gridH; ++j)
+            for (int i = 0; i < world.gridW; ++i) {
+                if (world.heightmap[static_cast<std::size_t>(i) + world.gridW * j] < waterN) {
+                    const float x = (static_cast<float>(i) / (g - 1) - 0.5f) * world.sizeX;
+                    const float z = (static_cast<float>(j) / (g - 1) - 0.5f) * world.sizeZ;
+                    if (std::hypot(x, z) > lakeSearchR) continue;
+                    lakeCx += x;
+                    lakeCz += z;
+                    ++lakeN;
+                    lakeSouthZ = std::max(lakeSouthZ, z);
+                }
+            }
+        if (lakeN > 0) { lakeCx /= lakeN; lakeCz /= lakeN; } else { lakeSouthZ = world.sizeZ * 0.25f; }
+
+        // city spot: riverbank land (just above the water level, next to a strong flow
+        // channel) at a moderate distance from the lake -> city at the river and village at
+        // the lake both fit into one vista frame, with the connecting road between them
+        fuhgl::math::Vec2 cityC{world.sizeX * 0.30f, -world.sizeX * 0.28f};
+        const float cityTargetDist = world.sizeX * 0.26f;
+        float bestScore = 1e9f;
+        for (int j = 2; j < g - 2; ++j)
+            for (int i = 2; i < g - 2; ++i) {
+                const float h = world.heightmap[static_cast<std::size_t>(i) + g * j];
+                if (h < waterN + 0.02f || h > waterN + 0.16f) continue;
+                float nf = 0.f;
+                for (int dz = -2; dz <= 2; ++dz)
+                    for (int dx = -2; dx <= 2; ++dx)
+                        nf = std::max(nf, world.flowmap[static_cast<std::size_t>(i + dx) + g * (j + dz)]);
+                if (nf < 0.6f) continue;
+                const float x = (static_cast<float>(i) / (g - 1) - 0.5f) * world.sizeX;
+                const float z = (static_cast<float>(j) / (g - 1) - 0.5f) * world.sizeZ;
+                const float score = std::fabs(std::hypot(x - lakeCx, z - lakeCz) - cityTargetDist);
+                if (score < bestScore) { bestScore = score; cityC = {x, z}; }
+            }
+
+        // village at the lake's south shore
+        const fuhgl::math::Vec2 vilC{lakeCx, lakeSouthZ + 12.f};
+        const float vilR = 26.f, cityR = 52.f;
+        const float vilPlateauY = world.waterLevelWorld + 1.4f;
+        const float cityPlateauY = world.waterLevelWorld + 1.2f;
+
+        // flatten both plateaus in the heightmap (terrain mesh, grass heightFn and the
+        // camera all read the same heightmap, so they see the flat pads)
+        const auto ss = [](float e0, float e1, float x) {
+            const float t = std::min(1.f, std::max(0.f, (x - e0) / (e1 - e0)));
+            return t * t * (3.f - 2.f * t);
+        };
+        auto flatten = [&](const fuhgl::math::Vec2& c, float r, float plateauY) {
+            const float pn = plateauY / world.heightScale;
+            for (int j = 0; j < g; ++j)
+                for (int i = 0; i < g; ++i) {
+                    const float x = (static_cast<float>(i) / (g - 1) - 0.5f) * world.sizeX;
+                    const float z = (static_cast<float>(j) / (g - 1) - 0.5f) * world.sizeZ;
+                    const float t = 1.f - ss(r * 0.55f, r, std::hypot(x - c.x, z - c.y));
+                    float& h = world.heightmap[static_cast<std::size_t>(i) + g * j];
+                    h = h * (1.f - t) + pn * t;
+                }
+        };
+        flatten(cityC, cityR, cityPlateauY);
+        flatten(vilC, vilR, vilPlateauY);
+
+        // G38 road between city and village: route on the flattened terrain, carve the bench
+        // into the hillsides, then re-flatten the pads so they stay clean
+        procedural::RoadInput rin;
+        rin.heightmap = &world.heightmap;
+        rin.gridW = g;
+        rin.gridH = g;
+        rin.sizeX = world.sizeX;
+        rin.sizeZ = world.sizeZ;
+        rin.heightScale = world.heightScale;
+        rin.waterLevel = waterN;
+        rin.flow = &world.flowmap;
+        rin.biome = world.biome.empty() ? nullptr : &world.biome;
+        rin.sites = {{cityC, 1.0f, 0}, {vilC, 0.85f, 1}};
+        procedural::RoadGenParams rp;
+        rp.seed = args.seed;
+        procedural::RoadGenerator rg;
+        procedural::RoadNetwork net = rg.generate(rin, rp);
+        rg.carveTerrain(world.heightmap, net, rp);
+        flatten(cityC, cityR, cityPlateauY);
+        flatten(vilC, vilR, vilPlateauY);
+        rg.buildGeometry(net, rin, rp);
+        std::fprintf(stderr, "worldgen_screenshot: panorama road: %zu paths, %zu props, %zu bridge verts\n",
+                     net.paths.size(), net.props.size(), net.bridgeMesh.vertexCount());
+
+        // drop the scatter inside both pads so houses/roads do not intersect trees
+        const auto inPad = [&](const fuhgl::math::Vec3& pos) {
+            return std::hypot(pos.x - cityC.x, pos.z - cityC.y) < cityR + 6.f ||
+                   std::hypot(pos.x - vilC.x, pos.z - vilC.y) < vilR + 6.f;
+        };
+        const auto notInPad = [&](const procedural::PlacedMesh& pm) { return !inPad(pm.position); };
+        world.trees.erase(std::remove_if(world.trees.begin(), world.trees.end(), notInPad), world.trees.end());
+        world.bushes.erase(std::remove_if(world.bushes.begin(), world.bushes.end(), notInPad), world.bushes.end());
+        world.rocks.erase(std::remove_if(world.rocks.begin(), world.rocks.end(), notInPad), world.rocks.end());
+
+        // WFC city for the riverbank pad
+        procedural::WorldGenParams cp;
+        cp.mode = procedural::WorldGenParams::Mode::City;
+        cp.seed = args.seed ^ 0xC17u;
+        cp.cityGrid = 10;
+        cp.cellSize = 8.f;
+        cp.buildingHeight = 8.f;
+        cp.blocksPerDistrict = 20;
+        cp.parkFraction = 0.15f;
+        const procedural::GeneratedWorld city = procedural::generateWorld(cp);
+
+        scene::Scene scene;
+        MeshArena arena;
+        const fuhgl::Texture splatTex = makeSplatAlbedoTex(world);
+        scene::Node& tn = scene.root().createChild("terrain");
+        fuhgl::render::Mesh terrainMesh;
+        terrainMesh.setMeshData(terrainMeshData(world));
+        {
+            scene::MeshEntry& te = tn.attach<scene::MeshComponent>().addMesh(&terrainMesh);
+            te.albedoTexture = &splatTex;
+            te.roughness = 1.f;
+            te.castShadow = true;
+            te.materialId = 1;
+        }
+        scene.root().effects.enable(render::Effect::Water);
+        scene::Node& wn = scene.root().createChild("water");
+        wn.translation = {0.f, world.waterLevelWorld, 0.f};
+        scene::WaterComponent* water = &wn.attach<scene::WaterComponent>();
+        water->surface.create(160, p.worldSize * 1.1f);
+        water->surface.waves = {
+            {{1.f, 0.15f}, 0.32f, 16.f, 2.0f, 0.65f},
+            {{0.7f, 0.7f}, 0.20f, 8.f, 1.4f, 0.55f},
+            {{-0.5f, 0.86f}, 0.11f, 4.5f, 1.0f, 0.45f},
+        };
+        water->surface.reflectionStrength = 0.8f;
+        water->surface.foamStrength = 1.f;
+        water->surface.deepColor = {0.004f, 0.05f, 0.11f};
+        water->surface.shallowColor = {0.06f, 0.30f, 0.38f};
+        if (p.grassBlades > 0) {
+            scene::Node& grass = scene.root().createChild("grass");
+            grass.instancing.enabled = true;
+            grass.instancing.count = p.grassBlades;
+            grass.instancing.layout = scene::InstanceLayout::Random;
+            grass.instancing.extent = {p.worldSize - 8.f, 4.f, p.worldSize - 8.f};
+            grass.instancing.seed = 7u;
+            grass.instancing.heightFn = [&world](float x, float z) {
+                const float h = world.heightAt(x, z);
+                if (h < world.waterLevelWorld + 0.15f) return -1000.f;
+                const int gg = world.gridW;
+                const float u = std::min(1.f, std::max(0.f, x / world.sizeX + 0.5f)) * (gg - 1);
+                const float v = std::min(1.f, std::max(0.f, z / world.sizeZ + 0.5f)) * (gg - 1);
+                const std::size_t idx = (static_cast<std::size_t>(u) + gg * static_cast<std::size_t>(v)) * 4;
+                if (world.splatmap[idx + 0] < 110) return -1000.f;
+                return h + 0.22f;
+            };
+            scene::MeshEntry& ge = grass.attach<scene::MeshComponent>().addMesh(
+                arena.add(fuhgl::render::shapes::boxData({0.015f, 0.22f, 0.015f}, {0.25f, 0.45f, 0.18f})));
+            ge.albedo = {0.55f, 0.75f, 0.35f};
+            ge.roughness = 1.f;
+            ge.castShadow = false;
+            ge.materialId = 2;
+        }
+        auto addPlant = [&](const std::string& prefix, const std::vector<procedural::PlacedMesh>& plants,
+                            std::uint32_t materialId) {
+            for (std::size_t i = 0; i < plants.size(); ++i) {
+                const auto& t = plants[i];
+                scene::Node& n = scene.root().createChild(prefix + std::to_string(i));
+                n.translation = t.position;
+                n.rotation = fuhgl::math::fromAxisAngle(t.rotY, {0.f, 1.f, 0.f});
+                n.scale = {t.scale, t.scale, t.scale};
+                scene::MeshEntry& e = n.attach<scene::MeshComponent>().addMesh(arena.add(t.mesh));
+                e.albedo = t.tint;
+                e.roughness = 0.9f;
+                e.castShadow = true;
+                e.materialId = materialId;
+            }
+        };
+        addPlant("tree", world.trees, 30);
+        addPlant("bush", world.bushes, 31);
+        addPlant("rock", world.rocks, 32);
+
+        // G38 connecting road: ribbons (vertex colors), bridge decks over water, props
+        if (net.roadMesh.vertexCount() > 0) {
+            scene::Node& rn = scene.root().createChild("road");
+            scene::MeshEntry& re = rn.attach<scene::MeshComponent>().addMesh(arena.add(net.roadMesh));
+            re.albedo = {1.f, 1.f, 1.f};
+            re.roughness = 0.95f;
+            re.castShadow = true;
+            re.materialId = 1;
+        }
+        if (net.bridgeMesh.vertexCount() > 0) {
+            scene::Node& bn = scene.root().createChild("bridge");
+            scene::MeshEntry& be = bn.attach<scene::MeshComponent>().addMesh(arena.add(net.bridgeMesh));
+            be.albedo = {1.f, 1.f, 1.f};
+            be.roughness = 0.8f;
+            be.castShadow = true;
+            be.materialId = 1;
+        }
+        {
+            std::vector<procedural::PlacedMesh> props;
+            for (const auto& pr : net.props) {
+                procedural::PlacedMesh pm;
+                pm.mesh = pr.mesh;
+                pm.position = pr.position;
+                pm.rotY = pr.rotY;
+                props.push_back(std::move(pm));
+            }
+            addPlant("roadprop", props, 33);
+        }
+
+        // the WFC city on its riverbank pad (city-local coords are centered at the origin
+        // with the ground top at y=0 -> one parent node carries the world offset).
+        // NOTE: roadTex must outlive the inner scope — MeshEntries keep &roadTex.albedo
+        const RoadTexSet roadTex = makeRoadTexSet(city.roadSurface, 256);
+        {
+            scene::Node& cn = scene.root().createChild("city");
+            cn.translation = {cityC.x, cityPlateauY, cityC.y};
+            auto cityMesh = [&](const char* name, const fuhgl::render::MeshData& md,
+                                const fuhgl::math::Vec3& albedo, float rough, std::uint32_t mid,
+                                bool shadow) {
+                scene::Node& n = cn.createChild(name);
+                scene::MeshEntry& e = n.attach<scene::MeshComponent>().addMesh(arena.add(md));
+                e.albedo = albedo;
+                e.roughness = rough;
+                e.materialId = mid;
+                e.castShadow = shadow;
+            };
+            cityMesh("ground", city.cityGround, {1.f, 1.f, 1.f}, 1.f, 2, false);
+            cityMesh("pavements", city.pavements, {1.f, 1.f, 1.f}, 1.f, 2, false);
+            if (city.districts.vertexCount() > 0)
+                cityMesh("districts", city.districts, {1.f, 1.f, 1.f}, 1.f, 4, false);
+            {
+                scene::Node& rn = cn.createChild("roads");
+                scene::MeshEntry& re = rn.attach<scene::MeshComponent>().addMesh(arena.add(city.roads));
+                setupRoadEntry(re, roadTex.albedo, roadTex.height, roadTex.normal, roadTex.pom, city.wetRoads);
+            }
+            for (std::size_t i = 0; i < city.buildings.size(); ++i) {
+                const auto& b = city.buildings[i];
+                scene::Node& n = cn.createChild("house" + std::to_string(i));
+                n.translation = b.position;
+                n.rotation = fuhgl::math::fromAxisAngle(b.rotY, {0.f, 1.f, 0.f});
+                n.scale = {b.scale, b.scale, b.scale};
+                scene::MeshComponent& mc = n.attach<scene::MeshComponent>();
+                fuhgl::math::Vec3 facTint;
+                const FacadeTexSet* ft = facadeSet(b.facade, plasterTex, stoneTex, facTint);
+                scene::MeshEntry& walls = mc.addMesh(arena.add(b.mesh));
+                walls.albedo = facTint;
+                walls.albedoTexture = ft ? &ft->albedo : &brickAlbedo;
+                walls.normalMap = ft ? &ft->normal : &brickNormal;
+                walls.heightMap = ft ? &ft->height : &brickHeight;
+                walls.parallaxScale = 0.05f;
+                walls.parallaxLayers = 24;
+                walls.roughness = 0.85f;
+                walls.castShadow = true;
+                walls.materialId = 5;
+                if (b.glassMesh.vertexCount() > 0) {
+                    scene::MeshEntry& gl = mc.addMesh(arena.add(b.glassMesh));
+                    setupGlassEntry(gl);
+                }
+                if (b.detailMesh.vertexCount() > 0) {
+                    scene::MeshEntry& det = mc.addMesh(arena.add(b.detailMesh));
+                    det.albedo = {1.4f, 1.4f, 1.4f};
+                    det.roughness = 0.4f;
+                    det.castShadow = true;
+                    det.materialId = 8;
+                }
+                if (b.roofMesh.vertexCount() > 0) {
+                    scene::MeshEntry& roof = mc.addMesh(arena.add(b.roofMesh));
+                    roof.albedoTexture = &shingle;
+                    roof.albedo = {1.6f, 1.6f, 1.6f};
+                    roof.roughness = 0.7f;
+                    roof.castShadow = true;
+                    roof.materialId = 6;
+                }
+            }
+            for (std::size_t i = 0; i < city.bushes.size(); ++i) {
+                const auto& b = city.bushes[i];
+                scene::Node& n = cn.createChild("parkbush" + std::to_string(i));
+                n.translation = b.position;
+                n.rotation = fuhgl::math::fromAxisAngle(b.rotY, {0.f, 1.f, 0.f});
+                n.scale = {b.scale, b.scale, b.scale};
+                scene::MeshEntry& e = n.attach<scene::MeshComponent>().addMesh(arena.add(b.mesh));
+                e.albedo = {0.8f, 1.f, 0.8f};
+                e.roughness = 0.9f;
+                e.castShadow = true;
+                e.materialId = 7;
+            }
+        }
+
+        // the village at the lake shore: loose grid of HouseGenerator village houses
+        {
+            procedural::BuildingContext vctx;
+            const int gg = world.gridW;
+            const float u = std::min(1.f, std::max(0.f, vilC.x / world.sizeX + 0.5f)) * (gg - 1);
+            const float v = std::min(1.f, std::max(0.f, vilC.y / world.sizeZ + 0.5f)) * (gg - 1);
+            const std::size_t idx = static_cast<std::size_t>(u) + gg * static_cast<std::size_t>(v);
+            vctx.temperature = world.temperature.empty() ? 0.6f : world.temperature[idx];
+            vctx.humidity = world.humidity.empty() ? 0.5f : world.humidity[idx];
+            vctx.precipitation = std::min(1.f, vctx.humidity * 0.95f);
+            vctx.biome = world.biome.empty() ? -1 : static_cast<int>(world.biome[idx]);
+            vctx.wealth = 0.55f;
+            vctx.density = 0.25f;
+            vctx.waterProximity = 1.f; // right at the lake shore
+            vctx.soilColor = {0.42f, 0.38f, 0.26f};
+            procedural::HouseGenerator houseGen;
+            std::uint32_t hs = args.seed ^ 0x11EAu;
+            auto nextr = [&]() {
+                hs = hs * 1664525u + 1013904223u;
+                return static_cast<float>(hs >> 8) * (1.f / 16777216.f);
+            };
+            int houseCount = 0;
+            for (int gz = -2; gz <= 2; ++gz)
+                for (int gx = -3; gx <= 3; ++gx) {
+                    if (nextr() < 0.3f) continue;
+                    const float hx = vilC.x + gx * 9.f + (nextr() - 0.5f) * 2.f;
+                    const float hz = vilC.y + gz * 9.f + (nextr() - 0.5f) * 2.f;
+                    if (std::hypot(hx - vilC.x, hz - vilC.y) > vilR - 6.f) continue;
+                    const std::uint32_t hseed =
+                        args.seed ^ (0x5EEDu + static_cast<std::uint32_t>(houseCount) * 7919u);
+                    auto hp = procedural::HouseGenerator::randomParams(
+                        procedural::HouseStyle::Village, 8.f, hseed, vctx);
+                    hp.seed = hseed;
+                    hp.width = 5.f + nextr() * 2.5f;
+                    hp.depth = 5.f + nextr() * 2.5f;
+                    const auto hm = houseGen.generate(hp);
+                    scene::Node& n = scene.root().createChild("vhouse" + std::to_string(houseCount));
+                    n.translation = {hx, vilPlateauY, hz};
+                    n.rotation = fuhgl::math::fromAxisAngle(nextr() * 2.f * fuhgl::math::kPi, {0.f, 1.f, 0.f});
+                    scene::MeshComponent& mc = n.attach<scene::MeshComponent>();
+                    fuhgl::math::Vec3 facTint;
+                    const FacadeTexSet* ft =
+                        facadeSet(static_cast<int>(hm.spec.facade), plasterTex, stoneTex, facTint);
+                    scene::MeshEntry& walls = mc.addMesh(arena.add(hm.walls));
+                    walls.albedo = facTint;
+                    walls.albedoTexture = ft ? &ft->albedo : &brickAlbedo;
+                    walls.normalMap = ft ? &ft->normal : &brickNormal;
+                    walls.heightMap = ft ? &ft->height : &brickHeight;
+                    walls.parallaxScale = 0.05f;
+                    walls.parallaxLayers = 24;
+                    walls.roughness = 0.85f;
+                    walls.castShadow = true;
+                    walls.materialId = 5;
+                    if (hm.glass.vertexCount() > 0) {
+                        scene::MeshEntry& gl = mc.addMesh(arena.add(hm.glass));
+                        setupGlassEntry(gl);
+                    }
+                    if (hm.details.vertexCount() > 0) {
+                        scene::MeshEntry& det = mc.addMesh(arena.add(hm.details));
+                        det.albedo = {1.4f, 1.4f, 1.4f};
+                        det.roughness = 0.4f;
+                        det.castShadow = true;
+                        det.materialId = 8;
+                    }
+                    if (hm.roof.vertexCount() > 0) {
+                        scene::MeshEntry& roof = mc.addMesh(arena.add(hm.roof));
+                        roof.albedoTexture = &shingle;
+                        roof.albedo = {1.6f, 1.6f, 1.6f};
+                        roof.roughness = 0.7f;
+                        roof.castShadow = true;
+                        roof.materialId = 6;
+                    }
+                    ++houseCount;
+                }
+        }
+
+        // vista camera: on the perpendicular bisector of the city-village axis, pulled back
+        // far enough that BOTH endpoints stay inside the horizontal half-FOV (~48 deg at
+        // 16:9) — city at the river on one side, village at the lake on the other, the
+        // connecting road across the middle ground
+        const fuhgl::math::Vec2 d{vilC.x - cityC.x, vilC.y - cityC.y};
+        const float dl = std::hypot(d.x, d.y);
+        const fuhgl::math::Vec2 dn{d.x / dl, d.y / dl};
+        const fuhgl::math::Vec2 perp{-dn.y, dn.x};
+        const fuhgl::math::Vec2 mid{(cityC.x + vilC.x) * 0.5f, (cityC.y + vilC.y) * 0.5f};
+        const float back = std::max(95.f, dl * 0.62f); // atan(dl/2 / back) < ~48 deg
+        const float camX = mid.x + perp.x * back;
+        const float camZ = mid.y + perp.y * back;
+        cam.position = {camX, std::max(world.heightAt(camX, camZ), world.waterLevelWorld) + 38.f, camZ};
+        aimAt(cam, {mid.x, world.waterLevelWorld + 4.f, mid.y});
+        addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.35f, 0.62f, 0.45f}));
+        const std::string ppath = args.prefix + "_panorama.png";
+        if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, ppath,
+                         water ? &water->surface : nullptr, &env)) {
+            std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", ppath.c_str());
+            return 1;
+        }
+        std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", ppath.c_str());
     }
 
     // --- city: generateWorld(City) -> WFC layout, roads, district plates, houses, parks ---
