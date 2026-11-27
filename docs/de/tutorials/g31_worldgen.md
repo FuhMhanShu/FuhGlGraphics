@@ -346,9 +346,13 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
     --prefix g31 --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline
 FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
     --prefix g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode village
-# schreibt g31_worldgen_{landscape,city,city_street,village}.png und g31_pipeline{,_street}.png
+FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
+    --prefix g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode tropical
+# schreibt g31_worldgen_{landscape,city,city_street,village,tropical_sunset}.png und g31_pipeline{,_street}.png
 # (--mode village: große Landschaft + kleines prozedurales Dorf am Seeufer, gerendert mit
 #  Wasser, CSM-Schatten, IBL, HBAO, SSR, Bloom, volumetrischem Nebel und Wetness)
+# (--mode tropical: tropisches Fischerdorf am Meer im Sonnenuntergang bei leichter
+#  Bewölkung — große Bucht, Dschungel-Klima, G38-Weather-Sky mit tiefstehender Sonne)
 # Straßenbelag + nasse Straßen für die Stadt-Modi (Default: asphalt, trocken):
 #   --surface asphalt|cobble|paving|dirt   (cobble/paving rendern mit POM-Parallax)
 #   --wet                                  (dunkle reflektierende Straßen: SSR + roughness 0.12)
@@ -357,6 +361,7 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
 ![G31 Landschaft](../../images/g31_worldgen_landscape.png)
 ![G31 Straßenansicht am Hauptweiler](../../images/g31_worldgen_roads.png)
 ![G31 Dorf am Seeufer](../../images/g31_worldgen_village.png)
+![G31 Tropisches Fischerdorf am Meer im Sonnenuntergang bei leichter Bewölkung](../../images/g31_worldgen_tropical_sunset.png)
 ![G31 Panorama: bewaldete Landschaft mit WFC-Stadt am Fluss und Dorf am See, verbunden durch eine G38-Straße](../../images/g31_worldgen_panorama.png)
 ![G31 Stadt Übersicht](../../images/g31_worldgen_city.png)
 ![G31 Stadt Straßenebene](../../images/g31_worldgen_city_street.png)
