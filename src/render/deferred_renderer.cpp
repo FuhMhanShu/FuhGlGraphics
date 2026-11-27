@@ -460,7 +460,8 @@ bool DeferredRenderer::buildPostGraph() {
     for (const PostPass& cp : customPasses_) {
         const int ow = cp.atOutputSize ? width_ : iw;
         const int oh = cp.atOutputSize ? height_ : ih;
-        im.post.addResource(cp.output, ow, oh, cp.outputFormat);
+        const fuhgl::gl::GLenum fmt = cp.outputFormat ? cp.outputFormat : fuhgl::gl::GL_RGBA16F;
+        im.post.addResource(cp.output, ow, oh, fmt);
         std::vector<std::string> inputs;
         inputs.reserve(cp.inputs.size());
         for (const std::string& in : cp.inputs) inputs.push_back(in == "@chain" ? chain : in);

@@ -88,9 +88,13 @@ int main() {
     ge.materialId = 1;
     ge.localOffset = fuhgl::math::rotateX(-fuhgl::math::kPi * 0.5f);
 
-    auto addCrate = [&](const char* name, const fuhgl::math::Vec3& pos, const fuhgl::math::Vec3& albedo) {
-        fuhgl::render::Mesh crate;
-        fuhgl::render::shapes::box(crate, {0.5f, 0.5f, 0.5f}, albedo);
+    // meshes must outlive the scene nodes (addMesh stores the pointer) — keep them in
+    // main scope like the other smoke tests
+    fuhgl::render::Mesh crate1, crate2;
+    fuhgl::render::shapes::box(crate1, {0.5f, 0.5f, 0.5f}, {0.6f, 0.45f, 0.3f});
+    fuhgl::render::shapes::box(crate2, {0.5f, 0.4f, 0.5f}, {0.25f, 0.5f, 0.65f});
+    auto addCrate = [&](const char* name, fuhgl::render::Mesh& crate, const fuhgl::math::Vec3& pos,
+                        const fuhgl::math::Vec3& albedo) {
         scene::Node& node = scene.root().createChild(name);
         node.translation = pos;
         scene::MeshEntry& e = node.attach<scene::MeshComponent>().addMesh(&crate);
@@ -98,8 +102,8 @@ int main() {
         e.castShadow = false;
         e.materialId = 2;
     };
-    addCrate("crate1", {1.6f, 0.5f, 0.5f}, {0.6f, 0.45f, 0.3f});
-    addCrate("crate2", {-1.2f, 0.4f, -1.0f}, {0.25f, 0.5f, 0.65f});
+    addCrate("crate1", crate1, {1.6f, 0.5f, 0.5f}, {0.6f, 0.45f, 0.3f});
+    addCrate("crate2", crate2, {-1.2f, 0.4f, -1.0f}, {0.25f, 0.5f, 0.65f});
 
     scene.root().createChild("sun").attach<scene::LightComponent>().light =
         fuhgl::render::Light::directional({-0.3f, -1.f, -0.4f}, {1.f, 0.95f, 0.85f}, 2.f);

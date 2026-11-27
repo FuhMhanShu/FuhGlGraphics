@@ -164,7 +164,10 @@ public:
                                           ///< the placeholder "@chain" resolves to the output of the
                                           ///< previous (enabled) pass in the final chain ("ldr" first)
         std::string output;               ///< owned output resource name (required, unique)
-        fuhgl::gl::GLenum outputFormat = fuhgl::gl::GL_RGBA16F; ///< internal format of the output resource
+        /// @brief Internal format of the output resource. 0 = default RGBA16F (resolved in
+        /// the .cpp — the header must not spell GL_* constants: Qt's qopengl.h defines them
+        /// as macros and would break every Qt TU including this header).
+        fuhgl::gl::GLenum outputFormat = 0;
         bool atOutputSize = true;         ///< true: output-size resource (like "up"/"dof"), false: internal render-scale size
         bool enabled = true;              ///< runtime toggle (see setPostPassEnabled)
         /// @brief Draw callback. All declared inputs are already bound at units 0..n-1
