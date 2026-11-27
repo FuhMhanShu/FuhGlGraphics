@@ -909,6 +909,161 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
         pm.scale = 0.4f + 1.2f * rng.nextf();
         w.rocks.push_back(std::move(pm));
     }
+
+    // 5. ambient life (G39): causal clutter scatter reads slope/flow/humidity/biome/road
+    //    mask/trees/buildings; life zones are derived from the same maps (lake -> birds,
+    //    strongest river -> fish, meadow -> insects, wet forest -> fireflies, dominant
+    //    biome -> ambient particles). The shared wind field is echoed for the app shader.
+    w.windParams = p.wind;
+    if (p.clutterCount > 0 && g >= 3) {
+        ClutterInput cin;
+        cin.heightmap = &w.heightmap;
+        cin.gridW = g;
+        cin.gridH = g;
+        cin.sizeX = p.worldSize;
+        cin.sizeZ = p.worldSize;
+        cin.heightScale = w.heightScale;
+        cin.waterLevel = waterN;
+        cin.flow = &w.flowmap;
+        cin.humidity = w.humidity.empty() ? nullptr : &w.humidity;
+        cin.biome = w.biome.empty() ? nullptr : &w.biome;
+        cin.roadMask = w.roadMask.empty() ? nullptr : &w.roadMask;
+        for (const auto& t : w.trees) cin.treeSpots.push_back({t.position.x, t.position.z});
+        cin.treeRadii.assign(w.trees.size(), 3.2f);
+        for (const auto& b : w.buildings) cin.buildingSpots.push_back({b.position.x, b.position.z});
+        ClutterGenParams cgp = p.clutterParams;
+        cgp.maxItems = p.clutterCount;
+        cgp.seed = p.seed ^ 0xC17u;
+        ClutterGenerator cg;
+        w.clutter = cg.generate(cin, cgp);
+    }
+    if (p.lifeZones) {
+        const std::size_t n = static_cast<std::size_t>(g) * g;
+        auto cellWorld2 = [&](int i, int j) {
+            return fuhgl::math::Vec2{(static_cast<float>(i) / (g - 1) - 0.5f) * p.worldSize,
+                                     (static_cast<float>(j) / (g - 1) - 0.5f) * p.worldSize};
+        };
+        // bird flock over the biggest water body (lake centroid inside the central basin)
+        if (waterN > 0.f) {
+            double sx = 0, sz = 0;
+            int cnt = 0;
+            const float searchR = p.worldSize * 0.45f;
+            for (int j = 0; j < g; ++j)
+                for (int i = 0; i < g; ++i) {
+                    if (w.heightmap[static_cast<std::size_t>(i) + g * j] >= waterN) continue;
+                    const auto xy = cellWorld2(i, j);
+                    if (std::hypot(xy.x, xy.y) > searchR) continue;
+                    sx += xy.x;
+                    sz += xy.y;
+                    ++cnt;
+                }
+            if (cnt > 0) {
+                LifeZone z;
+                z.kind = LifeZone::Kind::BirdFlock;
+                z.center = {static_cast<float>(sx / cnt), w.waterLevelWorld + 9.f,
+                            static_cast<float>(sz / cnt)};
+                z.radius = 26.f;
+                z.count = 24;
+                z.biome = 0; // ocean
+                w.lifeZones.push_back(z);
+            }
+        }
+        // fish school in the strongest river channel (max flow below the water level)
+        {
+            float bestFlow = 0.f;
+            int bi = -1, bj = -1;
+            for (int j = 1; j < g - 1; ++j)
+                for (int i = 1; i < g - 1; ++i) {
+                    const std::size_t idx = static_cast<std::size_t>(i) + g * j;
+                    if (w.heightmap[idx] >= waterN) continue;
+                    if (w.flowmap[idx] > bestFlow) { bestFlow = w.flowmap[idx]; bi = i; bj = j; }
+                }
+            if (bi >= 0 && bestFlow > 0.3f) {
+                const auto xy = cellWorld2(bi, bj);
+                LifeZone z;
+                z.kind = LifeZone::Kind::FishSchool;
+                z.center = {xy.x, std::max(0.5f, w.waterLevelWorld - 0.6f), xy.y};
+                z.radius = 5.f;
+                z.count = 40;
+                w.lifeZones.push_back(z);
+            }
+        }
+        // insect swarm + fireflies + ambient particles: pick representative land cells
+        auto pickCell = [&](auto pred, float minH) -> int {
+            int best = -1;
+            float bestScore = -1.f;
+            for (int j = 1; j < g - 1; ++j)
+                for (int i = 1; i < g - 1; ++i) {
+                    const std::size_t idx = static_cast<std::size_t>(i) + g * j;
+                    if (w.heightmap[idx] < waterN + minH) continue;
+                    if (!pred(idx)) continue;
+                    const float score = w.humidity.empty() ? w.heightmap[idx]
+                                                           : w.humidity[idx] * 0.5f + w.heightmap[idx] * 0.5f;
+                    if (score > bestScore) { bestScore = score; best = static_cast<int>(idx); }
+                }
+            return best;
+        };
+        const int meadowIdx = pickCell([&](std::size_t idx) {
+            return w.biome.empty() || w.biome[idx] == static_cast<unsigned char>(Biome::Grassland) ||
+                   w.biome[idx] == static_cast<unsigned char>(Biome::Forest);
+        }, 0.05f);
+        if (meadowIdx >= 0) {
+            const int i = meadowIdx % g, j = meadowIdx / g;
+            const auto xy = cellWorld2(i, j);
+            LifeZone z;
+            z.kind = LifeZone::Kind::InsectSwarm;
+            z.center = {xy.x, w.heightAt(xy.x, xy.y) + 2.5f, xy.y};
+            z.radius = 8.f;
+            z.count = 40;
+            z.biome = w.biome.empty() ? -1 : w.biome[meadowIdx];
+            w.lifeZones.push_back(z);
+        }
+        const int wetIdx = pickCell([&](std::size_t idx) {
+            return !w.biome.empty() && (w.biome[idx] == static_cast<unsigned char>(Biome::Forest) ||
+                                        w.biome[idx] == static_cast<unsigned char>(Biome::Jungle));
+        }, 0.05f);
+        if (wetIdx >= 0) {
+            const int i = wetIdx % g, j = wetIdx / g;
+            const auto xy = cellWorld2(i, j);
+            LifeZone z;
+            z.kind = LifeZone::Kind::Fireflies;
+            z.center = {xy.x, w.heightAt(xy.x, xy.y) + 1.2f, xy.y};
+            z.radius = 10.f;
+            z.count = 30;
+            z.biome = w.biome.empty() ? -1 : w.biome[wetIdx];
+            w.lifeZones.push_back(z);
+        }
+        // ambient particles for the dominant extreme biome: snow on ridges, sand in desert,
+        // leaves in forest, pollen over grassland
+        int ambIdx = -1;
+        for (int j = 1; j < g - 1 && ambIdx < 0; ++j)
+            for (int i = 1; i < g - 1; ++i) {
+                const std::size_t idx = static_cast<std::size_t>(i) + g * j;
+                if (!w.biome.empty() && w.biome[idx] == static_cast<unsigned char>(Biome::Snow) &&
+                    w.heightmap[idx] > 0.72f) { ambIdx = static_cast<int>(idx); break; }
+            }
+        if (ambIdx < 0)
+            ambIdx = pickCell([&](std::size_t idx) {
+                return !w.biome.empty() && (w.biome[idx] == static_cast<unsigned char>(Biome::Desert) ||
+                                            w.biome[idx] == static_cast<unsigned char>(Biome::Forest) ||
+                                            w.biome[idx] == static_cast<unsigned char>(Biome::Grassland));
+            }, 0.05f);
+        if (ambIdx >= 0) {
+            const int i = ambIdx % g, j = ambIdx / g;
+            const auto xy = cellWorld2(i, j);
+            const int b = w.biome.empty() ? -1 : w.biome[ambIdx];
+            const float hum = w.humidity.empty() ? 0.5f : w.humidity[ambIdx];
+            LifeZone z;
+            z.kind = LifeZone::Kind::AmbientParticles;
+            z.center = {xy.x, w.heightAt(xy.x, xy.y), xy.y};
+            z.radius = 28.f;
+            z.count = 120;
+            z.biome = b;
+            z.ambientKind = static_cast<int>(ambientKindFor(b, hum));
+            w.lifeZones.push_back(z);
+        }
+        (void)n;
+    }
 }
 /// @brief City: WFC layout over a ground plate; street cells get a sidewalk underlay + dark
 /// asphalt slab, block cells a concrete lot + a procedural house, plaza cells a lawn + park

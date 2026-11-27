@@ -9,6 +9,43 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G39 ambient life** (`procedural/clutter.{hpp,cpp}` + `procedural/lifegen.{hpp,cpp}`,
+  integrated as step 5 of the G31 landscape pipeline; design: `docs/AMBIENT_LIFE.md`,
+  tutorials `docs/{en,de}/tutorials/g39_ambient_life.md`):
+  - G39a `procedural::ClutterGenerator`: causal clutter scattering from the world data —
+    rockfall at cliff feet (slope map, nothing in the water), pebbles/driftwood in riverbeds
+    and reeds at the waterline (flow map + shore band), parent-child litter under every tree
+    (branches/cones/bark/leaf piles; mushrooms on the wet north side, humidity-weighted),
+    weeds/gravel/roof tiles/crates in a ring around buildings, weed tufts/gravel at the frayed
+    road-mask rim. Weighted poisson-disk sampling + high-frequency fbm cluster mask
+    (`clusterThreshold`) → nests instead of uniform scatter. Output `GeneratedWorld::clutter`
+    (kind + local mesh + placement, deterministic per seed); `WorldGenParams::clutterCount`
+    (default 700, 0 = off) + `clutterParams` for the per-kind budgets. The scatter runs after
+    the G38 road carving and reads the final terrain + road mask.
+  - G39b `procedural/lifegen.hpp`: shared 3D `WindField` (base flow + traveling sinus gust
+    fronts `gustWavelength`/`gustSpeed` + fbm turbulence — echoed as
+    `GeneratedWorld::windParams` so the app can mirror the same formula in the vertex shader
+    for grass/tree sway, so a gust sweeps through grass, branches and drifting leaves in
+    order), `BoidsSim` (separation/alignment/cohesion + wind advection + soft bounding sphere,
+    fixed-step deterministic) for bird flocks/fish schools, curl-noise `InsectSwarm`
+    (divergence-free tumbling paths), biome-mapped `AmbientParticleSim`
+    (`ambientKindFor`: desert/rock→sand, snow/taiga→snow dust, coast→spray, forest→leaves/
+    seeds, grassland→pollen) with respawn, and `LifeZone` descriptors that
+    `generateWorld(Landscape)` derives from the world maps (`WorldGenParams::lifeZones`):
+    bird flock at the lake centroid, fish school at the strongest sub-water flow, insect
+    swarm over a meadow/forest cell, fireflies in the wettest forest, ambient particles at a
+    dominant-biome cell.
+  - `examples/worldgen_screenshot` bakes the clutter into one static mesh (vertex colors per
+    kind) in landscape/village/panorama mode (village + panorama re-scatter on the flattened/
+    road-carved terrain via the final heightmap + road mask) and prints the life zones;
+    MCP `procedural_worldgen` gained a `clutterCount` param and attaches the baked clutter
+    mesh; reports `clutter`/`lifeZones` counts. New ground-level close-up shots
+    `<prefix>_clutter.png` (hamlet building/road rim, aimed at the nearest building-ring item)
+    and `<prefix>_shore.png` (densest flat reed nest at the waterline) are rendered by
+    `--mode both` and checked in as `docs/images/g31_worldgen_clutter.png` /
+    `g31_worldgen_shore.png` (referenced by the g39 tutorials).
+    Tests: `tests/test_procedural_clutter.cpp`, `tests/test_procedural_lifegen.cpp`,
+    `testLandscapeAmbientLife` in the worldgen suite (6,428,626 checks, 0 failures).
 - **G38 organic road/path network** (`procedural/roadgen.{hpp,cpp}`, integrated in the G31
   landscape pipeline; design: `docs/ROAD_GENERATION.md`, tutorials `docs/{en,de}/tutorials/g38_roads.md`):
   `procedural::RoadGenerator` routes a highway/country-road/desire-path hierarchy between

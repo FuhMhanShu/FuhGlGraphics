@@ -574,6 +574,61 @@ void testLandscapeSettlementsAndRoads() {
           w.roadDistanceAt(0.f, 0.f) + 1e9f); // sanity: finite
 }
 
+void testLandscapeAmbientLife() {
+    // default landscape: G39 clutter + life zones are part of the world
+    const WorldGenParams p = landscapeParams();
+    const GeneratedWorld w = generateWorld(p);
+    CHECK(!w.clutter.empty());
+    CHECK(w.clutter.size() <= static_cast<std::size_t>(p.clutterCount));
+    for (const auto& it : w.clutter) {
+        CHECK(it.mesh.vertexCount() > 0);
+        CHECK(static_cast<int>(it.kind) >= 0 && static_cast<int>(it.kind) <= 12);
+        CHECK(it.scale > 0.f);
+        CHECK(std::isfinite(it.position.x) && std::isfinite(it.position.y) &&
+              std::isfinite(it.position.z));
+        // land clutter sits on/above the terrain, riverbed clutter may sit in the bed
+        if (it.kind != ClutterKind::Pebble && it.kind != ClutterKind::Driftwood &&
+            it.kind != ClutterKind::Reed)
+            CHECK(it.position.y >= w.waterLevelWorld - 0.5f);
+    }
+    // litter spawns under trees (parent-child): some clutter within a tree's litter radius
+    int underTree = 0;
+    for (const auto& it : w.clutter)
+        for (const auto& t : w.trees)
+            if (std::hypot(it.position.x - t.position.x, it.position.z - t.position.z) < 4.f) {
+                ++underTree;
+                break;
+            }
+    CHECK(!w.trees.empty());
+    CHECK(underTree > 0);
+    // life zones: birds over water + fish in a river + insects + ambient particles
+    CHECK(!w.lifeZones.empty());
+    std::set<int> kinds;
+    for (const auto& z : w.lifeZones) {
+        kinds.insert(static_cast<int>(z.kind));
+        CHECK(z.count > 0 && z.radius > 0.f);
+        CHECK(std::isfinite(z.center.x) && std::isfinite(z.center.y) && std::isfinite(z.center.z));
+    }
+    CHECK(kinds.count(static_cast<int>(LifeZone::Kind::BirdFlock)) == 1);  // waterLevel > 0
+    CHECK(kinds.count(static_cast<int>(LifeZone::Kind::FishSchool)) == 1); // rivers carved
+    // wind params echoed
+    CHECK(w.windParams.baseSpeed > 0.f);
+    // determinism of clutter + life zones
+    const GeneratedWorld w2 = generateWorld(p);
+    CHECK(w2.clutter.size() == w.clutter.size());
+    for (std::size_t i = 0; i < w.clutter.size(); ++i)
+        CHECK(w2.clutter[i].kind == w.clutter[i].kind &&
+              w2.clutter[i].position.x == w.clutter[i].position.x &&
+              w2.clutter[i].mesh.vertices == w.clutter[i].mesh.vertices);
+    CHECK(w2.lifeZones.size() == w.lifeZones.size());
+    // off switches
+    WorldGenParams p0 = landscapeParams();
+    p0.clutterCount = 0;
+    p0.lifeZones = false;
+    const GeneratedWorld w0 = generateWorld(p0);
+    CHECK(w0.clutter.empty() && w0.lifeZones.empty());
+}
+
 } // namespace
 
 void runProceduralWorldgenTests() {
@@ -590,4 +645,5 @@ void runProceduralWorldgenTests() {
     testLandscapeClimateAndRivers();
     testLandscapeTerracing();
     testLandscapeSettlementsAndRoads();
+    testLandscapeAmbientLife();
 }
