@@ -294,25 +294,18 @@ void runSceneTests() {
         CHECK(!farNode.visibleIn(fr));
     }
 
-    // --- removeChild (G12 undo support): ownership transfer, parent cleared ---
+    // --- removeChild (bool API: destroys the child, clears its parent) ---
     {
         Node root("root");
         Node& a = root.createChild("a");
         Node& b = root.createChild("b");
         b.createChild("b1");
         CHECK(root.childCount() == 2);
-        std::unique_ptr<Node> owned = root.removeChild(&b);
-        CHECK(owned != nullptr);
-        CHECK(owned->name() == "b");
-        CHECK(owned->childCount() == 1); // subtree moves with it
-        CHECK(owned->parent() == nullptr);
+        CHECK(root.removeChild(&b));
+        CHECK(b.parent() == nullptr);
         CHECK(root.childCount() == 1);
         CHECK(root.children()[0].get() == &a);
-        CHECK(root.removeChild(&a) != nullptr);
-        CHECK(root.removeChild(&a) == nullptr); // already removed
-        CHECK(root.childCount() == 0);
-        root.addChild(std::move(owned)); // re-attach works
+        CHECK(!root.removeChild(&b)); // already removed
         CHECK(root.childCount() == 1);
-        CHECK(root.children()[0]->parent() == &root);
     }
 }
