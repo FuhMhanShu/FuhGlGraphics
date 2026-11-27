@@ -117,11 +117,11 @@ int main(int argc, char** argv) {
     scene.root().effects.enable(render::Effect::Tonemap);
     scene.root().effects.enable(render::Effect::CsmShadows);
     if (args.comic) scene.root().effects.enable(render::Effect::ComicLook);
+    // NOTE: params set on scene.root().effects would be overwritten by child nodes during
+    // fillFrame() ("deeper/later nodes win the params") — set them on the merged frame instead.
     scene.root().effects.params.shadowCenter = {0.f, 2.f, -4.f};
     scene.root().effects.params.shadowRadius = 18.f;
     scene.root().effects.params.shadowZFar = 60.f;
-    scene.root().effects.params.comicLevels = args.levels;
-    scene.root().effects.params.comicEdgeStrength = args.edge;
 
     // --- sky + renderer ---
     const fuhgl::math::Vec3 skyTop{0.16f, 0.32f, 0.66f}, skyHorizon{0.92f, 0.84f, 0.66f};
@@ -152,6 +152,8 @@ int main(int argc, char** argv) {
             frame.effects.disable(render::Effect::CsmShadows);
         }
         if (!args.comic) frame.effects.disable(render::Effect::ComicLook);
+        frame.effects.params.comicLevels = args.levels;
+        frame.effects.params.comicEdgeStrength = args.edge;
         frame.effects.applyTo(renderer);
         frame.view.fogColor = skyHorizon;
         frame.view.fogDensity = 0.0012f;
