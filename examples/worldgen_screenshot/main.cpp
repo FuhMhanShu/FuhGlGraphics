@@ -1615,19 +1615,19 @@ int main(int argc, char** argv) {
                            world.bushes.end());
         world.rocks.erase(std::remove_if(world.rocks.begin(), world.rocks.end(), notInVillage),
                           world.rocks.end());
-        // beach camera spot west of the village: the lowest dry-land cell on the beach
-        // strip (2D scan, the land strip west of the bay is narrow), >= 8 wu west of the
-        // village center so no house stands in front of the lens (houses are at gx >= 0)
-        float camX = vc.x - 16.f, camZ = vc.y + 10.f, camGround = 1e9f;
-        for (float dz = 4.f; dz <= 20.f; dz += 8.f)
-            for (float x = vc.x - 28.f; x <= vc.x - 8.f; x += 2.f) {
+        // beach camera spot well west of the village (>= 22 wu from the village center, so
+        // the houses are clearly midground and none blocks the lens): the lowest dry-land
+        // cell on the beach strip (2D scan, the land strip west of the bay is narrow)
+        float camX = vc.x - 30.f, camZ = vc.y + 10.f, camGround = 1e9f;
+        for (float dz = 4.f; dz <= 24.f; dz += 8.f)
+            for (float x = vc.x - 48.f; x <= vc.x - 22.f; x += 2.f) {
                 const float gy = world.heightAt(x, vc.y + dz);
                 if (gy < world.waterLevelWorld + 0.4f) continue; // stay on dry land
                 if (gy < camGround) { camGround = gy; camX = x; camZ = vc.y + dz; }
             }
         if (camGround > 1e8f) { // no dry cell: hover just above the waterline
             camGround = world.waterLevelWorld;
-            camX = vc.x - 12.f; camZ = vc.y + 10.f;
+            camX = vc.x - 26.f; camZ = vc.y + 10.f;
         }
         // keep a view corridor from the village toward the sea/sun (east) free of trees,
         // so the low sun and its god rays stay visible over the rooftops
@@ -1933,7 +1933,6 @@ int main(int argc, char** argv) {
         scene.root().effects.enable(render::Effect::LensFlare); // glow/ghosts/streak at the sun
         scene.root().effects.enable(render::Effect::Anamorphic);
         scene.root().effects.enable(render::Effect::ChromaticAberration);
-        scene.root().effects.enable(render::Effect::Dof);      // gentle bokeh, focus on the village
         enableWeathering(scene, plateauY, vctx.humidity, vctx.soilColor);
         // two warm lantern point lights in the village square (the directional sun comes
         // from the weather state; point lights survive WeatherSystem::applyTo)
@@ -1950,9 +1949,6 @@ int main(int argc, char** argv) {
         renderer.godRays.samples = 48;
         renderer.lensFlareStrength = 0.7f;
         renderer.anamorphicStrength = 0.4f;
-        renderer.dofFocusDist = 24.f; // focus on the village; beach/sea blur only softly
-        renderer.dofStrength = 4.f;
-        renderer.dofMaxCoC = 8.f;
         scene.root().effects.params.exposure = 1.55f; // the sun at the horizon dims the scene
         scene.root().effects.params.taaBlend = 0.08f;
         scene.root().effects.params.shadowCenter = {vc.x, plateauY, vc.y};
@@ -1968,8 +1964,8 @@ int main(int argc, char** argv) {
 
         // beach vantage west of the village at sand level, looking east and only slightly
         // down: beach in the foreground, village midground, sea + low sun beyond
-        cam.position = {camX, camGround + 2.6f, camZ};
-        aimAt(cam, {vc.x + 10.f, world.waterLevelWorld + 0.8f, vc.y - 2.f});
+        cam.position = {camX, camGround + 3.0f, camZ};
+        aimAt(cam, {vc.x + 12.f, world.waterLevelWorld + 1.5f, vc.y});
         const std::string tPath = args.prefix + "_tropical_sunset.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, tPath,
                          &water->surface, envUse, &wcomp.system, 20.f)) {

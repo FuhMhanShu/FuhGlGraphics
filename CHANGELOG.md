@@ -18,8 +18,8 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   drives the sun light, the `Effect::Sky` procedural sky and the volumetric clouds via
   `DeferredRenderer::render(..., frame.weather)`. Full framework effect stack: HDR chain +
   ACES tonemap, CSM + contact shadows, IBL, HBAO, SSR, bloom, volumetric fog, god rays,
-  lens flare + anamorphic streaks, GI, subsurface scattering, wetness, gentle DoF and
-  chromatic aberration. The CI docs-screenshots job renders the same shot; the G31
+  lens flare + anamorphic streaks, GI, subsurface scattering, wetness and chromatic
+  aberration. The CI docs-screenshots job renders the same shot; the G31
   tutorials (en/de) embed it.
 - **G12 P5 polishing** (`tools/asset_creator/`, design: `docs/ASSET_CREATOR.md` §9): 3D gizmo
   on the selected node — `GizmoOverlay` (`gizmo.{hpp,cpp}`) renders translate/rotate/scale
