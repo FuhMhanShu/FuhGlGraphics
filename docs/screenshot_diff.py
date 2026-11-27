@@ -30,6 +30,8 @@ def read_png_rgba(path):
     bit_depth = color_type = None
     interlace = 0
     idat = bytearray()
+    plte = bytearray()  # palette (color_type 3, e.g. after optipng recompression)
+    trns = bytearray()
     while pos < len(data):
         (length,) = struct.unpack(">I", data[pos : pos + 4])
         ctype = data[pos + 4 : pos + 8]
@@ -38,12 +40,16 @@ def read_png_rgba(path):
             width, height, bit_depth, color_type, _comp, _filt, interlace = struct.unpack(">IIBBBBB", chunk)
         elif ctype == b"IDAT":
             idat += chunk
+        elif ctype == b"PLTE":
+            plte += chunk
+        elif ctype == b"tRNS":
+            trns += chunk
         elif ctype == b"IEND":
             break
         pos += 12 + length
     if width is None or bit_depth != 8 or interlace != 0:
         raise ValueError(f"{path}: unsupported PNG (bit_depth={bit_depth}, interlace={interlace})")
-    channels = {0: 1, 2: 3, 4: 2, 6: 4}[color_type]
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[color_type]  # 3 = palette: 1 index byte/px
     raw = zlib.decompress(bytes(idat))
     stride = width * channels
     out = bytearray(width * height * 4)
@@ -75,7 +81,11 @@ def read_png_rgba(path):
         for x in range(width):
             so = x * channels
             do = (y * width + x) * 4
-            if channels == 4:
+            if color_type == 3:  # palette index -> RGBA via PLTE/tRNS
+                idx = line[so] * 3
+                out[do : do + 3] = plte[idx : idx + 3]
+                out[do + 3] = trns[line[so]] if line[so] < len(trns) else 255
+            elif channels == 4:
                 out[do : do + 4] = line[so : so + 4]
             elif channels == 3:
                 out[do : do + 3] = line[so : so + 3]
