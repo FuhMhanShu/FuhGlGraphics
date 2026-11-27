@@ -1551,10 +1551,10 @@ int main(int argc, char** argv) {
         p.erosionDroplets = 3000;
         p.thermalPasses = 3;
         p.riverCount = 6;
-        p.treeCount = 600;          // humid shore -> jungle biome -> broadleaf G37 trees
-        p.bushCount = 500;
+        p.treeCount = 900;          // humid shore -> jungle biome -> dense broadleaf G37 trees
+        p.bushCount = 700;
         p.rockCount = 40;
-        p.grassBlades = 12000;
+        p.grassBlades = 18000;
         p.treeMinDist = 5.f;
         p.settlementCount = 0;      // the fishing village is placed explicitly below
         p.clutterCount = 0;         // G39a: re-scattered below on the flattened beach plateau
@@ -1613,9 +1613,24 @@ int main(int argc, char** argv) {
                            world.bushes.end());
         world.rocks.erase(std::remove_if(world.rocks.begin(), world.rocks.end(), notInVillage),
                           world.rocks.end());
+        // beach camera spot west of the village: the lowest dry-sand cell on the beach
+        // strip, at least 14 wu west of the village center so no house stands in front of
+        // the lens (houses are placed at gx >= 0, i.e. on the sea side of vc)
+        float camX = vc.x - 18.f, camZ = vc.y + 10.f, camGround = 1e9f;
+        if (world.heightAt(camX, camZ) < world.waterLevelWorld + 0.3f) {
+            // preferred spot is in the water: take the lowest dry-sand cell on the strip
+            for (float x = vc.x - 34.f; x <= vc.x - 12.f; x += 2.f) {
+                const float gy = world.heightAt(x, camZ);
+                if (gy < world.waterLevelWorld + 0.3f) continue; // stay on dry sand
+                if (gy < camGround) { camGround = gy; camX = x; }
+            }
+            if (camGround > 1e8f)
+                camGround = std::max(world.heightAt(camX, camZ), world.waterLevelWorld);
+        } else {
+            camGround = world.heightAt(camX, camZ);
+        }
         // keep trees clear of the camera line (a tree crossing the near plane renders as a
         // green star blob); the beach camera sits west of the village looking east
-        const float camX = vc.x - 30.f, camZ = vc.y + 10.f;
         world.trees.erase(std::remove_if(world.trees.begin(), world.trees.end(),
                                          [&](const procedural::PlacedMesh& pm) {
                                              return std::hypot(pm.position.x - camX,
@@ -1788,9 +1803,11 @@ int main(int argc, char** argv) {
                 roof.materialId = 6;
             }
         };
-        for (int gz = -2; gz <= 2; ++gz)
-            for (int gx = -1; gx <= 2; ++gx) {
-                if (nextr() < 0.3f) continue;
+        // houses only on the sea side of the village center (gx >= 0), so none stands
+        // between the beach camera and the village
+        for (int gz = -3; gz <= 3; ++gz)
+            for (int gx = 0; gx <= 2; ++gx) {
+                if (nextr() < 0.2f) continue;
                 const float hx = vc.x + gx * 7.f + (nextr() - 0.5f) * 2.f;
                 const float hz = vc.y + gz * 7.f + (nextr() - 0.5f) * 2.f;
                 if (std::hypot(hx - vc.x, hz - vc.y) > vr - 4.f) continue;
@@ -1810,7 +1827,7 @@ int main(int argc, char** argv) {
             }
         // a ring of broadleaf trees around the village clearing
         procedural::PlantGenerator plantGen;
-        for (int t = 0; t < 16; ++t) {
+        for (int t = 0; t < 24; ++t) {
             const float ang = nextr() * 2.f * fuhgl::math::kPi;
             const float rad = vr + 3.f + nextr() * 8.f;
             const float tx = vc.x + std::cos(ang) * rad, tz = vc.y + std::sin(ang) * rad;
@@ -1839,11 +1856,11 @@ int main(int argc, char** argv) {
         scene::WeatherComponent& wcomp =
             scene.root().createChild("weather").attach<scene::WeatherComponent>();
         wcomp.system = weather::WeatherSystem(args.seed ^ 0x7A0Fu);
-        wcomp.system.setTimeOfDay(17.9f); // sun ~1.6 deg above the horizon toward +X, over the sea
+        wcomp.system.setTimeOfDay(17.98f); // sun ~0.3 deg above the horizon toward +X, over the sea
         weather::WeatherParams wp = weather::presetFor(weather::WeatherType::PartlyCloudy);
-        wp.cloudCoverage = 0.42f;  // light cloud cover
-        wp.cloudDensity = 0.65f;
-        wp.fogDensity = 0.0012f;
+        wp.cloudCoverage = 0.38f;  // light cloud cover
+        wp.cloudDensity = 0.55f;   // thin clouds: the volumetric layer must not wash out the dusk
+        wp.fogDensity = 0.0009f;   // clearer air -> less washed-out distance
         wp.sunVisibility = 1.f;
         wp.windSpeed = 2.5f;
         wcomp.system.setParams(wp);
@@ -1867,29 +1884,47 @@ int main(int argc, char** argv) {
         scene.root().createChild("camera").attach<scene::CameraComponent>().camera = &cam;
         scene.root().effects.enable(render::Effect::Taa);
         scene.root().effects.enable(render::Effect::Upscale);
-        scene.root().effects.enable(render::Effect::Tonemap);
+        scene.root().effects.enable(render::Effect::Tonemap); // HDR chain -> ACES (HDR stays on)
         scene.root().effects.enable(render::Effect::CsmShadows);
         scene.root().effects.enable(render::Effect::Ibl);
         scene.root().effects.enable(render::Effect::Sky);
         scene.root().effects.enable(render::Effect::VolumetricFog);
         scene.root().effects.enable(render::Effect::Water);
         scene.root().effects.enable(render::Effect::Bloom);
+        scene.root().effects.enable(render::Effect::Hbao);
+        scene.root().effects.enable(render::Effect::Ssr);      // glossy wet sand + water
+        scene.root().effects.enable(render::Effect::Dof);      // bokeh around the village
+        scene.root().effects.enable(render::Effect::LensFlare); // glow/ghosts/streak at the sun
+        scene.root().effects.enable(render::Effect::Anamorphic);
+        scene.root().effects.enable(render::Effect::ChromaticAberration);
         enableWeathering(scene, plateauY, vctx.humidity, vctx.soilColor);
-        scene.root().effects.params.exposure = 1.4f;
+        // crepuscular god rays toward the low sun (tonemap pass)
+        renderer.godRays.enabled = true;
+        renderer.godRays.strength = 0.35f;
+        renderer.godRays.decay = 0.95f;
+        renderer.godRays.samples = 48;
+        renderer.dofFocusDist = 24.f; // focus on the village, beach/sea blur softly
+        renderer.dofStrength = 6.f;
+        renderer.dofMaxCoC = 12.f;
+        renderer.lensFlareStrength = 0.7f;
+        renderer.anamorphicStrength = 0.4f;
+        scene.root().effects.params.exposure = 1.35f;
         scene.root().effects.params.taaBlend = 0.08f;
         scene.root().effects.params.shadowCenter = {vc.x, plateauY, vc.y};
         scene.root().effects.params.shadowRadius = 140.f;
         scene.root().effects.params.shadowZNear = 1.f;
         scene.root().effects.params.shadowZFar = 500.f;
-        renderer.bloomThreshold = 0.85f; // the low sun disk + its halo glow
-        renderer.bloomStrength = 0.9f;
-        renderer.volumetricSteps = 24;
-        renderer.volumetricMaxDist = 300.f;
+        renderer.bloomThreshold = 1.0f; // only the low sun disk + its halo glow
+        renderer.bloomStrength = 0.7f;
+        renderer.volumetricSteps = 16;
+        renderer.volumetricMaxDist = 220.f;
+        renderer.ssrMaxSteps = 16;
+        renderer.ssrMaxDist = 45.f;
 
-        // beach vantage west of the village looking east and slightly down: village close
-        // in the midground, beach in the foreground, sea and the low sun beyond
-        cam.position = {vc.x - 16.f, plateauY + 8.f, vc.y + 12.f};
-        aimAt(cam, {vc.x + 12.f, plateauY + 2.f, vc.y - 2.f});
+        // beach vantage west of the village at sand level, looking east and only slightly
+        // down: beach in the foreground, village midground, sea + low sun beyond
+        cam.position = {camX, camGround + 2.6f, camZ};
+        aimAt(cam, {vc.x + 10.f, world.waterLevelWorld + 0.8f, vc.y - 2.f});
         const std::string tPath = args.prefix + "_tropical_sunset.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, tPath,
                          &water->surface, envUse, &wcomp.system, 16.f)) {

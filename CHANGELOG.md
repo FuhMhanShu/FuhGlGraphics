@@ -13,10 +13,12 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   `docs/images/g31_worldgen_tropical_sunset.png` — a tropical seaside fishing village at
   sunset with light cloud cover. One big sea bay + a flattened beach plateau from
   `procedural::generateWorld` (hot/humid shore climate → jungle vegetation), Village-style
-  houses with dusk-lit windows, and a G38 `WeatherComponent` (17.9 h, partly cloudy) that
+  houses with dusk-lit windows, and a G38 `WeatherComponent` (~18 h, partly cloudy) that
   drives the sun light, the `Effect::Sky` procedural sky and the volumetric clouds via
-  `DeferredRenderer::render(..., frame.weather)`. The CI docs-screenshots job renders the
-  same shot; the G31 tutorials (en/de) embed it.
+  `DeferredRenderer::render(..., frame.weather)`. Full effect stack: HDR chain + ACES
+  tonemap, CSM shadows, IBL, HBAO, SSR, bloom, volumetric fog, god rays, lens flare +
+  anamorphic streaks, DoF and chromatic aberration. The CI docs-screenshots job renders
+  the same shot; the G31 tutorials (en/de) embed it.
 - **G12 P5 polishing** (`tools/asset_creator/`, design: `docs/ASSET_CREATOR.md` §9): 3D gizmo
   on the selected node — `GizmoOverlay` (`gizmo.{hpp,cpp}`) renders translate/rotate/scale
   parts (arrows/rings/center cube from FuhGLCore solids, emissive flat colors) as extra draw
