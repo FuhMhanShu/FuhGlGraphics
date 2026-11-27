@@ -23,7 +23,18 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   animation / `Space`): every `scene::AnimationComponent` player is advanced per painted
   frame with continuous re-rendering; the node TRS captured at play start is restored on
   stop. Docs: `docs/ASSET_CREATOR.md`, `docs/REQUIREMENTS.md` (G12), G12 tutorials en/de,
-  `i18n/asset_creator_de.ts`. Open remainder of P5: glb export.
+  `i18n/asset_creator_de.ts`.
+- **G12 P5 — glb export**: new `io::exportSceneGlb` (`include/fuhglgraphics/io/glb_export.hpp`,
+  `src/io/glb_export.cpp`, pure CPU, no GL): exports a `scene::Scene` as glTF 2.0 binary —
+  nodes (name + TRS + children; one child node per mesh entry carrying the entry's
+  `localOffset` as TRS), meshes (interleaved POSITION/NORMAL/COLOR_0/TEXCOORD_0 + uint32
+  indices, POSITION min/max) and pbrMetallicRoughness materials from the entry params.
+  Entries without CPU `meshData` are skipped and counted. Round-trips through `io::loadGltf`
+  (unit test in `tests/test_io.cpp`: export → load → mesh/material/node checks + skip count +
+  error path). Asset creator: File → "Export glTF (.glb)..." (no GL context needed); shape
+  nodes now keep CPU `meshData` in the document arena so they export too. Docs:
+  `docs/ASSET_CREATOR.md`, `docs/REQUIREMENTS.md` (G12), G12 tutorials en/de,
+  `i18n/asset_creator_de.ts`.
 - **G38 weather system — renderer side (A3–A9)** (`weather/weather.hpp` core was A2; design:
   `docs/WEATHER_SYSTEM.md`, tutorials `docs/{en,de}/tutorials/g38_weather.md`): new
   `render::Effect::Sky` + `render::Effect::Lightning` (kEffectCount 28 → 30) with a shared

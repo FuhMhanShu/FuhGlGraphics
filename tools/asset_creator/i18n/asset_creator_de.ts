@@ -131,6 +131,26 @@
         <source>generated %1 thumbnails</source>
         <translation>%1 Vorschaubilder erzeugt</translation>
     </message>
+    <message>
+        <source>Export glTF (.glb)...</source>
+        <translation>glTF exportieren (.glb)...</translation>
+    </message>
+    <message>
+        <source>Export scene as glTF (.glb)</source>
+        <translation>Szene als glTF exportieren (.glb)</translation>
+    </message>
+    <message>
+        <source>glTF binary (*.glb)</source>
+        <translation>glTF-Binärdatei (*.glb)</translation>
+    </message>
+    <message>
+        <source>Export failed</source>
+        <translation>Export fehlgeschlagen</translation>
+    </message>
+    <message>
+        <source>exported %1 (%2 mesh-less entries skipped)</source>
+        <translation>%1 exportiert (%2 Einträge ohne Mesh-Daten übersprungen)</translation>
+    </message>
 </context>
 <context>
     <name>assetcreator::ChatPanel</name>

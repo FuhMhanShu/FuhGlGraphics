@@ -2,6 +2,7 @@
 
 #include "thumbnailer.hpp"
 
+#include <fuhglgraphics/io/glb_export.hpp>
 #include <fuhglgraphics/version.hpp>
 
 #include <QAction>
@@ -96,12 +97,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* aOpen = fileMenu->addAction(tr("&Open..."));
     auto* aSave = fileMenu->addAction(tr("&Save"));
     auto* aSaveAs = fileMenu->addAction(tr("Save &As..."));
+    auto* aExportGlb = fileMenu->addAction(tr("Export glTF (.glb)...")); // P5
     fileMenu->addSeparator();
     auto* aExit = fileMenu->addAction(tr("E&xit"));
     connect(aNew, &QAction::triggered, this, &MainWindow::onNew);
     connect(aOpen, &QAction::triggered, this, &MainWindow::onOpen);
     connect(aSave, &QAction::triggered, this, &MainWindow::onSave);
     connect(aSaveAs, &QAction::triggered, this, &MainWindow::onSaveAs);
+    connect(aExportGlb, &QAction::triggered, this, &MainWindow::onExportGlb);
     connect(aExit, &QAction::triggered, this, &QWidget::close);
 
     auto* editMenu = menuBar()->addMenu(tr("&Edit"));
@@ -247,6 +250,20 @@ void MainWindow::onSaveAs() {
     QString err;
     if (!doc_->save(path, &err)) QMessageBox::warning(this, tr("Save failed"), err);
     refreshTitle();
+}
+
+void MainWindow::onExportGlb() {
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Export scene as glTF (.glb)"),
+        doc_->projectDir() + "/" + doc_->projectName() + ".glb", tr("glTF binary (*.glb)"));
+    if (path.isEmpty()) return;
+    int skipped = 0;
+    std::string err;
+    if (!io::exportSceneGlb(doc_->scene(), path.toStdString(), &skipped, &err))
+        QMessageBox::warning(this, tr("Export failed"), QString::fromStdString(err));
+    else
+        statusBar()->showMessage(
+            tr("exported %1 (%2 mesh-less entries skipped)").arg(path).arg(skipped), 8000);
 }
 
 void MainWindow::onConnectMcp() {

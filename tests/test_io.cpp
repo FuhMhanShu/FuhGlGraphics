@@ -5,8 +5,13 @@
 #include "test_framework.hpp"
 #include "gltf_fixture.hpp"
 
+#include <fuhglgraphics/io/glb_export.hpp>
 #include <fuhglgraphics/io/gltf.hpp>
 #include <fuhglgraphics/io/json.hpp>
+#include <fuhglgraphics/scene/component.hpp>
+#include <fuhglgraphics/scene/scene.hpp>
+
+#include <fuhgl/render/solid.hpp>
 
 #include <cmath>
 #include <cstdio>
@@ -255,11 +260,67 @@ void testJsonWrite() {
     CHECK(writeJson(empty, 2) == "{}");
 }
 
+void testGlbExport() {
+    using namespace fuhglgraphics;
+    scene::Scene sc;
+    auto& a = sc.root().createChild("box1");
+    a.translation = {1.f, 2.f, 3.f};
+    a.scale = {2.f, 2.f, 2.f};
+    const fuhgl::render::MeshData md =
+        fuhgl::render::makeCube({0.5f, 0.5f, 0.5f})->buildMeshData(6, {1.f, 0.f, 0.f});
+    scene::MeshEntry& e = a.attach<scene::MeshComponent>().addMesh(nullptr);
+    e.meshData = &md; // export works off the CPU meshData (no GL)
+    e.albedo = {0.2f, 0.4f, 0.6f};
+    e.roughness = 0.3f;
+    auto& sub = a.createChild("sub"); // mesh-less child node
+    (void)sub;
+    auto& meshless = sc.root().createChild("meshless");
+    meshless.attach<scene::MeshComponent>().addMesh(nullptr); // no meshData -> skipped
+
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "fgg-test-io";
+    std::filesystem::create_directories(dir);
+    const std::string path = (dir / "export_test.glb").string();
+
+    int skipped = -1;
+    std::string err;
+    CHECK(exportSceneGlb(sc, path, &skipped, &err));
+    CHECK(err.empty());
+    CHECK(skipped == 1);
+
+    // round-trip through the G4 loader
+    GltfAsset asset;
+    std::string lerr;
+    CHECK(loadGltf(path, asset, &lerr));
+    CHECK(asset.meshes.size() == 1);
+    CHECK(asset.meshes[0].primitives.size() == 1);
+    CHECK(asset.meshes[0].primitives[0].vertexCount() == md.vertexCount());
+    CHECK(asset.materials.size() == 1);
+    CHECK_NEAR(asset.materials[0].baseColorFactor.x, 0.2, 1e-6);
+    CHECK_NEAR(asset.materials[0].roughnessFactor, 0.3, 1e-6);
+    CHECK(asset.nodes.size() == 5); // root + box1 + box1#1 (mesh child) + sub + meshless
+    const GltfNode* n = nullptr;
+    for (const auto& x : asset.nodes)
+        if (x.name == "box1") n = &x;
+    CHECK(n != nullptr);
+    if (n) {
+        CHECK_NEAR(n->translation.x, 1.f, 1e-6);
+        CHECK_NEAR(n->translation.y, 2.f, 1e-6);
+        CHECK_NEAR(n->scale.x, 2.f, 1e-6);
+        CHECK(n->children.size() == 2); // mesh child + "sub"
+    }
+    std::filesystem::remove(path);
+
+    // error path: unwritable target
+    CHECK(!exportSceneGlb(sc, "/nonexistent-dir-xyz/out.glb", nullptr, &err));
+    CHECK(!err.empty());
+}
+
 void runIoTests() {
     testJson();
     testJsonWrite();
     testBase64();
     testGltf();
+    testGlbExport();
 #ifdef FUHGLGRAPHICS_WITH_QT
     testGltfImageDecode();
 #endif
