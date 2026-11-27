@@ -39,9 +39,13 @@ All notable changes to FuhGlGraphics are documented here. The format follows
     kind) in landscape/village/panorama mode (village + panorama re-scatter on the flattened/
     road-carved terrain via the final heightmap + road mask) and prints the life zones;
     MCP `procedural_worldgen` gained a `clutterCount` param and attaches the baked clutter
-    mesh; reports `clutter`/`lifeZones` counts. Tests: `tests/test_procedural_clutter.cpp`,
-    `tests/test_procedural_lifegen.cpp`, `testLandscapeAmbientLife` in the worldgen suite
-    (6,427,493 checks, 0 failures).
+    mesh; reports `clutter`/`lifeZones` counts. New ground-level close-up shots
+    `<prefix>_clutter.png` (hamlet building/road rim, aimed at the nearest building-ring item)
+    and `<prefix>_shore.png` (densest flat reed nest at the waterline) are rendered by
+    `--mode both` and checked in as `docs/images/g31_worldgen_clutter.png` /
+    `g31_worldgen_shore.png` (referenced by the g39 tutorials).
+    Tests: `tests/test_procedural_clutter.cpp`, `tests/test_procedural_lifegen.cpp`,
+    `testLandscapeAmbientLife` in the worldgen suite (6,428,626 checks, 0 failures).
 - **G38 organic road/path network** (`procedural/roadgen.{hpp,cpp}`, integrated in the G31
   landscape pipeline; design: `docs/ROAD_GENERATION.md`, tutorials `docs/{en,de}/tutorials/g38_roads.md`):
   `procedural::RoadGenerator` routes a highway/country-road/desire-path hierarchy between
