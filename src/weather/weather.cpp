@@ -4,6 +4,7 @@
 #include <fuhglgraphics/weather/weather.hpp>
 
 #include <fuhgl/render/scene.hpp>
+#include <fuhglgraphics/procedural/lsystem.hpp>
 #include <fuhglgraphics/scene/effects.hpp>
 
 #include <cmath>
@@ -89,7 +90,7 @@ WeatherParams presetFor(WeatherType type) {
     return p;
 }
 
-WeatherSystem::WeatherSystem(std::uint32_t seed) : rng_(seed ? seed : 1u) {
+WeatherSystem::WeatherSystem(std::uint32_t seed) : rng_(seed ? seed : 1u), seed_(seed ? seed : 1u) {
     targetParams_ = params_ = presetFor(targetType_);
     scheduleNextFlash();
 }
@@ -282,17 +283,105 @@ void WeatherSystem::applyTo(fuhgl::render::SceneView& view) const {
     if (!found && inten > 0.f) view.lights.push_back(sunLight());
 }
 
-void WeatherSystem::applyTo(fuhglgraphics::scene::EffectParams& p) const {
+float WeatherSystem::exposureScale() const {
+    // storms darken the frame slightly
+    return 1.f - 0.08f * params_.cloudCoverage - 0.22f * params_.stormIntensity;
+}
+
+void WeatherSystem::applyVolumetricParams(float& density, float& cloudiness, float& strength) const {
     const WeatherParams& w = params_;
     // G21 volumetric fog/clouds: coverage drives cloudiness, density*coverage drives density
-    p.volumetricCloudiness = w.cloudCoverage;
-    p.volumetricDensity = 0.004f + 0.04f * w.cloudDensity * (0.3f + 0.7f * w.cloudCoverage) + w.fogDensity;
-    p.volumetricStrength = 0.7f + 0.5f * w.cloudCoverage;
+    cloudiness = w.cloudCoverage;
+    density = 0.004f + 0.04f * w.cloudDensity * (0.3f + 0.7f * w.cloudCoverage) + w.fogDensity;
+    strength = 0.7f + 0.5f * w.cloudCoverage;
+}
+
+void WeatherSystem::applyTo(fuhglgraphics::scene::EffectParams& p) const {
+    const WeatherParams& w = params_;
+    applyVolumetricParams(p.volumetricDensity, p.volumetricCloudiness, p.volumetricStrength);
     // G22 wetness follows the lagged ground wetness
     p.wetnessAmount = w.wetness;
     p.wetnessPuddle = clamp(0.4f + 0.6f * w.rainIntensity, 0.f, 1.f);
-    // storms darken the frame slightly
-    p.exposure = 1.f - 0.08f * w.cloudCoverage - 0.22f * w.stormIntensity;
+    p.exposure = exposureScale();
+}
+
+particles::EmitterConfig rainEmitterConfig(const WeatherParams& w) {
+    particles::EmitterConfig cfg;
+    // rain shaft above/around the scene center: streaks fall along -Y and drift apart with
+    // the spread cone + wind, so the camera looks through a diffuse field of streaks
+    cfg.position = {0.f, 20.f, -2.f};
+    cfg.direction = {0.f, -1.f, 0.f};
+    cfg.speed = 22.f;                 // fast fall
+    cfg.spread = 0.28f;               // cone width -> lateral drift while falling
+    cfg.rate = 40.f + 1400.f * clamp(w.rainIntensity, 0.f, 1.f); // spawn proportional to rain
+    cfg.lifetime = 1.1f;
+    cfg.size = 0.06f;                 // thin streak billboard (visible at screenshot distance)
+    cfg.grow = 0.02f;
+    cfg.color = {0.66f, 0.74f, 0.86f};
+    cfg.alpha = 0.25f + 0.40f * clamp(w.rainIntensity, 0.f, 1.f);
+    cfg.gravity = -6.f;               // accelerating drizzle
+    const float wd = w.windDirection; // radians in the XZ plane, 0 = +Z
+    cfg.wind = {std::sin(wd) * w.windSpeed * 0.6f, 0.f, std::cos(wd) * w.windSpeed * 0.6f};
+    cfg.drag = 0.15f;
+    cfg.blend = particles::BlendMode::Alpha;
+    cfg.flame = false;
+    return cfg;
+}
+
+fuhgl::render::MeshData makeLightningBolt(std::uint32_t seed, const fuhgl::math::Vec3& dir,
+                                          float length) {
+    // G26 L-system grown along +Y with unit step, then normalized so the bolt spans exactly
+    // `length` along its main axis and rotated onto `dir` (bolt from cloud toward ground);
+    // the seed picks the rule variant + angle jitter, so each strike looks different
+    procedural::LSystem ls;
+    ls.axiom = "F";
+    static const char* kVariants[3] = {"FF+[+\\&F][-&/F]F", "F[+&F][-\\F]&F", "FF[&+F][\\-F]-F"};
+    ls.rules = {{'F', kVariants[seed % 3]}};
+    ls.iterations = 3;
+    ls.angleDeg = 18.f + static_cast<float>(seed % 5u); // 18..22 deg jitter
+    ls.step = 1.f;
+    ls.radius0 = 0.03f + 0.006f * static_cast<float>(seed % 3u);
+    ls.radiusTaper = 0.62f;
+    ls.sides = 5;
+    ls.leaves = false;
+    fuhgl::render::MeshData md = ls.generate({0.75f, 0.82f, 1.0f}); // pale blue-white bolt
+
+    // normalize the growth axis: root (min y) -> origin, tip -> length along +Y
+    float minY = 1e9f, maxY = -1e9f;
+    for (std::size_t i = 0; i + 10 < md.vertices.size(); i += 11) {
+        minY = std::min(minY, md.vertices[i + 1]);
+        maxY = std::max(maxY, md.vertices[i + 1]);
+    }
+    const float span = std::max(maxY - minY, 1e-3f);
+    const float s = std::max(length, 1.f) / span;
+    for (std::size_t i = 0; i + 10 < md.vertices.size(); i += 11) {
+        float* v = md.vertices.data() + i;
+        v[0] = v[0] * s;
+        v[1] = (v[1] - minY) * s;
+        v[2] = v[2] * s;
+    }
+
+    // rotate +Y onto `dir` (shortest arc) and move the bolt root to the origin
+    const fuhgl::math::Vec3 up{0.f, 1.f, 0.f};
+    const fuhgl::math::Vec3 d = fuhgl::math::normalize(dir);
+    const float c = clamp(up.x * d.x + up.y * d.y + up.z * d.z, -1.f, 1.f);
+    fuhgl::math::Quat q;
+    if (c < -0.9999f) {
+        q = fuhgl::math::fromAxisAngle(fuhgl::math::kPi, {1.f, 0.f, 0.f}); // 180 deg
+    } else {
+        const fuhgl::math::Vec3 axis = fuhgl::math::normalize(fuhgl::math::cross(up, d));
+        q = fuhgl::math::fromAxisAngle(std::acos(c), axis);
+    }
+    for (std::size_t i = 0; i + 10 < md.vertices.size(); i += 11) {
+        float* v = md.vertices.data() + i;
+        const fuhgl::math::Vec3 p{v[0], v[1], v[2]};
+        const fuhgl::math::Vec3 n{v[3], v[4], v[5]};
+        const fuhgl::math::Vec3 pr = q * p;
+        const fuhgl::math::Vec3 nr = fuhgl::math::normalize(q * n);
+        v[0] = pr.x; v[1] = pr.y; v[2] = pr.z;
+        v[3] = nr.x; v[4] = nr.y; v[5] = nr.z;
+    }
+    return md;
 }
 
 } // namespace fuhglgraphics::weather

@@ -580,6 +580,8 @@ uniform float uMaxDist;       // sky march end
 uniform float uStrength;
 uniform int uSteps;
 uniform float uTime;
+uniform float uLightningFlash; // G38: lightning flash lights up the fog/cloud volume itself
+uniform vec3 uFlashTint;
 uniform float uZNear, uZFar;
 out vec4 FragColor;
 float linearize(float d) { return 2.0 * uZNear * uZFar / max(uZFar + uZNear - d * (uZFar - uZNear), 1e-6); }
@@ -644,7 +646,10 @@ void main() {
         inscatter += (uSunColor * phase + uAmbient) * (d * ds) * T * uStrength;
         T *= exp(-d * ds);
     }
-    FragColor = vec4(hdr * T + inscatter, 1.0);
+    // G38: the flash illuminates the volume (fills the remaining transmittance gap, so a
+    // strike is visible through the storm fog instead of being attenuated to zero)
+    vec3 flashGlow = uFlashTint * uLightningFlash * (1.0 - T);
+    FragColor = vec4(hdr * T + inscatter + flashGlow * 0.9, 1.0);
 }
 )GLSL";
 
@@ -1085,17 +1090,116 @@ vec3 shade(vec3 albedo, float metallic, float roughness, float ao, float sss, ve
 }
 )GLSL";
 
+// --- G38 procedural weather sky (Effect::Sky), inserted before kLightFragTail ----------
+// Replaces the sky cubemap/gradient for background pixels when uSkyEnabled == 1: a
+// Rayleigh-ish day/night gradient by sun elevation, the HDR sun disc + halo, and a
+// wind-scrolled 2D fBm cloud layer whose coverage/density come from the weather block
+// (shared with the G21 volumetric pass). Lightning adds a sky flash. CPU twins of these
+// formulas: render/sky.hpp (proceduralSkyColor). The cubemap stays as fallback when off.
+constexpr const char* kLightFragSky = R"GLSL(
+uniform int uSkyEnabled;         // Effect::Sky on
+uniform float uCloudCoverage;    // weather block: fraction of the sky covered by clouds
+uniform float uCloudDensity;     // cloud thickness/darkness
+uniform float uStormIntensity;   // 0..1 lightning activity (darkens the sky)
+uniform float uWindSpeed;        // cloud scroll speed (world units/s)
+uniform float uWindDir;          // radians in the XZ plane
+uniform float uSkyTime;          // cloud field drift (seconds)
+uniform float uSunVisibility;    // attenuates the sun disc behind clouds
+uniform int uLightningEnabled;   // Effect::Lightning on
+uniform float uLightningFlash;   // 0..1 flash envelope of the current strike
+uniform vec3 uFlashTint;         // sky-flash color
+float skyHash(vec2 p) {
+    p = fract(p * vec2(0.1031, 0.1030));
+    p += dot(p, p.yx + 33.33);
+    return fract((p.x + p.y) * p.x);
+}
+float skyNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = skyHash(i);
+    float b = skyHash(i + vec2(1.0, 0.0));
+    float c = skyHash(i + vec2(0.0, 1.0));
+    float d = skyHash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float skyFbm(vec2 p) {
+    float sum = 0.0, amp = 0.5, norm = 0.0;
+    for (int i = 0; i < 4; ++i) {
+        sum += amp * skyNoise(p);
+        norm += amp;
+        amp *= 0.5;
+        p = p * 2.03 + vec2(13.7, 7.1);
+    }
+    return sum / max(norm, 1e-6);
+}
+// 2D fBm cloud field on the sky dome: the view ray projected onto the plane y = 60,
+// scrolled by the wind and uSkyTime, domain-warped -> billowy clouds
+float skyCloudField(vec3 dir) {
+    float y = max(dir.y, 0.02);
+    vec2 p = dir.xz / y * 60.0;
+    vec2 w = vec2(sin(uWindDir), cos(uWindDir)) * uWindSpeed * uSkyTime * 0.35; // 0 = +Z
+    float warp = skyFbm(p * 0.11 + vec2(5.2, 1.3));
+    return skyFbm((p + w + vec2(warp * 1.6, -warp * 1.2)) / 6.0);
+}
+// cloud cover mask 0..1: coverage shifts the fBm threshold (0 = clear, 1 = overcast),
+// density scales how opaque the covered part is
+float skyCloudCover(vec3 dir) {
+    if (uCloudCoverage <= 0.001) return 0.0;
+    float f = skyCloudField(dir);
+    float t = 1.0 - uCloudCoverage;
+    float m = smoothstep(t - 0.12, t + 0.12, f);
+    return m * clamp(uCloudDensity, 0.0, 1.0);
+}
+vec3 proceduralSky(vec3 ray) {
+    float sunEl = uSunDir.y;
+    float day = smoothstep(-0.05, 0.15, sunEl);
+    // warm horizon near sunrise/sunset: dusk peaks at sunEl ~ 0, vanishes at zenith/nadir
+    float dusk = clamp(1.0 - abs(sunEl) / 0.22, 0.0, 1.0) * (1.0 - day)
+               + clamp(sunEl / 0.18, 0.0, 1.0) * day * (1.0 - clamp(sunEl / 0.3, 0.0, 1.0));
+    float skyShade = (1.0 - 0.75 * uCloudCoverage * uCloudDensity) * (1.0 - 0.4 * uStormIntensity);
+    vec3 zen = mix(mix(vec3(0.008, 0.012, 0.030), vec3(0.10, 0.12, 0.30), dusk),
+                   vec3(0.16, 0.34, 0.72), day) * skyShade;
+    vec3 hor = mix(mix(vec3(0.020, 0.028, 0.060), vec3(0.95, 0.55, 0.28), dusk),
+                   vec3(0.72, 0.80, 0.92), day) * skyShade;
+    float h = clamp(ray.y, 0.0, 1.0);
+    vec3 sky = mix(hor, zen, pow(h, 0.65));
+    // HDR sun disc + halo (bloom/god rays pick it up)
+    float cosA = dot(ray, uSunDir);
+    sky += uSunColor * (max(cosA, 0.0) > 0.99955 ? 1.0 : 0.0) * uSunVisibility;
+    sky += uSunColor * pow(max(cosA, 0.0), 350.0) * 0.6 * uSunVisibility;
+    float cover = skyCloudCover(ray);
+    if (cover > 0.0) {
+        float sunUp = max(uSunDir.y, 0.0);
+        vec3 cloudLit = mix(vec3(0.75, 0.78, 0.85), vec3(1.05, 1.0, 0.92), sunUp)
+                        * (0.55 + 0.45 * uSunVisibility);
+        vec3 cloudDark = vec3(0.16, 0.17, 0.20);
+        vec3 cloud = mix(cloudLit, cloudDark, 1.0 - uCloudDensity * 0.5) * skyShade;
+        sky = mix(sky, cloud, clamp(cover, 0.0, 1.0));
+    }
+    if (uLightningEnabled == 1 && uLightningFlash > 0.0)
+        sky += uFlashTint * uLightningFlash * 2.5;
+    return sky;
+}
+)GLSL";
+
 constexpr const char* kLightFragTail = R"GLSL(
 out vec4 FragColor;
 void main() {
     float depth = texture(uGDepth, vUV).r;
     if (depth >= 0.99999) {
-        // background: sky gradient + HDR sun disk (bloom source)
+        // background: procedural weather sky (Effect::Sky), else sky cubemap/gradient
+        // + HDR sun disk (bloom source)
         vec4 fp = uInvViewProj * vec4(vUV * 2.0 - 1.0, 1.0, 1.0);
         vec3 ray = normalize(fp.xyz / fp.w - uCamPos);
-        vec3 sky = (uUseSkyCube == 1) ? texture(uSkyCube, ray).rgb
+        vec3 sky;
+        if (uSkyEnabled == 1) {
+            sky = proceduralSky(ray);
+        } else {
+            sky = (uUseSkyCube == 1) ? texture(uSkyCube, ray).rgb
                                       : mix(uSkyBottom, uSkyTop, clamp(vUV.y, 0.0, 1.0));
-        sky += uSunColor * smoothstep(uSunCos, 1.0, dot(ray, uSunDir));
+            sky += uSunColor * smoothstep(uSunCos, 1.0, dot(ray, uSunDir));
+        }
         FragColor = vec4(sky, 1.0);
         return;
     }

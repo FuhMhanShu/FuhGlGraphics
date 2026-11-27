@@ -252,6 +252,15 @@ add_executable(fuhglgraphics_gl_smoke_gi gl_smoke_gi.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_gi PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_gi COMMAND fuhglgraphics_gl_smoke_gi)
 set_tests_properties(fuhglgraphics_gl_smoke_gi PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# G38 weather smoke test (label "gl_context"): WeatherComponent -> FrameData::weather ->
+# DeferredRenderer — Effect::Sky on/off and weather states differ, volumetric coverage follows
+# the weather, rain particles + wetness coupling differ, a lightning flash frame is brighter.
+# Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_weather gl_smoke_weather.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_weather PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_weather COMMAND fuhglgraphics_gl_smoke_weather)
+set_tests_properties(fuhglgraphics_gl_smoke_weather PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
 # Qt editor-widget unit test (only with FUHGLGRAPHICS_WITH_QT=ON): runs offscreen
 # (QT_QPA_PLATFORM=offscreen), no GL context required — label "unit".
 if(FUHGLGRAPHICS_WITH_QT)

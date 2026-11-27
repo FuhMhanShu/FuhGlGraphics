@@ -19,8 +19,10 @@
 //                   catalog with procedural (G24-G31) + deferred-render + G13 water tools
 //                   (tool_catalog.hpp) and the stdio MCP server (mcp_server.hpp)
 //   io/asset_cache.hpp  G11 on-disk asset cache keyed by content hash
-//   weather/  G38  weather system core: CPU state machine with time-based transitions
-//                   (sun path, clouds, rain, thunderstorm) + renderer param mapping (A2)
+//   weather/  G38  weather system: CPU state machine with time-based transitions (sun path,
+//                   clouds, rain, thunderstorm, lightning schedule) + rain-emitter/bolt
+//                   helpers + renderer param mapping; render side: Effect::Sky/Lightning in
+//                   the G3 renderer, CPU sky twins in render/sky.hpp (implemented, A2-A9)
 //   editor/   G2+G11  Qt6 editor code (only built with FUHGLGRAPHICS_WITH_QT=1):
 //                   gl_viewport_widget.hpp = GL viewport widget (fps limiter, frame stats)
 //   tools/    G12  fuhglgraphics_mcp_server (Qt-free stdio MCP server) +
@@ -44,6 +46,7 @@
 #include <fuhglgraphics/render/tonemap.hpp>
 #include <fuhglgraphics/render/parallax.hpp>
 #include <fuhglgraphics/render/hbao.hpp>
+#include <fuhglgraphics/render/sky.hpp> // G38 procedural-sky CPU twins (includes weather/weather.hpp)
 
 #include <fuhglgraphics/scene/component.hpp>
 #include <fuhglgraphics/scene/effects.hpp>

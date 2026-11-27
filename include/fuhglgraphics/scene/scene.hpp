@@ -38,6 +38,10 @@ namespace fuhglgraphics::water {
 class WaterSurface;
 }
 
+namespace fuhglgraphics::weather {
+class WeatherSystem;
+}
+
 namespace fuhglgraphics::scene {
 
 /// @brief Everything one frame needs: the FuhGLCore SceneView plus the parallel per-item
@@ -57,6 +61,7 @@ struct FrameData {
     const water::WaterSurface* water = nullptr;                    ///< G13 water surface (first wins)
     std::vector<const anim::GpuSkinner*> skins;                    ///< G14 GPU skinning, parallel to view.items (MeshEntry::gpuSkin)
     std::vector<float> subsurface;                                 ///< G33 SSS factors, parallel to view.items (MeshEntry::subsurface)
+    const weather::WeatherSystem* weather = nullptr;               ///< G38 weather state (first WeatherComponent in the graph wins)
 };
 
 /// @brief The G9 scene graph (root node + frame filling with frustum culling).
@@ -73,7 +78,10 @@ public:
     /// @brief Fills `frame` from the graph: sets view.camera/width/height/aspect, traverses
     /// the nodes (frustum culling when `cull` and a camera is available), appends draw
     /// items + lights, fills materialIds/castShadow and merges all node Effects into
-    /// frame.effects.
+    /// frame.effects. G38: when a WeatherComponent was visited, its weather state is applied
+    /// to frame.view (sun/ambient/fog/lights) and frame.effects.params (volumetric/wetness/
+    /// exposure) after the traversal, and exposed as frame.weather for
+    /// DeferredRenderer::render(..., frame.weather).
     /// @param camera explicit camera; when nullptr, the first CameraComponent in the graph
     /// is used (frame.view.camera stays nullptr when there is none).
     void fillFrame(FrameData& frame, const fuhgl::Camera* camera, int width, int height,

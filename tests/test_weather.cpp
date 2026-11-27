@@ -7,6 +7,7 @@
 #include <fuhglgraphics/weather/weather.hpp>
 
 #include <fuhgl/render/scene.hpp>
+#include <fuhglgraphics/render/sky.hpp>
 #include <fuhglgraphics/scene/effects.hpp>
 
 #include <cmath>
@@ -223,6 +224,127 @@ void testApplyTo() {
     CHECK(epStorm.volumetricCloudiness > ep.volumetricCloudiness - 1e-6f);
 }
 
+void testRainEmitter() {
+    using fuhglgraphics::weather::makeRainEmitter;
+    using fuhglgraphics::weather::rainEmitterConfig;
+    WeatherParams dry;
+    dry.rainIntensity = 0.f;
+    const WeatherParams downpour = presetFor(WeatherType::Thunderstorm);
+    const auto a = rainEmitterConfig(dry);
+    const auto b = rainEmitterConfig(downpour);
+    CHECK(b.rate > a.rate * 10.f);          // spawn rate proportional to rainIntensity
+    CHECK(b.alpha > a.alpha);
+    CHECK_NEAR(a.direction.y, -1.f, 1e-6f);  // streaks fall along -Y
+    CHECK(a.blend == fuhglgraphics::particles::BlendMode::Alpha);
+    // wind vector follows windDirection / windSpeed (direction 0 = +Z)
+    WeatherParams w = presetFor(WeatherType::Rain);
+    w.windDirection = 0.f;
+    w.windSpeed = 10.f;
+    const auto c = rainEmitterConfig(w);
+    CHECK(c.wind.z > 1.f && std::fabs(c.wind.x) < 1e-5f);
+    // makeRainEmitter configures an existing system (setEmitter needs no GL context)
+    fuhglgraphics::particles::ParticleSystem ps;
+    makeRainEmitter(ps, downpour);
+    CHECK_NEAR(ps.emitter().rate, b.rate, 1e-3f);
+    CHECK_NEAR(ps.emitter().wind.x, b.wind.x, 1e-6f);
+}
+
+void testLightningBolt() {
+    using fuhglgraphics::weather::makeLightningBolt;
+    const auto m1 = makeLightningBolt(42u, {0.f, -1.f, 0.f}, 40.f);
+    const auto m2 = makeLightningBolt(42u, {0.f, -1.f, 0.f}, 40.f);
+    const auto m3 = makeLightningBolt(43u, {0.f, -1.f, 0.f}, 40.f);
+    CHECK(!m1.vertices.empty() && !m1.indices.empty());
+    CHECK(m1.vertices.size() % 11 == 0);
+    CHECK(m1.vertices == m2.vertices); // deterministic per seed
+    CHECK(m3.vertices != m1.vertices); // another seed -> another bolt
+    // bolt along -Y: spans downward, root near the origin
+    float minY = 1e9f, maxY = -1e9f;
+    for (std::size_t i = 0; i + 10 < m1.vertices.size(); i += 11) {
+        minY = std::min(minY, m1.vertices[i + 1]);
+        maxY = std::max(maxY, m1.vertices[i + 1]);
+    }
+    CHECK(minY < -15.f && maxY < 5.f);
+    // bolt along +X spans x instead (stem ~ 4 * length/6 = 26 along the main axis)
+    const auto mx = makeLightningBolt(42u, {1.f, 0.f, 0.f}, 40.f);
+    float maxX = -1e9f, spanY = 0.f;
+    float minY2 = 1e9f, maxY2 = -1e9f;
+    for (std::size_t i = 0; i + 10 < mx.vertices.size(); i += 11) {
+        maxX = std::max(maxX, mx.vertices[i]);
+        minY2 = std::min(minY2, mx.vertices[i + 1]);
+        maxY2 = std::max(maxY2, mx.vertices[i + 1]);
+    }
+    spanY = maxY2 - minY2;
+    CHECK(maxX > 15.f && spanY < 30.f);
+}
+
+void testExposureVolumetricMapping() {
+    WeatherSystem clearSys(1u); // clear preset
+    WeatherSystem storm(1u);
+    storm.setTarget(WeatherType::Thunderstorm, 0.f);
+    CHECK(storm.exposureScale() < clearSys.exposureScale());
+    CHECK(clearSys.seed() == 1u);
+    float d1, c1, s1, d2, c2, s2;
+    clearSys.applyVolumetricParams(d1, c1, s1);
+    storm.applyVolumetricParams(d2, c2, s2);
+    CHECK(c2 > c1); // storm covers the whole sky
+    CHECK(d2 > d1); // denser volume
+    // same mapping as applyTo(EffectParams&) — single source of truth
+    fuhglgraphics::scene::EffectParams ep;
+    storm.applyTo(ep);
+    CHECK_NEAR(ep.volumetricCloudiness, c2, 1e-6f);
+    CHECK_NEAR(ep.volumetricDensity, d2, 1e-6f);
+    CHECK_NEAR(ep.volumetricStrength, s2, 1e-6f);
+    CHECK_NEAR(ep.exposure, storm.exposureScale(), 1e-6f);
+}
+
+void testSkyTwins() {
+    using fuhglgraphics::procedural::Noise;
+    using fuhglgraphics::render::proceduralSkyColor;
+    using fuhglgraphics::render::skyCloudCover;
+    const Noise noise(7u);
+    const WeatherParams clearP = presetFor(WeatherType::Clear);
+    const WeatherParams stormP = presetFor(WeatherType::Thunderstorm);
+    // coverage 0 -> no clouds anywhere on the dome
+    for (int i = 0; i < 64; ++i) {
+        const float a = i / 63.f * 3.14f;
+        const Vec3 dir = fuhgl::math::normalize(Vec3{std::cos(a), 0.3f + 0.6f * (i % 7) / 6.f, std::sin(a)});
+        CHECK(skyCloudCover(dir, noise, 0.f, 1.f, 5.f, 0.7f, 1.5f, 6.f) == 0.f);
+    }
+    // full coverage -> clouds almost everywhere on the dome
+    int covered = 0;
+    for (int i = 0; i < 64; ++i) {
+        const float a = i / 63.f * 6.28f;
+        const Vec3 dir = fuhgl::math::normalize(Vec3{std::cos(a) * 0.9f, 0.45f, std::sin(a) * 0.9f});
+        if (skyCloudCover(dir, noise, 1.f, 1.f, 5.f, 0.7f, 2.f, 6.f) > 0.05f) ++covered;
+    }
+    CHECK(covered > 40);
+    // wind scrolls the field: coverage pattern changes with time
+    int differ = 0;
+    for (int i = 0; i < 32; ++i) {
+        const float a = i / 31.f * 6.28f;
+        const Vec3 dir = fuhgl::math::normalize(Vec3{std::cos(a), 0.5f, std::sin(a)});
+        const float t0 = skyCloudCover(dir, noise, 0.5f, 0.8f, 8.f, 1.0f, 0.f, 6.f);
+        const float t1 = skyCloudCover(dir, noise, 0.5f, 0.8f, 8.f, 1.0f, 3.f, 6.f);
+        if (std::fabs(t1 - t0) > 1e-4f) ++differ;
+    }
+    CHECK(differ > 4);
+    // full sky color: day bright, night dark, lightning flash brightens
+    const Vec3 up{0.f, 1.f, 0.f};
+    const Vec3 sunDir = fuhgl::math::normalize(Vec3{0.3f, 0.8f, 0.2f});
+    const Vec3 day = proceduralSkyColor(up, sunDir, {3.f, 3.f, 3.f}, clearP, noise, 1.f);
+    CHECK(day.x > 0.1f && day.z > 0.5f); // clear day zenith ~ (0.16, 0.34, 0.72)
+    const Vec3 night = proceduralSkyColor(up, {0.f, -0.5f, 0.f}, {0.f, 0.f, 0.f}, clearP, noise, 1.f);
+    CHECK(night.x < 0.05f && night.z < 0.08f); // night zenith ~ (0.008, 0.012, 0.030)
+    const Vec3 stormSky = proceduralSkyColor(up, sunDir, {0.3f, 0.3f, 0.3f}, stormP, noise, 1.f);
+    const Vec3 flash = proceduralSkyColor(up, sunDir, {0.3f, 0.3f, 0.3f}, stormP, noise, 1.f, 1.f);
+    CHECK(flash.x > stormSky.x + 1.f);
+    // deterministic
+    const Vec3 day2 = proceduralSkyColor(up, sunDir, {3.f, 3.f, 3.f}, clearP, noise, 1.f);
+    CHECK_NEAR(day2.x, day.x, 1e-7f);
+    CHECK_NEAR(day2.z, day.z, 1e-7f);
+}
+
 } // namespace
 
 void runWeatherTests() {
@@ -233,4 +355,8 @@ void runWeatherTests() {
     testLightning();
     testAutoAdvance();
     testApplyTo();
+    testRainEmitter();
+    testLightningBolt();
+    testExposureVolumetricMapping();
+    testSkyTwins();
 }

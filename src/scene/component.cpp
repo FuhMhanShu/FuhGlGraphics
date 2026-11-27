@@ -72,6 +72,10 @@ void LightComponent::fill(const Node& node, FrameData& frame) const {
 }
 
 
+void WeatherComponent::fill(const Node& /*node*/, FrameData& frame) const {
+    if (!frame.weather) frame.weather = &system; // the first weather component in the graph wins
+}
+
 void WaterComponent::fill(const Node& node, FrameData& frame) const {
     frame.view.items.push_back(fuhgl::render::DrawItem{&surface.mesh(), nullptr, node.worldMatrix()});
     frame.materialIds.push_back(0);

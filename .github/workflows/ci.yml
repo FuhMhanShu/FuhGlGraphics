@@ -279,6 +279,16 @@ jobs:
           cmake --build build -j --target fuhglgraphics_vegetation_showcase
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_vegetation_showcase --prefix docs/images/ci/g37_vegetation --width 1280 --height 720 --frames 16
 
+      - name: Build + render G38 weather screenshots (procedural sky + clouds per state, rain + wetness, storm with lightning flash + bolt, transition sequence)
+        run: |
+          cmake --build build -j --target fuhglgraphics_weather_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_weather_screenshot --out docs/images/ci/g38_weather_clear.png --weather clear --tod 10 --width 1280 --height 720 --frames 16
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_weather_screenshot --out docs/images/ci/g38_weather_partly.png --weather partly --tod 16 --width 1280 --height 720 --frames 16
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_weather_screenshot --out docs/images/ci/g38_weather_overcast.png --weather overcast --tod 12 --width 1280 --height 720 --frames 16
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_weather_screenshot --out docs/images/ci/g38_weather_rain.png --weather rain --tod 11 --width 1280 --height 720 --frames 24
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_weather_screenshot --out docs/images/ci/g38_weather_storm.png --weather storm --tod 20 --width 1280 --height 720 --frames 24 --flash
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_weather_screenshot --out docs/images/ci/g38_weather_transition.png --weather storm --tod 18 --transition 8 --width 1280 --height 720 --frames 32
+
       # G31 pipeline shots (--mode pipeline, ~6500 houses) are flaky under headless llvmpipe
       # (occasionally an empty frame), so they are rendered into the manual/ subdir: uploaded
       # with the artifact but NOT PSNR-gated (screenshot_diff only lists the top level of
