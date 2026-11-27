@@ -113,6 +113,12 @@ struct EffectParams {
     int giSteps = 12;            ///< march steps per cone (clamped 1..32)
     float giMaxDist = 8.f;       ///< cone length in world units
     float giThickness = 0.3f;    ///< hit band in world units
+    // --- G40 comic look (Effect::ComicLook, final post pass after the tonemap) ---
+    float comicLevels = 6.f;          ///< posterize color levels (>= 2)
+    float comicEdgeStrength = 1.4f;   ///< ink edge intensity (Sobel response scale)
+    float comicEdgeThreshold = 0.06f; ///< edge response above which a pixel becomes ink
+    float comicSaturation = 1.35f;    ///< cel color saturation boost (1 = unchanged)
+    fuhgl::math::Vec3 comicInkColor{0.04f, 0.03f, 0.05f}; ///< ink/outline color
 };
 
 /// @brief Effect list + parameters of one scene node (or of a whole frame after merging).

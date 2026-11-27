@@ -96,6 +96,12 @@ void Effects::applyTo(render::DeferredRenderer& renderer) const {
     renderer.giSteps = params.giSteps;
     renderer.giMaxDist = params.giMaxDist;
     renderer.giThickness = params.giThickness;
+    // G40 comic look
+    renderer.comicLevels = params.comicLevels;
+    renderer.comicEdgeStrength = params.comicEdgeStrength;
+    renderer.comicEdgeThreshold = params.comicEdgeThreshold;
+    renderer.comicSaturation = params.comicSaturation;
+    renderer.comicInkColor = params.comicInkColor;
     // (width() > 0: the renderer was create()d, so a GL context is current and the
     //  cube map can be allocated)
     if (enabled(render::Effect::PointShadows) && !renderer.pointShadowEnabled() && renderer.width() > 0)

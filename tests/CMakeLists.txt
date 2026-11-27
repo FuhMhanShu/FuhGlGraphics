@@ -2,6 +2,7 @@ add_executable(fuhglgraphics_tests
     main.cpp
     test_version.cpp
     test_render.cpp
+    test_postpass.cpp
     test_scene.cpp
     test_io.cpp
     test_particles.cpp
@@ -111,6 +112,16 @@ add_executable(fuhglgraphics_gl_smoke_decals gl_smoke_decals.cpp)
 target_link_libraries(fuhglgraphics_gl_smoke_decals PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_gl_smoke_decals COMMAND fuhglgraphics_gl_smoke_decals)
 set_tests_properties(fuhglgraphics_gl_smoke_decals PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
+
+# Headless GL smoke test for G40 (custom post passes + Effect::ComicLook, label
+# "gl_context"): renders a scene with the comic look on vs off (frames must differ, ink
+# pixels present) and with a custom addPostPass() pass enabled vs disabled (disabled must
+# restore the exact base frame via the "@chain" fallback). Skips (exit code 77) without
+# GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_comic gl_smoke_comic.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_comic PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_comic COMMAND fuhglgraphics_gl_smoke_comic)
+set_tests_properties(fuhglgraphics_gl_smoke_comic PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)
 
 # Headless GL smoke test for the G10 upgrades (label "gl_context"): DoF (Effect::Dof blurs
 # a near crate when focused far) and the debug HUD (Effect::DebugHud draws the panel

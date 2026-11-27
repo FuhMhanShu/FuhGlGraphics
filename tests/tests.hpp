@@ -4,6 +4,7 @@
 
 void runVersionTests();
 void runRenderTests();
+void runPostPassTests();
 void runSceneTests();
 void runIoTests();
 void runParticlesTests();

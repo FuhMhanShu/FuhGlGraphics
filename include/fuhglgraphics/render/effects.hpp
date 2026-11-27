@@ -47,10 +47,11 @@ enum class Effect {
     Weathering,     ///< G31 building weathering in the lighting pass: moss/lichen on north+up faces (humidity), soil-colored splash stain in the lowest ~2 m, vertical rain streaks on walls (material-ID gated)
     Sky,            ///< G38 weather sky: procedural sky (gradient + sun disc + wind-scrolled fBm cloud layer) replaces the sky cubemap/gradient for background pixels, driven by the weather uniform block
     Lightning,      ///< G38 thunderstorm: lightning flash — sky-flash uniform + a temporary point light at the bolt for 1-2 frames (seeded schedule in weather::WeatherSystem)
+    ComicLook,      ///< G40 comic/cel look: final post pass after tonemap (posterized colors + Sobel ink edges from the G-buffer); also gates the custom-post-pass chain
 };
 
 /// @brief Number of Effect values.
-constexpr int kEffectCount = 30;
+constexpr int kEffectCount = 31;
 
 /// @brief Human-readable name of an Effect (for logs/warnings).
 inline const char* effectName(Effect e) {
@@ -85,6 +86,7 @@ inline const char* effectName(Effect e) {
         case Effect::Weathering: return "weathering";
         case Effect::Sky: return "sky";
         case Effect::Lightning: return "lightning";
+        case Effect::ComicLook: return "comic look";
     }
     return "unknown";
 }

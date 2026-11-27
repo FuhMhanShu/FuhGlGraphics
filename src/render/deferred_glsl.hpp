@@ -1500,6 +1500,53 @@ inline bool compilePostFs(fuhgl::render::Material& mat, const std::string& fragS
     return true;
 }
 
+// --- G40 comic/cel look, final pass of the post chain ("ldr"/chain -> "comic" -> "present").
+// Posterized (cel) colors with a saturation boost + ink outlines from a Sobel-style edge
+// response on the G-buffer depth (silhouettes, relative linear-depth difference) and normal
+// (geometric edges). Plain copy when Effect::ComicLook is off.
+// Units: uSrc 0 (output res), uGNormal 1 + uGDepth 2 (internal res).
+constexpr const char* kComicFrag = R"GLSL(#version 330 core
+in vec2 vUV;
+uniform sampler2D uSrc;     // unit 0: LDR chain input (output resolution)
+uniform sampler2D uGNormal; // unit 1: G-buffer normal, n*0.5+0.5 (internal resolution)
+uniform sampler2D uGDepth;  // unit 2: G-buffer depth (internal resolution)
+uniform int uComicEnabled;
+uniform float uLevels;        // posterize color levels (clamped >= 2)
+uniform float uEdgeStrength;  // Sobel response scale
+uniform float uEdgeThreshold; // response above this starts an ink edge
+uniform float uSaturation;    // cel saturation boost (1 = unchanged)
+uniform vec3 uInkColor;       // ink/outline color
+uniform vec2 uTexelG;         // 1 / internal G-buffer size
+uniform float uZNear, uZFar;
+out vec4 FragColor;
+float linearize(float d) { return 2.0 * uZNear * uZFar / max(uZFar + uZNear - d * (uZFar - uZNear), 1e-6); }
+// edge response in ~[0,1]: relative linear-depth difference + normal difference over 8 taps
+float edgeResponse(vec2 uv) {
+    float d0 = linearize(texture(uGDepth, uv).r);
+    vec3 n0 = texture(uGNormal, uv).rgb * 2.0 - 1.0;
+    float depthEdge = 0.0;
+    float normalEdge = 0.0;
+    for (int i = 0; i < 8; ++i) {
+        vec2 o = vec2(cos(float(i) * 0.7854), sin(float(i) * 0.7854)) * uTexelG;
+        float dn = linearize(texture(uGDepth, uv + o).r);
+        depthEdge = max(depthEdge, abs(dn - d0) / max(d0, 1.0));
+        vec3 nn = texture(uGNormal, uv + o).rgb * 2.0 - 1.0;
+        normalEdge = max(normalEdge, length(nn - n0));
+    }
+    return depthEdge * 0.6 + normalEdge * 0.5;
+}
+void main() {
+    vec3 c = texture(uSrc, vUV).rgb;
+    if (uComicEnabled != 1) { FragColor = vec4(c, 1.0); return; }
+    float levels = max(uLevels, 2.0);
+    vec3 cel = floor(c * levels + 0.5) / levels; // posterize
+    float lum = dot(cel, vec3(0.299, 0.587, 0.114));
+    cel = clamp(mix(vec3(lum), cel, uSaturation), 0.0, 1.0); // cel saturation
+    float edge = smoothstep(uEdgeThreshold, uEdgeThreshold * 2.5, edgeResponse(vUV) * uEdgeStrength);
+    FragColor = vec4(mix(cel, uInkColor, edge), 1.0);
+}
+)GLSL";
+
 // --- plain fullscreen copy (water-off fallback + particles pass: src -> target) --------
 constexpr const char* kCopyFrag = R"GLSL(#version 330 core
 in vec2 vUV;

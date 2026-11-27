@@ -53,7 +53,7 @@ struct DeferredRenderer::Impl {
         rMotion{fuhgl::Texture::Target::Tex2D}, rMatId{fuhgl::Texture::Target::Tex2D};
     fuhgl::Texture texOutput{fuhgl::Texture::Target::Tex2D};
 
-    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, hbaoMat, ssrMat, bloomMat, flareMat, volumetricMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat, giMat, caMat;
+    fuhgl::render::Material gbufferMat, gbufferSkinMat, lightingMat, ssaoMat, hbaoMat, ssrMat, bloomMat, flareMat, volumetricMat, taaMat, upscaleMat, dofMat, tonemapMat, copyMat, decalMat, giMat, caMat, comicMat;
     std::vector<fuhgl::math::Vec3> ssaoKernel; ///< G15: generated once per createInternal
     bool skinProgramReady = false; ///< G14: the GLSL 430 skinning G-buffer program (GL >= 4.3)
     fuhgl::render::Mesh decalBox; ///< G8: unit box for the decal projection pass
@@ -289,6 +289,7 @@ bool DeferredRenderer::createInternal() {
         !compilePostFs(im.upscaleMat, kUpscaleFrag, "upscale") ||
         !compilePostFs(im.dofMat, kDofFrag, "dof") ||
         !compilePostFs(im.tonemapMat, kTonemapFrag, "tonemap") ||
+        !compilePostFs(im.comicMat, kComicFrag, "comic") ||
         !compilePostFs(im.copyMat, kCopyFrag, "copy")) {
         return false;
     }
@@ -382,7 +383,18 @@ bool DeferredRenderer::createInternal() {
     im.dummy3D.setParameteri(fuhgl::gl::GL_TEXTURE_MIN_FILTER, fuhgl::gl::GL_LINEAR);
     im.dummy3D.setParameteri(fuhgl::gl::GL_TEXTURE_MAG_FILTER, fuhgl::gl::GL_LINEAR);
 
-    // --- post graph: lighting -> TAA -> upscale -> tonemap ---
+    return buildPostGraph();
+}
+
+// G40: declares the whole post graph and compiles it: the built-in chain
+// (ssao/hbao -> lighting -> gi -> ssr -> water -> particles -> volumetric -> bloom -> flare
+// -> taa -> upscale -> ca -> dof -> tonemap) plus the final chain
+// tonemap -> [custom post passes] -> comic -> present. Called from createInternal().
+bool DeferredRenderer::buildPostGraph() {
+    Impl& im = *impl_;
+    const int iw = internalWidth_, ih = internalHeight_;
+
+    // --- post graph: lighting -> TAA -> upscale -> tonemap -> [custom] -> comic -> present ---
     const fuhgl::Texture& gAlbedo = msaa_ > 0 ? im.rAlbedo : im.texAlbedo;
     const fuhgl::Texture& gNormal = msaa_ > 0 ? im.rNormal : im.texNormal;
     const fuhgl::Texture& gPbr = msaa_ > 0 ? im.rPbr : im.texPbr;
@@ -409,6 +421,8 @@ bool DeferredRenderer::createInternal() {
     im.post.addResource("up", width_, height_, fuhgl::gl::GL_RGBA16F);
     im.post.addResource("ca", width_, height_, fuhgl::gl::GL_RGBA16F);  // G32 chromatic aberration at output res
     im.post.addResource("dof", width_, height_, fuhgl::gl::GL_RGBA16F); // G10 DoF at output res
+    im.post.addResource("ldr", width_, height_, fuhgl::gl::GL_RGBA16F);  // G40: tonemapped LDR at output res
+    im.post.addResource("comic", width_, height_, fuhgl::gl::GL_RGBA16F); // G40 comic look at output res
     im.post.addPass("ssao", {"gNormal", "gDepth"}, {"ssao"}, // G15, runs before lighting
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawSsao(ctx); });
     im.post.addPass("hbao", {"gNormal", "gDepth"}, {"hbao"}, // G31, runs before lighting (next to SSAO)
@@ -437,8 +451,50 @@ bool DeferredRenderer::createInternal() {
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawCa(ctx); });
     im.post.addPass("dof", {"ca", "gDepth"}, {"dof"},
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawDof(ctx); });
-    im.post.addPass("tonemap", {"dof", "gDepth"}, {},
+    im.post.addPass("tonemap", {"dof", "gDepth"}, {"ldr"}, // G40: writes the "ldr" resource now
                     [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawTonemap(ctx); });
+    // G40: custom post passes, chained after the tonemap. The declared "@chain" input is the
+    // previous pass's output (ordering edge); at runtime the wrapper re-resolves "@chain" to
+    // the previous *enabled* output, so disabling a chain pass needs no rebuild.
+    std::string chain = "ldr";
+    for (const PostPass& cp : customPasses_) {
+        const int ow = cp.atOutputSize ? width_ : iw;
+        const int oh = cp.atOutputSize ? height_ : ih;
+        im.post.addResource(cp.output, ow, oh, cp.outputFormat);
+        std::vector<std::string> inputs;
+        inputs.reserve(cp.inputs.size());
+        for (const std::string& in : cp.inputs) inputs.push_back(in == "@chain" ? chain : in);
+        const std::string passName = cp.name;
+        im.post.addPass(cp.name, inputs, {cp.output},
+                        [this, passName](fuhgl::render::RenderGraph::PassContext& ctx) {
+                            const PostPass* p = postPass(passName);
+                            if (!p || !p->fn) return;
+                            std::size_t idx = 0;
+                            while (idx < customPasses_.size() && customPasses_[idx].name != passName) ++idx;
+                            for (std::size_t u = 0; u < p->inputs.size(); ++u)
+                                ctx.bindInput(static_cast<int>(u),
+                                              p->inputs[u] == "@chain" ? chainInputBefore(idx) : p->inputs[u]);
+                            p->fn(ctx);
+                        });
+        im.post.setPassEnabled(cp.name, cp.enabled);
+        chain = cp.output;
+    }
+    // G40: built-in comic look pass (Effect::ComicLook) after the custom passes
+    im.post.addPass("comic", {chain, "gNormal", "gDepth"}, {"comic"},
+                    [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawComic(ctx); });
+    im.post.setPassEnabled("comic", comicEnabled_ && effectSupported(Effect::ComicLook));
+    // G40: "present" pass — no outputs, copies the final chain end into output(). It declares
+    // every chain resource as input so the order resolver runs it after all chain writers
+    // (resolvePassOrder() is LIFO for independent passes, so a no-output pass needs these
+    // declared edges to run last). The callback binds output() itself, like the old tonemap.
+    {
+        std::vector<std::string> presentInputs;
+        presentInputs.push_back("ldr");
+        for (const PostPass& cp : customPasses_) presentInputs.push_back(cp.output);
+        presentInputs.push_back("comic");
+        im.post.addPass("present", presentInputs, {},
+                        [this](fuhgl::render::RenderGraph::PassContext& ctx) { drawPresent(ctx); });
+    }
     // NOTE: the G10 HUD is NOT a graph pass — resolvePassOrder() is LIFO for independent
     // passes, so a no-output pass would run before tonemap and be overwritten. render()
     // draws it directly after post.execute() instead.
@@ -926,6 +982,7 @@ void DeferredRenderer::render(const fuhgl::render::SceneView& scene,
     // upstream resource directly) — a fullscreen copy pass still costs frame time
     impl_->post.setPassEnabled("ca", effectEnabled(Effect::ChromaticAberration));
     impl_->post.setPassEnabled("gi", effectEnabled(Effect::Gi));
+    impl_->post.setPassEnabled("comic", effectEnabled(Effect::ComicLook)); // G40
     impl_->post.execute();
     // G10 HUD: drawn after the post graph (into the output, over the tonemapped frame)
     if (effectEnabled(Effect::DebugHud) && hud_.isCreated()) drawHud();
@@ -1545,14 +1602,12 @@ void DeferredRenderer::drawHud() {
     fuhgl::Framebuffer::unbind();
 }
 
+// G40: the tonemap pass now writes the graph resource "ldr" (output res); the graph binds
+// the pass FBO + viewport, so this callback only binds inputs and draws the fullscreen pass.
+// The "present" pass copies the final chain end (usually "ldr") into output().
 void DeferredRenderer::drawTonemap(fuhgl::render::RenderGraph::PassContext& ctx) {
     ctx.bindInput(0, "dof"); // upscaled + G10 DoF
     ctx.bindInput(1, "gDepth"); // for the god-ray occlusion
-    fuhgl::Framebuffer& out = impl_->output;
-    out.bind();
-    const fuhgl::gl::GLenum buf[1] = {fuhgl::gl::GL_COLOR_ATTACHMENT0};
-    fuhgl::gl::drawBuffers(1, buf);
-    fuhgl::gl::viewport(0, 0, width_, height_);
     // sun screen position for the god rays (behind the camera -> rays off)
     float rayStrength = 0.f;
     fuhgl::math::Vec2 sunScreen{-10.f, -10.f};
@@ -1577,6 +1632,46 @@ void DeferredRenderer::drawTonemap(fuhgl::render::RenderGraph::PassContext& ctx)
         p.setUniform("uRayDecay", godRays.decay);
         p.setUniform("uRaySamples", godRays.samples);
     });
+}
+
+// G40 comic/cel look pass: previous final-chain output -> "comic" (Effect::ComicLook).
+// Posterized colors + ink edges from the G-buffer normal/depth; plain copy when off.
+void DeferredRenderer::drawComic(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, chainInputBefore(customPasses_.size())); // previous chain pass output, or "ldr"
+    ctx.bindInput(1, "gNormal");
+    ctx.bindInput(2, "gDepth");
+    drawFs(impl_->comicMat, [&](fuhgl::Program& p) {
+        p.setUniform(p.uniformLocation("uSrc"), 0);
+        p.setUniform(p.uniformLocation("uGNormal"), 1);
+        p.setUniform(p.uniformLocation("uGDepth"), 2);
+        p.setUniform(p.uniformLocation("uComicEnabled"), effectEnabled(Effect::ComicLook) ? 1 : 0);
+        p.setUniform("uLevels", std::max(comicLevels, 2.f));
+        p.setUniform("uEdgeStrength", comicEdgeStrength);
+        p.setUniform("uEdgeThreshold", comicEdgeThreshold);
+        p.setUniform("uSaturation", comicSaturation);
+        p.setUniform("uInkColor", comicInkColor);
+        p.setUniform("uTexelG", fuhgl::math::Vec2(internalWidth_ > 0 ? 1.f / static_cast<float>(internalWidth_) : 1.f,
+                                                  internalHeight_ > 0 ? 1.f / static_cast<float>(internalHeight_) : 1.f));
+        if (curScene_ && curScene_->camera) {
+            p.setUniform("uZNear", curScene_->camera->zNear());
+            p.setUniform("uZFar", curScene_->camera->zFar());
+        } else {
+            p.setUniform("uZNear", 0.1f);
+            p.setUniform("uZFar", 100.f);
+        }
+    });
+}
+
+// G40 "present" pass: no outputs — copies the final chain end (finalChainOutput()) into the
+// LDR output() FBO. Declared after every chain writer, so it runs last.
+void DeferredRenderer::drawPresent(fuhgl::render::RenderGraph::PassContext& ctx) {
+    ctx.bindInput(0, finalChainOutput());
+    fuhgl::Framebuffer& out = impl_->output;
+    out.bind();
+    const fuhgl::gl::GLenum buf[1] = {fuhgl::gl::GL_COLOR_ATTACHMENT0};
+    fuhgl::gl::drawBuffers(1, buf);
+    fuhgl::gl::viewport(0, 0, width_, height_);
+    drawFs(impl_->copyMat, [&](fuhgl::Program& p) { p.setUniform(p.uniformLocation("uSrc"), 0); });
     fuhgl::Framebuffer::unbind();
 }
 
@@ -1593,6 +1688,74 @@ const fuhgl::Texture& DeferredRenderer::hdrTexture() const { return *impl_->post
 const fuhgl::Texture& DeferredRenderer::texSsao() const { return *impl_->post.texture("ssao"); }
 const fuhgl::Texture& DeferredRenderer::reflectionTexture() const { return impl_->reflColor; }
 fuhgl::render::RenderGraph& DeferredRenderer::postGraph() { return impl_->post; }
+
+// --- G40: custom post passes -----------------------------------------------------------
+bool DeferredRenderer::addPostPass(const PostPass& pass) {
+    if (pass.name.empty() || pass.output.empty() || !pass.fn) {
+        std::fprintf(stderr, "fuhglgraphics::DeferredRenderer::addPostPass: needs name, output and fn\n");
+        return false;
+    }
+    for (const PostPass& p : customPasses_)
+        if (p.name == pass.name || p.output == pass.output) {
+            std::fprintf(stderr, "fuhglgraphics::DeferredRenderer::addPostPass: name/output of '%s' already registered\n",
+                         pass.name.c_str());
+            return false;
+        }
+    customPasses_.push_back(pass);
+    if (width_ > 0) { // already created: structural change -> rebuild GL resources (like resize())
+        frameIndex_ = 0;
+        prevViewProj_ = fuhgl::math::Mat4{};
+        return createInternal();
+    }
+    return true;
+}
+
+bool DeferredRenderer::removePostPass(const std::string& name) {
+    const auto it = std::find_if(customPasses_.begin(), customPasses_.end(),
+                                 [&](const PostPass& p) { return p.name == name; });
+    if (it == customPasses_.end()) return false;
+    customPasses_.erase(it);
+    if (width_ > 0) {
+        frameIndex_ = 0;
+        prevViewProj_ = fuhgl::math::Mat4{};
+        createInternal();
+    }
+    return true;
+}
+
+bool DeferredRenderer::setPostPassEnabled(const std::string& name, bool on) {
+    for (PostPass& p : customPasses_)
+        if (p.name == name) {
+            p.enabled = on;
+            if (width_ > 0) impl_->post.setPassEnabled(name, on); // runtime toggle, no rebuild
+            return true;
+        }
+    return false;
+}
+
+const DeferredRenderer::PostPass* DeferredRenderer::postPass(const std::string& name) const {
+    for (const PostPass& p : customPasses_)
+        if (p.name == name) return &p;
+    return nullptr;
+}
+
+std::vector<std::string> DeferredRenderer::postPassNames() const {
+    std::vector<std::string> names;
+    names.reserve(customPasses_.size());
+    for (const PostPass& p : customPasses_) names.push_back(p.name);
+    return names;
+}
+
+std::string DeferredRenderer::chainInputBefore(std::size_t index) const {
+    for (std::size_t i = index; i-- > 0;)
+        if (customPasses_[i].enabled) return customPasses_[i].output;
+    return "ldr";
+}
+
+std::string DeferredRenderer::finalChainOutput() const {
+    if (comicEnabled_ && effectSupported(Effect::ComicLook)) return "comic";
+    return chainInputBefore(customPasses_.size());
+}
 
 void DeferredRenderer::setWaterReflectionScale(float scale) {
     const float s = scale < 0.1f ? 0.1f : (scale > 1.f ? 1.f : scale);
@@ -1648,6 +1811,7 @@ void DeferredRenderer::applyCapabilities() {
     gate(Effect::Weathering, weatheringEnabled_);
     gate(Effect::Sky, skyEnabled_);
     gate(Effect::Lightning, lightningEnabled_);
+    gate(Effect::ComicLook, comicEnabled_);
 }
 
 void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
@@ -1684,6 +1848,7 @@ void DeferredRenderer::setEffectEnabled(Effect e, bool on) {
         case Effect::Weathering: weatheringEnabled_ = on; break;
         case Effect::Sky: skyEnabled_ = on; break;
         case Effect::Lightning: lightningEnabled_ = on; break;
+        case Effect::ComicLook: comicEnabled_ = on; break;
         case Effect::Msaa:
             // MSAA is a create() parameter (multisampled G-buffer), not runtime-toggleable
             if (on != (msaa_ > 0))
@@ -1730,6 +1895,7 @@ bool DeferredRenderer::effectEnabled(Effect e) const {
         case Effect::Weathering: return weatheringEnabled_;
         case Effect::Sky: return skyEnabled_;
         case Effect::Lightning: return lightningEnabled_;
+        case Effect::ComicLook: return comicEnabled_;
     }
     return false;
 }
@@ -1743,6 +1909,7 @@ void DeferredRenderer::setAllEffects(bool on) {
     lensFlareEnabled_ = anamorphicEnabled_ = hbaoEnabled_ = on;
     caEnabled_ = sssEnabled_ = giEnabled_ = on;
     skyEnabled_ = lightningEnabled_ = on;
+    comicEnabled_ = on;
     applyCapabilities();
 }
 
