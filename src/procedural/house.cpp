@@ -6,6 +6,11 @@
 // edges, low-freq vertex warp with sagging ridge, micro-jitter (shutters/chimney), plinth +
 // pilasters + lintels/reveals, human clutter props (CSG flower boxes/dish/firewood, AC,
 // clothesline) and humidity-driven ivy; CSG solids via FuhGLCore render/solid.hpp.
+// Interior pipeline (Params::interior, Village/Town): 2D BSP floorplan with room types +
+// adjacency graph, spanning-tree doors, rule-based windows on exterior walls, then the walls
+// as a segmented 3D extrusion with real openings (thickness, outer facade / inner interior
+// material) — slabs with the stairwell hole, door/window frames, door leaves and furniture are
+// FuhGLCore CSG solids (marching tetrahedra), placed by instancing.
 // BuildingContext rules (climate -> form, local resources -> material, wealth/density ->
 // storeys/shop/fence/patches, flood zone -> stilts) derive form+materials automatically.
 // Deterministic per seed via splitmix32.
@@ -20,6 +25,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace fuhglgraphics::procedural {
 
@@ -401,6 +408,711 @@ void addIvy(fuhgl::render::MeshData& md, float w, float d, float wallH, Rng& rng
     }
 }
 
+// --- interior pipeline: 2D floorplan -> 3D shell with real openings -----------------------
+// Step 1: BSP subdivision of the footprint into rooms, room types (graph rules) + adjacency.
+// Step 2: doors via a spanning tree over the room adjacency graph + front door on the street
+//         (+z) wall of the hall; stairwell room reserved on multi-storey houses.
+// Step 3: windows on exterior walls only, per room rules, with min distances to corners/doors.
+// Step 4: each wall is built as a segmented 3D extrusion around its openings (real thickness:
+//         solid / sill / lintel segments; outer face = facade, inner face + reveals = interior
+//         material) — no boolean cutting; slabs with the stairwell hole are FuhGLCore CSG.
+// Step 5: prefab props in the openings: CSG door frame (Zarge) + hinged leaf (separate mesh),
+//         CSG window frame + sill + glass pane, furniture as CSG sub-meshes at wall anchors.
+
+struct FpOpening {
+    float center = 0.f, halfW = 0.f; ///< position + half width along the wall
+    float sill = 0.f, top = 0.f;     ///< opening extent relative to the floor level (door: 0..h)
+    bool door = false;
+    int f0 = 0, f1 = 0;              ///< floor range (0-based, inclusive)
+};
+
+struct FpWall {
+    int axis = 0;                    ///< 0: runs along X at z = fixed; 1: runs along Z at x = fixed
+    float fixed = 0.f;
+    float a = 0.f, b = 0.f;          ///< span along the running axis (a < b)
+    bool exterior = false;
+    float dirOut = 1.f;              ///< exterior walls: side of the outer face (+1/-1); interior: +1
+    std::vector<FpOpening> openings; ///< sorted by center
+};
+
+struct PlanBuild {
+    Floorplan plan;
+    std::vector<FpWall> walls;       ///< 4 exterior outline walls + one per shared room edge
+};
+
+float roomArea(const PlanRoom& r) { return (r.x1 - r.x0) * (r.z1 - r.z0); }
+
+/// @brief Total length of the room edges lying on the building outline (exterior wall).
+float exteriorEdgeLen(const PlanRoom& r, float ix0, float iz0, float ix1, float iz1) {
+    const float e = 1e-3f;
+    float len = 0.f;
+    if (std::fabs(r.z1 - iz1) < e) len += r.x1 - r.x0;
+    if (std::fabs(r.z0 - iz0) < e) len += r.x1 - r.x0;
+    if (std::fabs(r.x1 - ix1) < e) len += r.z1 - r.z0;
+    if (std::fabs(r.x0 - ix0) < e) len += r.z1 - r.z0;
+    return len;
+}
+
+/// @brief Step 1a: recursive BSP split of the inner rect into rooms (min side / area limits).
+void bspSplit(std::vector<PlanRoom>& out, float x0, float z0, float x1, float z1, int depth,
+              Rng& rng) {
+    const float w = x1 - x0, h = z1 - z0;
+    const float minSide = 1.9f;
+    if (depth >= 5 || (w < minSide * 1.7f && h < minSide * 1.7f) || w * h < 8.f ||
+        (depth >= 2 && rng.nextf() < 0.22f)) {
+        PlanRoom r;
+        r.x0 = x0; r.z0 = z0; r.x1 = x1; r.z1 = z1;
+        r.id = static_cast<int>(out.size());
+        out.push_back(r);
+        return;
+    }
+    bool splitX;
+    if (w > h * 1.25f) splitX = true;
+    else if (h > w * 1.25f) splitX = false;
+    else splitX = rng.nextf() < 0.5f;
+    if (splitX) {
+        if (w < minSide * 2.f) {
+            PlanRoom r; r.x0 = x0; r.z0 = z0; r.x1 = x1; r.z1 = z1;
+            r.id = static_cast<int>(out.size()); out.push_back(r);
+            return;
+        }
+        const float c = std::min(std::max(x0 + w * rng.range(0.35f, 0.65f), x0 + minSide), x1 - minSide);
+        bspSplit(out, x0, z0, c, z1, depth + 1, rng);
+        bspSplit(out, c, z0, x1, z1, depth + 1, rng);
+    } else {
+        if (h < minSide * 2.f) {
+            PlanRoom r; r.x0 = x0; r.z0 = z0; r.x1 = x1; r.z1 = z1;
+            r.id = static_cast<int>(out.size()); out.push_back(r);
+            return;
+        }
+        const float c = std::min(std::max(z0 + h * rng.range(0.35f, 0.65f), z0 + minSide), z1 - minSide);
+        bspSplit(out, x0, z0, x1, c, depth + 1, rng);
+        bspSplit(out, x0, c, x1, z1, depth + 1, rng);
+    }
+}
+
+struct SharedEdge {
+    int ra = 0, rb = 0;   ///< the two rooms sharing the wall
+    int axis = 0;         ///< 0: wall runs along X at z = fixed; 1: along Z at x = fixed
+    float fixed = 0.f, a = 0.f, b = 0.f; ///< span of the shared wall segment
+};
+
+/// @brief Step 1b: adjacency graph — pairs of rooms with a shared wall edge (positive overlap).
+std::vector<SharedEdge> findSharedEdges(const std::vector<PlanRoom>& rooms) {
+    const float e = 1e-3f;
+    std::vector<SharedEdge> out;
+    for (std::size_t i = 0; i < rooms.size(); ++i)
+        for (std::size_t j = i + 1; j < rooms.size(); ++j) {
+            const PlanRoom& A = rooms[i];
+            const PlanRoom& B = rooms[j];
+            if (std::fabs(A.x1 - B.x0) < e || std::fabs(B.x1 - A.x0) < e) {
+                const float fx = (std::fabs(A.x1 - B.x0) < e) ? A.x1 : B.x1;
+                const float a = std::max(A.z0, B.z0), b = std::min(A.z1, B.z1);
+                if (b - a > e) out.push_back({static_cast<int>(i), static_cast<int>(j), 1, fx, a, b});
+            } else if (std::fabs(A.z1 - B.z0) < e || std::fabs(B.z1 - A.z0) < e) {
+                const float fz = (std::fabs(A.z1 - B.z0) < e) ? A.z1 : B.z1;
+                const float a = std::max(A.x0, B.x0), b = std::min(A.x1, B.x1);
+                if (b - a > e) out.push_back({static_cast<int>(i), static_cast<int>(j), 0, fz, a, b});
+            }
+        }
+    return out;
+}
+
+/// @brief Steps 1-3: builds the floorplan (rooms, doors, windows) and the wall list with the
+/// openings already marked on it.
+PlanBuild buildPlan(float w, float d, float t, float floorH, int floors, bool shopFront,
+                    bool balcony, float balconyX, float ws, Rng& rng) {
+    const float e = 1e-3f;
+    PlanBuild pb;
+    Floorplan& plan = pb.plan;
+    plan.width = w;
+    plan.depth = d;
+    plan.wallThickness = t;
+    const float ix0 = -w * 0.5f + t, ix1 = w * 0.5f - t; // inner rect = room area
+    const float iz0 = -d * 0.5f + t, iz1 = d * 0.5f - t;
+
+    // --- step 1: BSP rooms + types + adjacency ---
+    bspSplit(plan.rooms, ix0, iz0, ix1, iz1, 0, rng);
+    std::vector<PlanRoom>& rooms = plan.rooms;
+    int hall = 0;
+    float best = 1e9f;
+    for (std::size_t i = 0; i < rooms.size(); ++i)
+        if (std::fabs(rooms[i].z1 - iz1) < e) {
+            const float cx = (rooms[i].x0 + rooms[i].x1) * 0.5f;
+            if (std::fabs(cx) < best) { best = std::fabs(cx); hall = static_cast<int>(i); }
+        }
+    plan.hallRoom = hall;
+    rooms[hall].type = RoomType::Hall;
+    std::vector<SharedEdge> edges = findSharedEdges(rooms);
+    if (floors >= 2 && rooms.size() > 2) { // stairwell: smallest non-hall neighbor of the hall
+        int stair = -1;
+        float bestA = 1e9f;
+        for (const SharedEdge& se : edges) {
+            const int o = (se.ra == hall) ? se.rb : (se.rb == hall) ? se.ra : -1;
+            if (o >= 0 && o != hall && roomArea(rooms[o]) < bestA) { bestA = roomArea(rooms[o]); stair = o; }
+        }
+        if (stair >= 0) {
+            plan.stairRoom = stair;
+            rooms[stair].type = RoomType::Stairwell;
+        }
+    }
+    { // remaining rooms: big + much exterior wall -> living/bedroom; small inner -> bath/storage
+        std::vector<int> rest;
+        for (std::size_t i = 0; i < rooms.size(); ++i)
+            if (static_cast<int>(i) != hall && static_cast<int>(i) != plan.stairRoom) rest.push_back(static_cast<int>(i));
+        std::sort(rest.begin(), rest.end(), [&](int a, int b) {
+            const float ea = exteriorEdgeLen(rooms[a], ix0, iz0, ix1, iz1);
+            const float eb = exteriorEdgeLen(rooms[b], ix0, iz0, ix1, iz1);
+            if (std::fabs(ea - eb) > 1e-3f) return ea > eb;
+            return roomArea(rooms[a]) > roomArea(rooms[b]);
+        });
+        bool livingDone = false;
+        for (const int i : rest) {
+            const float ext = exteriorEdgeLen(rooms[i], ix0, iz0, ix1, iz1);
+            if (!livingDone && ext > 1e-3f) { rooms[i].type = RoomType::Living; livingDone = true; }
+            else if (ext > 1e-3f) rooms[i].type = RoomType::Bedroom;
+            else rooms[i].type = roomArea(rooms[i]) < 6.5f ? RoomType::Bath : RoomType::Storage;
+        }
+    }
+
+    // --- walls: 4 exterior outline walls + one interior wall per shared edge ---
+    pb.walls.push_back({0, d * 0.5f - t * 0.5f, -w * 0.5f, w * 0.5f, true, 1.f, {}});    // front +z
+    pb.walls.push_back({0, -d * 0.5f + t * 0.5f, -w * 0.5f, w * 0.5f, true, -1.f, {}});   // back -z
+    pb.walls.push_back({1, w * 0.5f - t * 0.5f, -d * 0.5f + t, d * 0.5f - t, true, 1.f, {}});  // right +x
+    pb.walls.push_back({1, -w * 0.5f + t * 0.5f, -d * 0.5f + t, d * 0.5f - t, true, -1.f, {}}); // left -x
+    for (const SharedEdge& se : edges)
+        pb.walls.push_back({se.axis, se.fixed, se.a, se.b, false, 1.f, {}});
+    FpWall& front = pb.walls[0];
+    const PlanRoom& hr = rooms[hall];
+
+    // --- step 2: doors — front door on the hall's front edge, then a randomized spanning tree
+    //     (Prim) over the adjacency graph so every room stays reachable ---
+    PlanDoor fd;
+    fd.exterior = true;
+    fd.roomA = hall;
+    fd.axis = 0;
+    fd.fixed = front.fixed;
+    fd.center = std::min(std::max((hr.x0 + hr.x1) * 0.5f + rng.range(-0.25f, 0.25f), hr.x0 + 0.6f), hr.x1 - 0.6f);
+    fd.width = rng.range(0.9f, 1.0f);
+    fd.height = 2.05f;
+    fd.floor0 = 0;
+    fd.floor1 = 0;
+    plan.doors.push_back(fd);
+    front.openings.push_back({fd.center, fd.width * 0.5f, 0.f, fd.height, true, 0, 0});
+    if (balcony) { // balcony door on the front wall of the first upper floor
+        PlanDoor bd;
+        bd.exterior = true;
+        bd.roomA = hall;
+        bd.axis = 0;
+        bd.fixed = front.fixed;
+        bd.center = std::min(std::max(balconyX, hr.x0 + 0.55f), hr.x1 - 0.55f);
+        bd.width = 0.85f;
+        bd.height = 1.95f;
+        bd.floor0 = 1;
+        bd.floor1 = 1;
+        plan.doors.push_back(bd);
+        front.openings.push_back({bd.center, bd.width * 0.5f, 0.f, bd.height, true, 1, 1});
+    }
+    std::vector<char> visited(rooms.size(), 0);
+    visited[hall] = 1;
+    int placed = 1;
+    std::vector<char> edgeUsed(edges.size(), 0);
+    while (placed < static_cast<int>(rooms.size())) {
+        std::vector<int> cand;
+        for (std::size_t ei = 0; ei < edges.size(); ++ei)
+            if (!edgeUsed[ei] && ((visited[edges[ei].ra] && !visited[edges[ei].rb]) ||
+                                  (visited[edges[ei].rb] && !visited[edges[ei].ra])))
+                cand.push_back(static_cast<int>(ei));
+        if (cand.empty()) break;
+        const int ei = cand[rng.next() % cand.size()];
+        const SharedEdge& se = edges[ei];
+        edgeUsed[ei] = 1;
+        const int other = visited[se.ra] ? se.rb : se.ra;
+        PlanDoor dr;
+        dr.exterior = false;
+        dr.roomA = se.ra;
+        dr.roomB = se.rb;
+        dr.axis = se.axis;
+        dr.fixed = se.fixed;
+        const float m = 0.5f;
+        dr.center = std::min(std::max((se.a + se.b) * 0.5f + rng.range(-0.2f, 0.2f) * (se.b - se.a),
+                                       se.a + m), se.b - m);
+        dr.width = 0.8f;
+        dr.height = 2.0f;
+        dr.floor0 = 0;
+        dr.floor1 = floors - 1;
+        plan.doors.push_back(dr);
+        pb.walls[4 + ei].openings.push_back({dr.center, dr.width * 0.5f, 0.f, dr.height, true, 0, floors - 1});
+        visited[other] = 1;
+        ++placed;
+    }
+    // a few extra loop doors (non-tree edges) when the shared wall has room left
+    for (std::size_t ei = 0; ei < edges.size(); ++ei) {
+        if (edgeUsed[ei] || rng.nextf() >= 0.25f) continue;
+        const SharedEdge& se = edges[ei];
+        FpWall& wl = pb.walls[4 + ei];
+        const float c = (se.a + se.b) * 0.5f;
+        bool clash = false;
+        for (const FpOpening& o : wl.openings)
+            if (std::fabs(c - o.center) < 0.4f + o.halfW + 0.3f) clash = true;
+        if (clash || se.b - se.a < 1.7f) continue;
+        PlanDoor dr;
+        dr.exterior = false;
+        dr.roomA = se.ra;
+        dr.roomB = se.rb;
+        dr.axis = se.axis;
+        dr.fixed = se.fixed;
+        dr.center = c;
+        dr.width = 0.8f;
+        dr.height = 2.0f;
+        dr.floor0 = 0;
+        dr.floor1 = floors - 1;
+        plan.doors.push_back(dr);
+        wl.openings.push_back({c, 0.4f, 0.f, 2.0f, true, 0, floors - 1});
+    }
+
+    // --- step 3: windows — exterior edges only, per room type, min distance to corners/doors ---
+    auto conflicts = [&](int wi, float c, float hw) {
+        for (const FpOpening& o : pb.walls[wi].openings)
+            if (std::fabs(c - o.center) < hw + o.halfW + 0.28f) return true;
+        return false;
+    };
+    for (int ri = 0; ri < static_cast<int>(rooms.size()); ++ri) {
+        const PlanRoom& r = rooms[ri];
+        struct Edge { int wall; float a, b; };
+        std::vector<Edge> ext;
+        if (std::fabs(r.z1 - iz1) < e) ext.push_back({0, r.x0, r.x1}); // front
+        if (std::fabs(r.z0 - iz0) < e) ext.push_back({1, r.x0, r.x1}); // back
+        if (std::fabs(r.x1 - ix1) < e) ext.push_back({2, r.z0, r.z1}); // right
+        if (std::fabs(r.x0 - ix0) < e) ext.push_back({3, r.z0, r.z1}); // left
+        float ww = 0.f, wh = 0.f, sill = 0.f;
+        switch (r.type) {
+            case RoomType::Living:    ww = std::min(1.6f, std::max(0.8f, 1.25f * ws)); wh = 1.4f; sill = 0.75f; break;
+            case RoomType::Bedroom:   ww = std::min(1.4f, std::max(0.7f, 1.05f * ws)); wh = 1.3f; sill = 0.8f; break;
+            case RoomType::Bath:      ww = 0.55f; wh = 0.6f; sill = 1.7f; break;  // small, high
+            case RoomType::Hall:      ww = 0.65f; wh = 0.7f; sill = 1.55f; break; // small, high
+            case RoomType::Stairwell: ww = 0.6f;  wh = 1.1f; sill = 1.1f; break;
+            default: break; // Storage: no windows
+        }
+        if (ww <= 0.f) continue;
+        for (const Edge& ed : ext) {
+            const float len = ed.b - ed.a;
+            int count;
+            if (r.type == RoomType::Living) count = std::max(1, static_cast<int>(len / 2.3f));
+            else if (r.type == RoomType::Bedroom) count = std::max(1, static_cast<int>(len / 2.8f));
+            else count = len > 1.2f ? 1 : 0;
+            const float margin = 0.45f + ww * 0.5f; // min distance to the building corners
+            if (len < margin * 2.f + 0.3f) continue;
+            for (int k = 0; k < count; ++k) {
+                float c = ed.a + margin + (k + 0.5f) * (len - 2.f * margin) / count;
+                if (conflicts(ed.wall, c, ww * 0.5f)) {
+                    c += 0.35f;
+                    if (conflicts(ed.wall, c, ww * 0.5f)) c -= 0.7f;
+                    if (conflicts(ed.wall, c, ww * 0.5f)) continue; // keep min distance to doors
+                }
+                PlanWindow win;
+                win.room = ri;
+                win.axis = pb.walls[ed.wall].axis;
+                win.fixed = pb.walls[ed.wall].fixed;
+                win.center = c;
+                win.width = ww;
+                win.sill = sill;
+                win.height = wh;
+                win.floor0 = 0;
+                win.floor1 = floors - 1;
+                if (shopFront && ed.wall == 0 && ri == hall) win.floor0 = 1; // floor 0 = display windows
+                plan.windows.push_back(win);
+                pb.walls[ed.wall].openings.push_back({c, ww * 0.5f, sill, sill + wh, false, win.floor0, win.floor1});
+            }
+        }
+    }
+    // shop front: the hall's front edge on the ground floor gets big display windows beside the door
+    if (shopFront) {
+        const PlanDoor& d0 = plan.doors[0];
+        const float seg[2][2] = {{hr.x0 + 0.4f, d0.center - d0.width * 0.5f - 0.3f},
+                                 {d0.center + d0.width * 0.5f + 0.3f, hr.x1 - 0.4f}};
+        for (const auto& s : seg) {
+            const float len = s[1] - s[0];
+            if (len < 0.9f) continue;
+            const float c = (s[0] + s[1]) * 0.5f;
+            PlanWindow win;
+            win.room = hall;
+            win.axis = 0;
+            win.fixed = front.fixed;
+            win.center = c;
+            win.width = len;
+            win.sill = 0.25f;
+            win.height = std::max(1.2f, floorH - 0.95f);
+            win.floor0 = 0;
+            win.floor1 = 0;
+            plan.windows.push_back(win);
+            front.openings.push_back({c, len * 0.5f, win.sill, win.sill + win.height, false, 0, 0});
+        }
+    }
+    for (FpWall& wl : pb.walls)
+        std::sort(wl.openings.begin(), wl.openings.end(),
+                  [](const FpOpening& a, const FpOpening& b) { return a.center < b.center; });
+    return pb;
+}
+
+/// @brief Step 4: emits one wall for floor `f` (y in [y0,y1]) as a segmented extrusion around its
+/// openings: solid / sill / lintel segments; outer face -> `out` (facade), inner face + jamb and
+/// sill/lintel reveals -> `in` (interior material). Wall thickness `t` centered on the wall line.
+void emitWallShell(fuhgl::render::MeshData& out, fuhgl::render::MeshData& in, const FpWall& wl,
+                   float t, float y0, float y1, int f, float ix0, float ix1, float iz0, float iz1,
+                   const fuhgl::math::Vec3& colOut, const fuhgl::math::Vec3& colIn,
+                   const fuhgl::math::Vec3& colReveal) {
+    std::vector<FpOpening> ops;
+    for (const FpOpening& o : wl.openings)
+        if (o.f0 <= f && f <= o.f1) ops.push_back(o);
+    struct Seg { float a, b, sy0, sy1; };
+    std::vector<Seg> segs;
+    float cursor = wl.a;
+    for (const FpOpening& o : ops) {
+        const float oa = o.center - o.halfW, ob = o.center + o.halfW;
+        if (oa > cursor + 1e-4f) segs.push_back({cursor, oa, y0, y1});          // massive piece
+        const float sy0 = y0 + o.sill, sy1 = y0 + o.top;
+        if (sy0 > y0 + 1e-4f) segs.push_back({oa, ob, y0, sy0});                  // sill (Brüstung)
+        if (sy1 < y1 - 1e-4f) segs.push_back({oa, ob, sy1, y1});                  // lintel (Sturz)
+        cursor = std::max(cursor, ob);
+    }
+    if (cursor < wl.b - 1e-4f) segs.push_back({cursor, wl.b, y0, y1});
+    if (segs.empty()) return;
+    const float zo = wl.fixed + wl.dirOut * t * 0.5f; // outer face plane
+    const float zi = wl.fixed - wl.dirOut * t * 0.5f; // inner face plane
+    auto P = [&](float along, float y, float plane) {
+        return wl.axis == 0 ? fuhgl::math::Vec3{along, y, plane}
+                            : fuhgl::math::Vec3{plane, y, along};
+    };
+    const fuhgl::math::Vec3 nOut =
+        wl.axis == 0 ? fuhgl::math::Vec3{0.f, 0.f, wl.dirOut} : fuhgl::math::Vec3{wl.dirOut, 0.f, 0.f};
+    const fuhgl::math::Vec3 u =
+        wl.axis == 0 ? fuhgl::math::Vec3{1.f, 0.f, 0.f} : fuhgl::math::Vec3{0.f, 0.f, 1.f};
+    const fuhgl::math::Vec3 up{0.f, 1.f, 0.f};
+    for (const Seg& s : segs) {
+        if (wl.exterior) // outer face: facade mesh (POM target app-side)
+            addQuadOut(out, P(s.a, s.sy0, zo), P(s.b, s.sy0, zo), P(s.b, s.sy1, zo), P(s.a, s.sy1, zo), nOut, colOut);
+        else // interior wall: both sides face rooms -> both into the interior mesh
+            addQuadOut(in, P(s.a, s.sy0, zo), P(s.b, s.sy0, zo), P(s.b, s.sy1, zo), P(s.a, s.sy1, zo), nOut, colIn);
+        // inner face: interior mesh
+        addQuadOut(in, P(s.b, s.sy0, zi), P(s.a, s.sy0, zi), P(s.a, s.sy1, zi), P(s.b, s.sy1, zi), -nOut, colIn);
+        // end caps only at the wall boundary — skipped where the end lies on the inner plane of
+        // an exterior wall (corner / T into the shell), else the cap would be coplanar with it
+        const float e = 1e-4f;
+        const bool capA = std::fabs(s.a - wl.a) < e &&
+                          !(wl.axis == 0 ? (std::fabs(wl.a - ix0) < e || std::fabs(wl.a - ix1) < e)
+                                         : (std::fabs(wl.a - iz0) < e || std::fabs(wl.a - iz1) < e));
+        const bool capB = std::fabs(s.b - wl.b) < e &&
+                          !(wl.axis == 0 ? (std::fabs(wl.b - ix0) < e || std::fabs(wl.b - ix1) < e)
+                                         : (std::fabs(wl.b - iz0) < e || std::fabs(wl.b - iz1) < e));
+        if (capA)
+            addQuadOut(wl.exterior ? out : in, P(s.a, s.sy0, zi), P(s.a, s.sy0, zo), P(s.a, s.sy1, zo),
+                       P(s.a, s.sy1, zi), -u, wl.exterior ? colOut : colIn);
+        if (capB)
+            addQuadOut(wl.exterior ? out : in, P(s.b, s.sy0, zo), P(s.b, s.sy0, zi), P(s.b, s.sy1, zi),
+                       P(s.b, s.sy1, zo), u, wl.exterior ? colOut : colIn);
+    }
+    // opening reveals: jambs + sill top + lintel bottom, through the full wall thickness
+    for (const FpOpening& o : ops) {
+        const float oa = o.center - o.halfW, ob = o.center + o.halfW;
+        const float sy0 = y0 + o.sill, sy1 = y0 + o.top;
+        addQuadOut(in, P(oa, sy0, zi), P(oa, sy0, zo), P(oa, sy1, zo), P(oa, sy1, zi), -u, colReveal);
+        addQuadOut(in, P(ob, sy0, zo), P(ob, sy0, zi), P(ob, sy1, zi), P(ob, sy1, zo), u, colReveal);
+        if (sy0 > y0 + 1e-4f)
+            addQuadOut(in, P(oa, sy0, zi), P(ob, sy0, zi), P(ob, sy0, zo), P(oa, sy0, zo), up, colReveal);
+        if (sy1 < y1 - 1e-4f)
+            addQuadOut(in, P(oa, sy1, zo), P(ob, sy1, zo), P(ob, sy1, zi), P(oa, sy1, zi), -up, colReveal);
+    }
+}
+
+/// @brief Step 4 (slabs): ground floor plate, per-storey slabs (FuhGLCore CSG difference keeps
+/// the stairwell opening of the upper floors) and the ceiling under the roof.
+void emitSlabs(fuhgl::render::MeshData& in, const PlanBuild& pb, float w, float d, float t,
+               float floorH, int floors, float wallH, const fuhgl::math::Vec3& slabCol,
+               const fuhgl::math::Vec3& floorCol) {
+    const float iw = w - 2.f * t, id = d - 2.f * t;
+    const fuhgl::math::Mat4 idm = fuhgl::math::translate({0.f, 0.f, 0.f});
+    appendSolid(in, fuhgl::render::translated(fuhgl::render::makeCube({iw * 0.5f, 0.04f, id * 0.5f}),
+                                              {0.f, 0.02f, 0.f}), 12, floorCol, idm); // ground plate
+    const float slabT = 0.18f;
+    for (int f = 1; f < floors; ++f) {
+        const float yTop = f * floorH;
+        fuhgl::render::SolidPtr slab = fuhgl::render::translated(
+            fuhgl::render::makeCube({iw * 0.5f, slabT * 0.5f, id * 0.5f}), {0.f, yTop - slabT * 0.5f, 0.f});
+        if (pb.plan.stairRoom >= 0) { // stairwell opening: the upper floor keeps the stair hole
+            const PlanRoom& sr = pb.plan.rooms[pb.plan.stairRoom];
+            slab = slab - fuhgl::render::translated(
+                fuhgl::render::makeCube({(sr.x1 - sr.x0) * 0.5f - 0.02f, slabT,
+                                         (sr.z1 - sr.z0) * 0.5f - 0.02f}),
+                {(sr.x0 + sr.x1) * 0.5f, yTop - slabT * 0.5f, (sr.z0 + sr.z1) * 0.5f});
+        }
+        appendSolid(in, slab, 26, slabCol, idm);
+    }
+    appendSolid(in, fuhgl::render::translated(fuhgl::render::makeCube({iw * 0.5f, 0.03f, id * 0.5f}),
+                                              {0.f, wallH - 0.03f, 0.f}), 12, slabCol, idm); // ceiling
+}
+
+/// @brief Straight stair run inside the stairwell room, from `yBase` up by `rise`.
+void emitStairs(fuhgl::render::MeshData& in, const PlanRoom& sr, float yBase, float rise,
+                const fuhgl::math::Vec3& col) {
+    const bool alongX = (sr.x1 - sr.x0) >= (sr.z1 - sr.z0);
+    const float len = alongX ? sr.x1 - sr.x0 : sr.z1 - sr.z0;
+    const float wid = alongX ? sr.z1 - sr.z0 : sr.x1 - sr.x0;
+    const int steps = std::max(5, static_cast<int>(rise / 0.18f));
+    const float run = len * 0.9f, step = run / steps, h = rise / steps;
+    const float ac = alongX ? (sr.x0 + sr.x1) * 0.5f : (sr.z0 + sr.z1) * 0.5f;
+    const float wc = alongX ? (sr.z0 + sr.z1) * 0.5f : (sr.x0 + sr.x1) * 0.5f;
+    for (int k = 0; k < steps; ++k) {
+        const float along = (alongX ? sr.x0 : sr.z0) + 0.05f + step * (k + 0.5f);
+        const float y = yBase + h * (k + 0.5f);
+        if (alongX) appendBox(in, {step * 0.5f, h * 0.5f, wid * 0.5f}, {along, y, wc}, col);
+        else appendBox(in, {wid * 0.5f, h * 0.5f, step * 0.5f}, {wc, y, along}, col);
+    }
+    (void)ac;
+}
+
+/// @brief Step 5: door prop in one opening — CSG frame ring (Zarge) into `details`, hinged leaf
+/// (ajar) + handle into `doors` (separate mesh so the app can animate the leaf at the hinge).
+void emitDoorProps(fuhgl::render::MeshData& details, fuhgl::render::MeshData& doors,
+                   const PlanDoor& d, float t, float floorH, const fuhgl::math::Vec3& frameCol,
+                   const fuhgl::math::Vec3& leafCol, Rng& rng) {
+    for (int f = d.floor0; f <= d.floor1; ++f) {
+        const float y0 = f * floorH;
+        const float cy = y0 + (d.height + 0.06f) * 0.5f;
+        fuhgl::render::SolidPtr frame =
+            fuhgl::render::translated(
+                fuhgl::render::makeCube({d.width * 0.5f + 0.05f, (d.height + 0.06f) * 0.5f, t * 0.5f + 0.04f}),
+                {0.f, 0.f, 0.f}) -
+            fuhgl::render::translated(
+                fuhgl::render::makeCube({d.width * 0.5f - 0.02f, d.height * 0.5f, t * 0.5f + 0.08f}),
+                {0.f, -0.03f, 0.f});
+        const fuhgl::math::Mat4 fm = d.axis == 0
+            ? fuhgl::math::translate({d.center, cy, d.fixed})
+            : fuhgl::math::translate({d.fixed, cy, d.center});
+        // rotate the frame ring into the wall plane (axis 1 walls: width runs along z)
+        appendSolid(details, frame, 6, frameCol,
+                    d.axis == 0 ? fm : fm * fuhgl::math::rotateY(fuhgl::math::kPi * 0.5f));
+        // leaf: hung at one jamb (hinge), slightly ajar
+        const float lw = d.width - 0.08f, lh = d.height - 0.05f;
+        const float ang = (rng.nextf() < 0.5f ? -1.f : 1.f) * rng.range(0.06f, 0.55f);
+        const float hx = d.axis == 0 ? d.center - d.width * 0.5f + 0.04f : d.fixed;
+        const float hz = d.axis == 0 ? d.fixed : d.center - d.width * 0.5f + 0.04f;
+        const fuhgl::math::Mat4 hinge =
+            fuhgl::math::translate({hx, y0 + d.height * 0.5f, hz}) * fuhgl::math::rotateY(ang);
+        fuhgl::render::MeshData leaf = d.axis == 0
+            ? fuhgl::render::shapes::boxData({lw * 0.5f, lh * 0.5f, 0.02f}, leafCol)
+            : fuhgl::render::shapes::boxData({0.02f, lh * 0.5f, lw * 0.5f}, leafCol);
+        const fuhgl::math::Mat4 lm = hinge * (d.axis == 0
+            ? fuhgl::math::translate({lw * 0.5f, 0.f, 0.f})
+            : fuhgl::math::translate({0.f, 0.f, lw * 0.5f}));
+        appendTransformed(doors, leaf, lm);
+        fuhgl::render::MeshData knob = fuhgl::render::shapes::boxData({0.015f, 0.03f, 0.05f}, leafCol * 0.7f);
+        appendTransformed(doors, knob, hinge * (d.axis == 0
+            ? fuhgl::math::translate({lw - 0.12f, 0.f, 0.05f})
+            : fuhgl::math::translate({0.05f, 0.f, lw - 0.12f})));
+    }
+}
+
+/// @brief Step 5: window prop in one opening — CSG frame ring + mullions + sill into `details`,
+/// glass pane into `glass`; optional shutters on the outer face.
+void emitWindowProps(fuhgl::render::MeshData& details, fuhgl::render::MeshData& glass,
+                     const PlanWindow& win, float t, float floorH, bool shutters, float ws,
+                     const fuhgl::math::Vec3& frameCol, const fuhgl::math::Vec3& sillCol,
+                     const fuhgl::math::Vec3& shutterCol, const fuhgl::math::Vec3& glassCol) {
+    const float dirOut = win.fixed > 0.f ? 1.f : -1.f;
+    for (int f = win.floor0; f <= win.floor1; ++f) {
+        const float y0 = f * floorH;
+        const float cy = y0 + win.sill + win.height * 0.5f;
+        // frame ring (CSG: outer box minus inner box), through the wall thickness
+        fuhgl::render::SolidPtr frame =
+            fuhgl::render::makeCube({win.width * 0.5f + 0.04f, win.height * 0.5f + 0.04f, t * 0.5f + 0.02f}) -
+            fuhgl::render::makeCube({win.width * 0.5f - 0.045f, win.height * 0.5f - 0.045f, t * 0.5f + 0.06f});
+        fuhgl::math::Mat4 fm = win.axis == 0
+            ? fuhgl::math::translate({win.center, cy, win.fixed})
+            : fuhgl::math::translate({win.fixed, cy, win.center});
+        if (win.axis == 1) fm = fm * fuhgl::math::rotateY(fuhgl::math::kPi * 0.5f);
+        appendSolid(details, frame, 6, frameCol, fm);
+        // mullions on larger windows
+        if (win.width >= 0.9f) {
+            if (win.axis == 0) {
+                appendBox(details, {0.025f, win.height * 0.5f, 0.02f}, {win.center, cy, win.fixed}, frameCol);
+                appendBox(details, {win.width * 0.5f, 0.025f, 0.02f}, {win.center, cy, win.fixed}, frameCol);
+            } else {
+                appendBox(details, {0.02f, win.height * 0.5f, 0.025f}, {win.fixed, cy, win.center}, frameCol);
+                appendBox(details, {0.02f, 0.025f, win.width * 0.5f}, {win.fixed, cy, win.center}, frameCol);
+            }
+        }
+        // sill (Fensterbank), protruding on both sides of the wall
+        if (win.axis == 0)
+            appendBox(details, {win.width * 0.5f + 0.06f, 0.035f, t * 0.5f + 0.05f},
+                      {win.center, y0 + win.sill - 0.02f, win.fixed + dirOut * 0.03f}, sillCol);
+        else
+            appendBox(details, {t * 0.5f + 0.05f, 0.035f, win.width * 0.5f + 0.06f},
+                      {win.fixed + dirOut * 0.03f, y0 + win.sill - 0.02f, win.center}, sillCol);
+        // glass pane in its own mesh (reflective material app-side)
+        if (win.axis == 0)
+            appendBox(glass, {win.width * 0.5f - 0.05f, win.height * 0.5f - 0.05f, 0.008f},
+                      {win.center, cy, win.fixed}, glassCol);
+        else
+            appendBox(glass, {0.008f, win.height * 0.5f - 0.05f, win.width * 0.5f - 0.05f},
+                      {win.fixed, cy, win.center}, glassCol);
+        // shutters (Fensterläden) flanking the window on the outer face
+        if (shutters) {
+            const float zo = win.fixed + dirOut * (t * 0.5f + 0.02f);
+            for (int s = -1; s <= 1; s += 2) {
+                if (win.axis == 0)
+                    appendBox(details, {0.09f * ws + 0.04f, win.height * 0.5f, 0.02f},
+                              {win.center + s * (win.width * 0.5f + 0.13f), cy, zo}, shutterCol);
+                else
+                    appendBox(details, {0.02f, win.height * 0.5f, 0.09f * ws + 0.04f},
+                              {zo, cy, win.center + s * (win.width * 0.5f + 0.13f)}, shutterCol);
+            }
+        }
+    }
+}
+
+/// @brief Furniture prop set (step 5): each piece is a FuhGLCore CSG solid built once in local
+/// space, then placed per room by instancing (appendTransformed) at wall anchors.
+struct FurnSet {
+    fuhgl::render::SolidPtr table, chair, bed, wardrobe, tub, basin, shelf;
+    fuhgl::math::Vec3 wood{0.45f, 0.33f, 0.22f};
+    fuhgl::math::Vec3 white{0.85f, 0.86f, 0.88f};
+};
+
+FurnSet makeFurniture() {
+    using fuhgl::render::makeCube;
+    using fuhgl::render::makeCylinder;
+    using fuhgl::render::translated;
+    FurnSet fs;
+    fs.table = translated(makeCylinder(0.55f, 0.05f), {0.f, 0.72f, 0.f});
+    for (int sx = -1; sx <= 1; sx += 2)
+        for (int sz = -1; sz <= 1; sz += 2)
+            fs.table = fs.table | translated(makeCylinder(0.03f, 0.72f),
+                                             {sx * 0.38f, 0.36f, sz * 0.38f});
+    fs.chair = translated(makeCube({0.2f, 0.03f, 0.2f}), {0.f, 0.45f, 0.f}) |
+               translated(makeCube({0.2f, 0.28f, 0.03f}), {0.f, 0.6f, -0.185f});
+    for (int sx = -1; sx <= 1; sx += 2)
+        for (int sz = -1; sz <= 1; sz += 2)
+            fs.chair = fs.chair | translated(makeCylinder(0.022f, 0.45f), {sx * 0.17f, 0.225f, sz * 0.17f});
+    fs.bed = translated(makeCube({0.45f, 0.15f, 1.0f}), {0.f, 0.15f, 0.f}) |       // frame
+             translated(makeCube({0.44f, 0.1f, 0.95f}), {0.f, 0.35f, 0.f}) |       // mattress
+             translated(makeCube({0.46f, 0.42f, 0.05f}), {0.f, 0.42f, -1.0f}) |    // headboard
+             translated(makeCube({0.3f, 0.06f, 0.18f}), {0.f, 0.44f, 0.75f});       // pillow
+    fs.wardrobe = makeCube({0.5f, 0.9f, 0.3f}) -
+                  translated(makeCube({0.44f, 0.8f, 0.02f}), {0.f, 0.f, 0.29f});     // door groove
+    fs.tub = translated(makeCube({0.75f, 0.3f, 0.4f}), {0.f, 0.3f, 0.f}) -
+             translated(makeCube({0.67f, 0.34f, 0.32f}), {0.f, 0.36f, 0.f});         // hollow tub
+    fs.basin = translated(makeCylinder(0.17f, 0.09f), {0.f, 0.86f, 0.f}) |
+               translated(makeCube({0.22f, 0.4f, 0.22f}), {0.f, 0.42f, 0.f});
+    fs.shelf = translated(makeCube({0.45f, 0.03f, 0.16f}), {0.f, 0.2f, 0.f}) |
+               translated(makeCube({0.45f, 0.03f, 0.16f}), {0.f, 0.55f, 0.f}) |
+               translated(makeCube({0.45f, 0.03f, 0.16f}), {0.f, 0.9f, 0.f}) |
+               translated(makeCube({0.02f, 0.75f, 0.16f}), {-0.44f, 0.55f, 0.f}) |
+               translated(makeCube({0.02f, 0.75f, 0.16f}), {0.44f, 0.55f, 0.f});
+    return fs;
+}
+
+/// @brief True if the room has a window on side `side` (0 = +z front, 1 = -z back, 2 = +x, 3 = -x).
+bool roomSideHasWindow(const Floorplan& plan, int room, int side) {
+    for (const PlanWindow& win : plan.windows) {
+        if (win.room != room) continue;
+        const int wside = win.axis == 0 ? (win.fixed > 0.f ? 0 : 1) : (win.fixed > 0.f ? 2 : 3);
+        if (wside == side) return true;
+    }
+    return false;
+}
+
+/// @brief Step 5: furnishes one room on floor base `y` — furniture stands at wall anchors
+/// (bed headboard / wardrobe / shelves on a wall without a window), living room gets a table.
+void furnishRoom(fuhgl::render::MeshData& interior, const Floorplan& plan, int ri, float y,
+                 const FurnSet& fs, Rng& rng, int& count) {
+    const PlanRoom& r = plan.rooms[ri];
+    const float cx = (r.x0 + r.x1) * 0.5f, cz = (r.z0 + r.z1) * 0.5f;
+    const float span[4] = {r.x1 - r.x0, r.x1 - r.x0, r.z1 - r.z0, r.z1 - r.z0};
+    auto freeSide = [&](float need) {
+        for (int s = 0; s < 4; ++s)
+            if (!roomSideHasWindow(plan, ri, s) && span[s] >= need) return s;
+        return -1;
+    };
+    auto place = [&](const fuhgl::render::SolidPtr& s, int res, const fuhgl::math::Vec3& col,
+                     float px, float pz, float rotY) {
+        appendSolid(interior, s, res, col, fuhgl::math::translate({px, y, pz}) * fuhgl::math::rotateY(rotY));
+    };
+    switch (r.type) {
+        case RoomType::Living: {
+            appendSolid(interior, fs.table, 8, fs.wood, fuhgl::math::translate({cx, y, cz}));
+            for (int k = 0; k < 4; ++k) {
+                const float a = (k + 0.5f) * fuhgl::math::kPi * 0.5f;
+                place(fs.chair, 6, fs.wood, cx + std::cos(a) * 1.0f, cz + std::sin(a) * 1.0f,
+                      -a + fuhgl::math::kPi);
+            }
+            ++count;
+            break;
+        }
+        case RoomType::Bedroom: {
+            const int bs = freeSide(2.1f); // bed length along the wall; headboard on a free wall
+            if (bs >= 0) {
+                float rot = 0.f, px = cx, pz = cz;
+                if (bs == 0) { rot = fuhgl::math::kPi; pz = r.z1 - 1.05f; }
+                else if (bs == 1) { rot = 0.f; pz = r.z0 + 1.05f; }
+                else if (bs == 2) { rot = -fuhgl::math::kPi * 0.5f; px = r.x1 - 1.05f; }
+                else { rot = fuhgl::math::kPi * 0.5f; px = r.x0 + 1.05f; }
+                if (bs < 2) px = std::min(std::max(px, r.x0 + 0.6f), r.x1 - 0.6f);
+                else pz = std::min(std::max(pz, r.z0 + 0.6f), r.z1 - 0.6f);
+                place(fs.bed, 8, fs.wood, px, pz, rot);
+                ++count;
+            }
+            const int ws2 = freeSide(1.1f);
+            if (ws2 >= 0 && ws2 != bs) {
+                float rot = 0.f, px = cx, pz = cz;
+                if (ws2 == 0) { rot = 0.f; pz = r.z1 - 0.35f; }
+                else if (ws2 == 1) { rot = fuhgl::math::kPi; pz = r.z0 + 0.35f; }
+                else if (ws2 == 2) { rot = fuhgl::math::kPi * 0.5f; px = r.x1 - 0.35f; }
+                else { rot = -fuhgl::math::kPi * 0.5f; px = r.x0 + 0.35f; }
+                if (ws2 < 2) px += (rng.nextf() - 0.5f) * std::max(0.f, r.x1 - r.x0 - 1.4f);
+                else pz += (rng.nextf() - 0.5f) * std::max(0.f, r.z1 - r.z0 - 1.4f);
+                place(fs.wardrobe, 8, fs.wood, px, pz, rot);
+                ++count;
+            }
+            break;
+        }
+        case RoomType::Bath: {
+            const int ts = freeSide(1.7f);
+            if (ts >= 0) {
+                float rot = 0.f, px = cx, pz = cz;
+                if (ts == 0) { rot = fuhgl::math::kPi * 0.5f; pz = r.z1 - 0.45f; }
+                else if (ts == 1) { rot = -fuhgl::math::kPi * 0.5f; pz = r.z0 + 0.45f; }
+                else if (ts == 2) { rot = fuhgl::math::kPi; px = r.x1 - 0.45f; }
+                else { rot = 0.f; px = r.x0 + 0.45f; }
+                if (ts < 2) px = std::min(std::max(px, r.x0 + 0.85f), r.x1 - 0.85f);
+                else pz = std::min(std::max(pz, r.z0 + 0.85f), r.z1 - 0.85f);
+                place(fs.tub, 8, fs.white, px, pz, rot);
+                place(fs.basin, 6, fs.white, ts < 2 ? px + (ts == 0 || ts == 1 ? 0.9f : 0.f) : px,
+                      ts < 2 ? pz : pz + 0.9f, 0.f);
+                ++count;
+            }
+            break;
+        }
+        case RoomType::Storage: {
+            const int ss = freeSide(1.0f);
+            if (ss >= 0) {
+                float rot = 0.f, px = cx, pz = cz;
+                if (ss == 0) { rot = 0.f; pz = r.z1 - 0.2f; }
+                else if (ss == 1) { rot = fuhgl::math::kPi; pz = r.z0 + 0.2f; }
+                else if (ss == 2) { rot = fuhgl::math::kPi * 0.5f; px = r.x1 - 0.2f; }
+                else { rot = -fuhgl::math::kPi * 0.5f; px = r.x0 + 0.2f; }
+                if (ss < 2) px += (rng.nextf() - 0.5f) * std::max(0.f, r.x1 - r.x0 - 1.2f);
+                else pz += (rng.nextf() - 0.5f) * std::max(0.f, r.z1 - r.z0 - 1.2f);
+                place(fs.shelf, 8, fs.wood, px, pz, rot);
+                ++count;
+            }
+            break;
+        }
+        default:
+            break; // Hall / Stairwell stay open (stairs are emitted separately)
+    }
+}
+
 } // namespace
 
 FacadeMaterial HouseGenerator::resolveFacadeMaterial(const BuildingContext& ctx, unsigned seed) {
@@ -497,26 +1209,38 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
     Palette pal = pal0;
     applyMaterialPalette(pal, facade, p.context);
     const float irr = p.wallIrregularity * der.irregularMul;
+    // interior mode (Village/Town): real 2D floorplan -> wall shell with true openings + interior
+    // mesh; Highrise keeps the window-grid facade (interior ignored)
+    const bool interior =
+        p.interior && p.style != HouseStyle::Highrise && p.width >= 3.2f && p.depth >= 3.2f;
+    hm.spec.hasInterior = interior;
+    hm.spec.wallThickness = p.wallThickness;
+    const float t = p.wallThickness;
 
-    // --- walls: chamfered edges (bevel) + low-freq vertex warp (bowed walls) + slight
-    //     per-vertex jitter = bump-like relief on the facade ---
-    hm.walls = p.bevelEdges
-                   ? bevelBox({w * 0.5f, wallH * 0.5f, d * 0.5f}, 0.035f, pal.wall)
-                   : fuhgl::render::shapes::boxData({w * 0.5f, wallH * 0.5f, d * 0.5f}, pal.wall);
-    shiftY(hm.walls, wallH * 0.5f);
-    hm.spec.beveled = p.bevelEdges;
-    if (p.warpAmount > 0.f) {
-        Noise warpN(p.seed ^ 0xA17u);
-        warpMesh(hm.walls, warpN, p.warpAmount, p.seed, true); // horizontalOnly: floor stays flat
-        hm.spec.warped = true;
-    }
-    if (irr > 0.f) {
-        hm.spec.wallIrregular = true;
-        for (std::size_t i = 0; i < hm.walls.vertexCount(); ++i) {
-            float* v = &hm.walls.vertices[i * 11];
-            v[0] += (rng.nextf() - 0.5f) * 2.f * irr;
-            v[2] += (rng.nextf() - 0.5f) * 2.f * irr;
+    if (!interior) {
+        // --- walls: chamfered edges (bevel) + low-freq vertex warp (bowed walls) + slight
+        //     per-vertex jitter = bump-like relief on the facade ---
+        hm.walls = p.bevelEdges
+                       ? bevelBox({w * 0.5f, wallH * 0.5f, d * 0.5f}, 0.035f, pal.wall)
+                       : fuhgl::render::shapes::boxData({w * 0.5f, wallH * 0.5f, d * 0.5f}, pal.wall);
+        shiftY(hm.walls, wallH * 0.5f);
+        hm.spec.beveled = p.bevelEdges;
+        if (p.warpAmount > 0.f) {
+            Noise warpN(p.seed ^ 0xA17u);
+            warpMesh(hm.walls, warpN, p.warpAmount, p.seed, true); // horizontalOnly: floor stays flat
+            hm.spec.warped = true;
         }
+        if (irr > 0.f) {
+            hm.spec.wallIrregular = true;
+            for (std::size_t i = 0; i < hm.walls.vertexCount(); ++i) {
+                float* v = &hm.walls.vertices[i * 11];
+                v[0] += (rng.nextf() - 0.5f) * 2.f * irr;
+                v[2] += (rng.nextf() - 0.5f) * 2.f * irr;
+            }
+        }
+    } else if (irr > 0.f) {
+        // the shell must stay watertight -> the jitter goes to the interior mesh (applied below)
+        hm.spec.wallIrregular = true;
     }
     // facade material detail: stone gets relief courses (brick relies on the app-side POM set)
     if (facade == FacadeMaterial::Stone) {
@@ -543,9 +1267,10 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
                               plinthCol * 1.15f + fuhgl::math::Vec3{0.04f, 0.04f, 0.04f});
     }
 
-    // --- door (front = +z) with load-bearing lintel (Sturz) above it ---
-    appendBox(hm.details, {0.45f, 0.95f, 0.04f}, {0.f, 0.95f, d * 0.5f + 0.03f}, pal.door);
-    {
+    // --- door (front = +z) with load-bearing lintel (Sturz) above it; with interiors the door
+    //     is a real opening in the shell (frame + hinged leaf are emitted with the plan below) ---
+    if (!interior) {
+        appendBox(hm.details, {0.45f, 0.95f, 0.04f}, {0.f, 0.95f, d * 0.5f + 0.03f}, pal.door);
         const fuhgl::math::Vec3 lintelCol =
             facade == FacadeMaterial::Wood ? pal.beam : fuhgl::math::Vec3{0.62f, 0.60f, 0.57f};
         appendBox(hm.details, {0.56f, 0.09f, 0.05f}, {0.f, 1.94f, d * 0.5f + 0.035f}, lintelCol);
@@ -584,70 +1309,128 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
         return hm;
     }
 
-    // --- windows per floor, front + back: frame in details, glass pane in hm.glass,
-    //     optional shutters (Fensterläden) flanking each window. Window size follows the
-    //     climate (small when hot, large when cold); the ground floor of a shop-front house
-    //     gets display windows instead (added below). ---
     const bool shutters =
         p.style != HouseStyle::Highrise && (der.forceShutters || rng.nextf() < 0.5f);
     hm.spec.hasShutters = shutters;
     const float ws = der.windowScale;
-    const fuhgl::math::Vec3 lintelCol =
-        facade == FacadeMaterial::Wood ? pal.beam : fuhgl::math::Vec3{0.62f, 0.60f, 0.57f};
-    const fuhgl::math::Vec3 revealCol = pal.wall * 0.72f;
-    for (int f = 0; f < p.floors; ++f) {
-        if (der.shopFront && f == 0) continue; // ground floor = shop front
-        const float y = p.floorHeight * (0.45f + f * 1.0f);
-        if (y > wallH - 0.7f) break;
-        for (int s = -1; s <= 1; s += 2) {
-            const float wx = s * w * 0.24f;
-            // recessed reveal (Laibung) on the front: frame rim around the opening -> real depth
-            for (int side = -1; side <= 1; side += 2) {
-                appendBox(hm.details, {0.035f, 0.42f * ws + 0.07f, 0.025f},
-                          {wx + side * (0.15f * ws + 0.035f), y, d * 0.5f + 0.012f}, revealCol);
-                appendBox(hm.details, {0.30f * ws + 0.07f, 0.035f, 0.025f},
-                          {wx, y + (0.21f * ws + 0.035f), d * 0.5f + 0.012f}, revealCol);
+    // balcony decision is hoisted: with interiors the balcony door is a real opening in the plan
+    bool balcony = false;
+    float bx = 0.f, by = p.floorHeight * 1.05f;
+    if (p.floors >= 2 && p.style != HouseStyle::Highrise) {
+        balcony = rng.nextf() < 0.4f;
+        bx = rng.range(-w * 0.15f, w * 0.15f);
+    }
+
+    if (interior) {
+        // --- interior pipeline (steps 1-5): 2D floorplan -> shell with real openings -> props ---
+        PlanBuild pb =
+            buildPlan(w, d, t, p.floorHeight, p.floors, der.shopFront, balcony, bx, ws, rng);
+        hm.floorplan = pb.plan;
+        hm.spec.roomCount = static_cast<int>(pb.plan.rooms.size());
+        hm.spec.doorCount = static_cast<int>(pb.plan.doors.size());
+        hm.spec.windowCount = static_cast<int>(pb.plan.windows.size());
+        const fuhgl::math::Vec3 colIn{0.93f, 0.90f, 0.84f}; // interior plaster
+        const fuhgl::math::Vec3 colReveal = pal.wall * 0.72f;
+        const float ix0 = -w * 0.5f + t, ix1 = w * 0.5f - t;
+        const float iz0 = -d * 0.5f + t, iz1 = d * 0.5f - t;
+        for (int f = 0; f < p.floors; ++f)
+            for (const FpWall& wl : pb.walls)
+                emitWallShell(hm.walls, hm.interior, wl, t, f * p.floorHeight, (f + 1) * p.floorHeight,
+                              f, ix0, ix1, iz0, iz1, pal.wall, colIn, colReveal);
+        if (irr > 0.f) // jitter goes to the interior mesh — the shell stays watertight
+            for (std::size_t i = 0; i < hm.interior.vertexCount(); ++i) {
+                float* v = &hm.interior.vertices[i * 11];
+                v[0] += (rng.nextf() - 0.5f) * 2.f * irr;
+                v[2] += (rng.nextf() - 0.5f) * 2.f * irr;
             }
-            appendBox(hm.details, {0.30f * ws + 0.07f, 0.035f, 0.025f},
-                      {wx, y - (0.21f * ws + 0.035f), d * 0.5f + 0.012f}, revealCol);
-            appendBox(hm.details, {0.30f * ws, 0.42f * ws, 0.03f}, {wx, y, d * 0.5f + 0.02f}, pal.window);
-            appendBox(hm.details, {0.30f * ws, 0.42f * ws, 0.03f}, {wx, y, -d * 0.5f - 0.02f}, pal.window);
-            appendBox(hm.glass, {0.25f * ws, 0.36f * ws, 0.015f}, {wx, y, d * 0.5f + 0.045f}, pal.window);
-            appendBox(hm.glass, {0.25f * ws, 0.36f * ws, 0.015f}, {wx, y, -d * 0.5f - 0.045f}, pal.window);
-            // lintel (Sturz) above each window (front)
-            appendBox(hm.details, {0.30f * ws + 0.1f, 0.08f, 0.04f},
-                      {wx, y + 0.21f * ws + 0.08f, d * 0.5f + 0.03f}, lintelCol);
-            hm.spec.hasLintels = true;
-            if (shutters) {
-                const fuhgl::math::Vec3 shutterCol = pal.beam * 1.15f + fuhgl::math::Vec3{0.1f, 0.12f, 0.1f};
+        // floor slabs with the stairwell hole + ceiling (FuhGLCore CSG difference)
+        emitSlabs(hm.interior, pb, w, d, t, p.floorHeight, p.floors, wallH,
+                  {0.62f, 0.62f, 0.64f}, {0.55f, 0.42f, 0.30f});
+        if (pb.plan.stairRoom >= 0) {
+            const PlanRoom& sr = pb.plan.rooms[pb.plan.stairRoom];
+            for (int f = 0; f < p.floors; ++f)
+                emitStairs(hm.interior, sr, f * p.floorHeight, p.floorHeight, {0.60f, 0.60f, 0.62f});
+        }
+        // props in the openings: CSG frames + hinged door leaves + glass panes
+        const fuhgl::math::Vec3 frameCol =
+            facade == FacadeMaterial::Wood ? pal.beam : fuhgl::math::Vec3{0.88f, 0.87f, 0.84f};
+        const fuhgl::math::Vec3 shutterCol = pal.beam * 1.15f + fuhgl::math::Vec3{0.1f, 0.12f, 0.1f};
+        for (const PlanDoor& dr : pb.plan.doors)
+            emitDoorProps(hm.details, hm.doors, dr, t, p.floorHeight, frameCol, pal.door, rng);
+        for (const PlanWindow& win : pb.plan.windows)
+            emitWindowProps(hm.details, hm.glass, win, t, p.floorHeight, shutters, ws, frameCol,
+                            pal.wall * 0.9f, shutterCol, pal.window);
+        hm.spec.hasLintels = true; // the wall lintel segments above every opening
+        // furniture: CSG sub-meshes instanced at wall anchors per room
+        const FurnSet fs = makeFurniture();
+        for (int f = 0; f < p.floors; ++f)
+            for (int ri = 0; ri < static_cast<int>(pb.plan.rooms.size()); ++ri)
+                if (pb.plan.rooms[ri].type != RoomType::Stairwell)
+                    furnishRoom(hm.interior, pb.plan, ri, f * p.floorHeight, fs, rng, hm.spec.furniture);
+    } else {
+        // --- windows per floor, front + back: frame in details, glass pane in hm.glass,
+        //     optional shutters (Fensterläden) flanking each window. Window size follows the
+        //     climate (small when hot, large when cold); the ground floor of a shop-front house
+        //     gets display windows instead (added below). ---
+        const fuhgl::math::Vec3 lintelCol =
+            facade == FacadeMaterial::Wood ? pal.beam : fuhgl::math::Vec3{0.62f, 0.60f, 0.57f};
+        const fuhgl::math::Vec3 revealCol = pal.wall * 0.72f;
+        for (int f = 0; f < p.floors; ++f) {
+            if (der.shopFront && f == 0) continue; // ground floor = shop front
+            const float y = p.floorHeight * (0.45f + f * 1.0f);
+            if (y > wallH - 0.7f) break;
+            for (int s = -1; s <= 1; s += 2) {
+                const float wx = s * w * 0.24f;
+                // recessed reveal (Laibung) on the front: frame rim around the opening -> real depth
                 for (int side = -1; side <= 1; side += 2) {
-                    // micro-jitter: each shutter hangs at a slightly different angle/offset
-                    for (int fz = -1; fz <= 1; fz += 2) {
-                        fuhgl::render::MeshData sh =
-                            fuhgl::render::shapes::boxData({0.09f * ws, 0.21f * ws, 0.02f}, shutterCol);
-                        const float jr = (rng.nextf() - 0.5f) * 0.14f;  // ~±4°
-                        const float jo = (rng.nextf() - 0.5f) * 0.025f;
-                        appendTransformed(hm.details, sh,
-                            fuhgl::math::translate({wx + side * 0.42f * ws, y,
-                                                    fz * (d * 0.5f + 0.03f) + jo}) *
-                            fuhgl::math::rotateY(jr * fz));
+                    appendBox(hm.details, {0.035f, 0.42f * ws + 0.07f, 0.025f},
+                              {wx + side * (0.15f * ws + 0.035f), y, d * 0.5f + 0.012f}, revealCol);
+                    appendBox(hm.details, {0.30f * ws + 0.07f, 0.035f, 0.025f},
+                              {wx, y + (0.21f * ws + 0.035f), d * 0.5f + 0.012f}, revealCol);
+                }
+                appendBox(hm.details, {0.30f * ws + 0.07f, 0.035f, 0.025f},
+                          {wx, y - (0.21f * ws + 0.035f), d * 0.5f + 0.012f}, revealCol);
+                appendBox(hm.details, {0.30f * ws, 0.42f * ws, 0.03f}, {wx, y, d * 0.5f + 0.02f}, pal.window);
+                appendBox(hm.details, {0.30f * ws, 0.42f * ws, 0.03f}, {wx, y, -d * 0.5f - 0.02f}, pal.window);
+                appendBox(hm.glass, {0.25f * ws, 0.36f * ws, 0.015f}, {wx, y, d * 0.5f + 0.045f}, pal.window);
+                appendBox(hm.glass, {0.25f * ws, 0.36f * ws, 0.015f}, {wx, y, -d * 0.5f - 0.045f}, pal.window);
+                // lintel (Sturz) above each window (front)
+                appendBox(hm.details, {0.30f * ws + 0.1f, 0.08f, 0.04f},
+                          {wx, y + 0.21f * ws + 0.08f, d * 0.5f + 0.03f}, lintelCol);
+                hm.spec.hasLintels = true;
+                if (shutters) {
+                    const fuhgl::math::Vec3 shutterCol = pal.beam * 1.15f + fuhgl::math::Vec3{0.1f, 0.12f, 0.1f};
+                    for (int side = -1; side <= 1; side += 2) {
+                        // micro-jitter: each shutter hangs at a slightly different angle/offset
+                        for (int fz = -1; fz <= 1; fz += 2) {
+                            fuhgl::render::MeshData sh =
+                                fuhgl::render::shapes::boxData({0.09f * ws, 0.21f * ws, 0.02f}, shutterCol);
+                            const float jr = (rng.nextf() - 0.5f) * 0.14f;  // ~±4°
+                            const float jo = (rng.nextf() - 0.5f) * 0.025f;
+                            appendTransformed(hm.details, sh,
+                                fuhgl::math::translate({wx + side * 0.42f * ws, y,
+                                                        fz * (d * 0.5f + 0.03f) + jo}) *
+                                fuhgl::math::rotateY(jr * fz));
+                        }
                     }
                 }
             }
         }
     }
 
-    // --- shop front (high density): ground floor = Ladenlokal with big display windows,
-    //     a sign band above the door and the door pushed to the side ---
+    // --- shop front (high density): ground floor = Ladenlokal; with interiors the big display
+    //     windows are real openings from the plan, without interiors they are facade boxes ---
     if (der.shopFront && p.style != HouseStyle::Highrise) {
         hm.spec.hasShopFront = true;
-        const float y = p.floorHeight * 0.5f;
-        for (int s = -1; s <= 1; s += 2) {
-            const float wx = s * w * 0.27f;
-            appendBox(hm.details, {0.55f, 0.75f, 0.03f}, {wx, y, d * 0.5f + 0.02f}, pal.window);
-            appendBox(hm.glass, {0.50f, 0.70f, 0.015f}, {wx, y, d * 0.5f + 0.045f}, pal.window);
+        if (!interior) {
+            const float y = p.floorHeight * 0.5f;
+            for (int s = -1; s <= 1; s += 2) {
+                const float wx = s * w * 0.27f;
+                appendBox(hm.details, {0.55f, 0.75f, 0.03f}, {wx, y, d * 0.5f + 0.02f}, pal.window);
+                appendBox(hm.glass, {0.50f, 0.70f, 0.015f}, {wx, y, d * 0.5f + 0.045f}, pal.window);
+            }
         }
-        // sign band above the shop front (the center door stays between the display windows)
+        // sign band above the shop front (the front door stays between the display windows)
         appendBox(hm.details, {w * 0.5f + 0.02f, 0.14f, 0.03f},
                   {0.f, p.floorHeight + 0.12f, d * 0.5f + 0.03f}, {0.65f, 0.18f, 0.14f});
     }
@@ -689,6 +1472,7 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
         sagRoof(hm.roof, w * 0.5f + oh, p.warpAmount * 1.8f);
         Noise warpN(p.seed ^ 0xA18u);
         warpMesh(hm.roof, warpN, p.warpAmount * 0.6f, p.seed + 7u, false);
+        hm.spec.warped = true;
     }
     // roof penetrations per "structural rules": solar panels + flush roof windows on the slopes
     if ((hm.spec.roofType == RoofType::Gable || hm.spec.roofType == RoofType::Hipped)) {
@@ -751,10 +1535,8 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
     }
 
     // --- balcony with balcony door on an upper floor (front = +z) ---
-    if (p.floors >= 2 && p.style != HouseStyle::Highrise && rng.nextf() < 0.4f) {
+    if (balcony) { // decision hoisted above (with interiors the door is a real plan opening)
         hm.spec.hasBalcony = true;
-        const float by = p.floorHeight * 1.05f; // first upper floor
-        const float bx = rng.range(-w * 0.15f, w * 0.15f);
         const float bw2 = std::min(1.7f, w * 0.4f), bd2 = 0.85f;
         appendBox(hm.details, {bw2 * 0.5f, 0.05f, bd2 * 0.5f}, {bx, by, d * 0.5f + bd2 * 0.5f},
                   pal.wall * 0.9f); // slab
@@ -772,13 +1554,16 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
         }
         appendBox(hm.details, {0.02f, 0.03f, bd2 * 0.5f}, {bx - bw2 * 0.5f, by + 0.95f, d * 0.5f + bd2 * 0.5f}, railCol);
         appendBox(hm.details, {0.02f, 0.03f, bd2 * 0.5f}, {bx + bw2 * 0.5f, by + 0.95f, d * 0.5f + bd2 * 0.5f}, railCol);
-        // balcony door (taller than a window) + its glass
-        appendBox(hm.details, {0.22f, 0.52f, 0.03f}, {bx, by + 0.42f, d * 0.5f + 0.02f}, pal.door);
-        appendBox(hm.glass, {0.18f, 0.46f, 0.015f}, {bx, by + 0.46f, d * 0.5f + 0.045f}, pal.window);
+        // balcony door (taller than a window) + its glass; with interiors the opening + leaf
+        // already exist from the plan, only the facade boxes are skipped
+        if (!interior) {
+            appendBox(hm.details, {0.22f, 0.52f, 0.03f}, {bx, by + 0.42f, d * 0.5f + 0.02f}, pal.door);
+            appendBox(hm.glass, {0.18f, 0.46f, 0.015f}, {bx, by + 0.46f, d * 0.5f + 0.045f}, pal.window);
+        }
     }
 
     // --- features ---
-    if (p.style == HouseStyle::Village && rng.nextf() < 0.45f) {
+    if (!interior && p.style == HouseStyle::Village && rng.nextf() < 0.45f) { // Erker skipped with interiors (the shell has real openings)
         // Erker (bay window) with its own little gable roof
         hm.spec.hasBay = true;
         const float bw = w * 0.36f, bd = 0.55f, bh = wallH * 0.62f;
@@ -813,9 +1598,10 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
         appendTransformed(hm.roof, ar, fuhgl::math::translate({w * 0.5f + aw * 0.5f - 0.05f, 0.f, 0.f}));
     }
     if (rng.nextf() < 0.4f) {
-        // Vordach: porch canopy over the door
+        // Vordach: porch canopy over the door (front-door position from the plan when interior)
         hm.spec.hasPorch = true;
-        appendBox(hm.roof, {0.9f, 0.05f, 0.55f}, {0.f, 2.35f, d * 0.5f + 0.55f}, pal.roof);
+        const float px = interior && !hm.floorplan.doors.empty() ? hm.floorplan.doors[0].center : 0.f;
+        appendBox(hm.roof, {0.9f, 0.05f, 0.55f}, {px, 2.35f, d * 0.5f + 0.55f}, pal.roof);
     }
     // --- additive building history: a later phase docks volumes onto the core ---
     if (p.floors >= 2 && p.style != HouseStyle::Highrise && rng.nextf() < 0.3f) {
@@ -923,9 +1709,19 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
     if (p.clutter > 0.f && p.style != HouseStyle::Highrise) {
         const float cl = p.clutter;
         // flower boxes under the ground-floor front windows: hollow CSG box + flower spheres
+        // (with interiors: under the real front-wall window openings of the floorplan)
         if (rng.nextf() < 0.55f * cl) {
-            for (int s = -1; s <= 1; s += 2) {
-                const float wx = s * w * 0.24f, wy = p.floorHeight * 0.45f - 0.26f * ws;
+            std::vector<std::pair<float, float>> boxAt; // (x, sill y) of each front window
+            if (interior) {
+                for (const PlanWindow& win : hm.floorplan.windows)
+                    if (win.axis == 0 && win.fixed > 0.f && win.floor0 == 0)
+                        boxAt.push_back({win.center, win.sill * p.floorHeight - 0.18f});
+            } else {
+                boxAt.push_back({-w * 0.24f, p.floorHeight * 0.45f - 0.26f * ws});
+                boxAt.push_back({w * 0.24f, p.floorHeight * 0.45f - 0.26f * ws});
+            }
+            for (const auto& ba : boxAt) {
+                const float wx = ba.first, wy = ba.second;
                 fuhgl::render::SolidPtr box =
                     fuhgl::render::translated(fuhgl::render::makeCube({0.17f, 0.08f, 0.055f}),
                                                {0.f, 0.08f, 0.f}) -
@@ -1008,6 +1804,8 @@ HouseMesh HouseGenerator::generate(const Params& p) const {
         shiftY(hm.details, lift);
         shiftY(hm.roof, lift);
         shiftY(hm.glass, lift);
+        shiftY(hm.interior, lift);
+        shiftY(hm.doors, lift);
         const fuhgl::math::Vec3 stoneCol = p.context.soilColor * 0.8f + fuhgl::math::Vec3{0.05f, 0.05f, 0.05f};
         fuhgl::render::MeshData found =
             fuhgl::render::shapes::boxData({w * 0.5f + 0.1f, foundH * 0.5f, d * 0.5f + 0.1f}, stoneCol);

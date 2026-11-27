@@ -147,8 +147,10 @@ struct Settlement {
 struct PlacedMesh {
     fuhgl::render::MeshData mesh;          ///< local-space triangle data (11 floats/vertex)
     fuhgl::render::MeshData roofMesh;      ///< optional roof part (city houses) — own MeshEntry, e.g. shingle texture
-    fuhgl::render::MeshData detailMesh;    ///< optional details (city houses: door/windows/chimney/bay) — own MeshEntry, plain vertex colors
+    fuhgl::render::MeshData detailMesh;    ///< optional details (city houses: door/window frames, shutters, chimney, bay) — own MeshEntry, plain vertex colors
     fuhgl::render::MeshData glassMesh;     ///< optional window glass (city houses) — own MeshEntry with a reflective material
+    fuhgl::render::MeshData interiorMesh;  ///< optional interior of houses with a real floorplan (inner walls, slabs, stairs, furniture) — own MeshEntry
+    fuhgl::render::MeshData doorMesh;      ///< optional hinged door leaves (houses with a real floorplan) — own MeshEntry so the app can animate them
     int roofType = 0;                      ///< city houses: cast of procedural::RoofType (0 gable, 1 lean-to, 2 hipped, 3 flat)
     int facade = 0;                        ///< city houses: cast of procedural::FacadeMaterial (0 brick, 1 plaster, 2 stone) — texture choice app-side
     fuhgl::math::Vec3 position{0.f, 0.f, 0.f}; ///< world position

@@ -1,10 +1,12 @@
 // Unit tests for the class-based house generator (label "unit"): mesh validity (indices in
 // range, finite unit normals), determinism per seed, variant richness (many distinct houses
 // across seeds), roof-type coverage, feature flags (bay/dormer/annex/porch/chimney/timber
-// frame), style height ordering (village < town < highrise), and the BuildingContext rules:
-// climate -> roof pitch/overhang/gutter/flat+parapet/window size/shutters/chimney, flood zone
-// -> stilts, local resources/biome -> facade material, density -> storeys/shop front/fence,
-// wealth -> patches/cornice/wall jitter.
+// frame), style height ordering (village < town < highrise), the interior pipeline (BSP
+// floorplan, room types, spanning-tree door connectivity, exterior-only windows with min
+// distances, wall shell with real openings, CSG slabs/frames/leaves/furniture), and the
+// BuildingContext rules: climate -> roof pitch/overhang/gutter/flat+parapet/window
+// size/shutters/chimney, flood zone -> stilts, local resources/biome -> facade material,
+// density -> storeys/shop front/fence, wealth -> patches/cornice/wall jitter.
 
 #include "test_framework.hpp"
 
@@ -14,6 +16,7 @@
 #include <cmath>
 #include <set>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -43,7 +46,9 @@ std::string specSignature(const HouseSpec& s) {
            (s.hasPatches ? "W" : "") + (s.hasCornice ? "O" : "") +
            (s.beveled ? "b" : "") + (s.warped ? "v" : "") + (s.hasPlinth ? "s" : "") +
            (s.hasLintels ? "t" : "") + (s.hasOverhang ? "u" : "") + (s.hasSolar ? "y" : "") +
-           (s.hasRoofWindow ? "f" : "") + (s.hasIvy ? "e" : "") + std::to_string(s.props);
+           (s.hasRoofWindow ? "f" : "") + (s.hasIvy ? "e" : "") + std::to_string(s.props) +
+           (s.hasInterior ? "I" : "") + std::to_string(s.roomCount) + "/" +
+           std::to_string(s.doorCount) + "/" + std::to_string(s.windowCount);
 }
 
 void testValidityAndDeterminism() {
@@ -62,9 +67,17 @@ void testValidityAndDeterminism() {
     CHECK(a.details.vertices == b.details.vertices);
     CHECK(a.roof.vertices == b.roof.vertices);
     CHECK(a.glass.vertices == b.glass.vertices);
+    CHECK(a.interior.vertices == b.interior.vertices);
+    CHECK(a.doors.vertices == b.doors.vertices);
     CHECK(specSignature(a.spec) == specSignature(b.spec));
     CHECK(a.glass.vertexCount() > 0); // window glass panes exist for reflective material
-    CHECK(a.spec.wallIrregular);      // default wallIrregularity > 0 -> jittered walls
+    CHECK(a.spec.wallIrregular);      // default wallIrregularity > 0 -> flag set (jitter on interior mesh)
+    // interior pipeline on by default for Town: real floorplan + shell + interior + door leaves
+    CHECK(a.spec.hasInterior);
+    CHECK(a.spec.roomCount >= 2 && a.spec.doorCount >= a.spec.roomCount && a.spec.windowCount > 0);
+    checkMeshValid(a.interior);
+    CHECK(a.doors.vertexCount() > 0);
+    CHECK(a.floorplan.rooms.size() == static_cast<std::size_t>(a.spec.roomCount));
 }
 
 void testVariantRichness() {
@@ -77,6 +90,7 @@ void testVariantRichness() {
     for (unsigned seed = 1; seed <= 40; ++seed) {
         HouseGenerator::Params p = HouseGenerator::randomParams(HouseStyle::Village, 8.f, seed);
         p.seed = seed * 7u + 1u;
+        p.interior = false; // facade-variant richness (bay/dormer/...) on the hollow shell
         const HouseMesh hm = gen.generate(p);
         checkMeshValid(hm.walls);
         checkMeshValid(hm.details);
@@ -106,10 +120,12 @@ void testVariantRichness() {
 
 void testWallJitterAndFacade() {
     HouseGenerator gen;
-    // flat walls when wallIrregularity == 0
+    // flat walls when wallIrregularity == 0 (hollow-shell mode: the interior pipeline keeps the
+    // shell watertight and jitters the interior mesh instead)
     HouseGenerator::Params p;
     p.style = HouseStyle::Town;
     p.width = 6.f; p.depth = 4.5f; p.floors = 2; p.seed = 77u;
+    p.interior = false;
     p.wallIrregularity = 0.f;
     const HouseMesh flat = gen.generate(p);
     CHECK(!flat.spec.wallIrregular);
@@ -291,9 +307,11 @@ void testStilts() {
 void testOrganicFeatures() {
     HouseGenerator gen;
     // bevel: chamfered wall body has many more vertices than a plain box (24) and outward normals
+    // (hollow-shell mode; with interiors the shell is segmented around real openings instead)
     HouseGenerator::Params p;
     p.style = HouseStyle::Town;
     p.width = 6.f; p.depth = 4.5f; p.floors = 2; p.seed = 21u;
+    p.interior = false;
     const HouseMesh bv = gen.generate(p);
     CHECK(bv.spec.beveled);
     CHECK(bv.walls.vertexCount() > 24); // 96 for the chamfered box
@@ -358,6 +376,138 @@ void testOrganicFeatures() {
     CHECK(specSignature(a.spec) == specSignature(b.spec));
 }
 
+// --- interior pipeline: floorplan, doors, windows, shell with real openings ---------------
+
+void testInteriorPipeline() {
+    HouseGenerator gen;
+    HouseGenerator::Params p;
+    p.style = HouseStyle::Town;
+    p.width = 7.f; p.depth = 5.5f; p.floors = 2; p.seed = 42u;
+    p.floorHeight = 2.8f;
+    const HouseMesh hm = gen.generate(p);
+    CHECK(hm.spec.hasInterior);
+    const Floorplan& fp = hm.floorplan;
+    const float t = hm.spec.wallThickness;
+    CHECK_NEAR(t, 0.24f, 1e-6f);
+    // step 1: BSP rooms tile the inner rect exactly (no gaps/overlaps -> area sum matches)
+    CHECK(fp.rooms.size() >= 2);
+    float area = 0.f;
+    for (const PlanRoom& r : fp.rooms) area += (r.x1 - r.x0) * (r.z1 - r.z0);
+    CHECK_NEAR(area, (p.width - 2.f * t) * (p.depth - 2.f * t), 0.05f);
+    CHECK(fp.hallRoom >= 0 && fp.hallRoom < static_cast<int>(fp.rooms.size()));
+    // hall touches the street-facing (+z) side
+    CHECK(std::fabs(fp.rooms[fp.hallRoom].z1 - (p.depth * 0.5f - t)) < 1e-3f);
+    // multi-storey: a stairwell room is reserved
+    if (fp.rooms.size() > 2) CHECK(fp.stairRoom >= 0);
+    // step 2: front door on the +z exterior wall of the hall, ground floor only
+    CHECK(!fp.doors.empty());
+    const PlanDoor& front = fp.doors[0];
+    CHECK(front.exterior);
+    CHECK_NEAR(front.fixed, p.depth * 0.5f - t * 0.5f, 1e-3f);
+    CHECK(front.floor0 == 0 && front.floor1 == 0);
+    CHECK(front.center >= fp.rooms[fp.hallRoom].x0 && front.center <= fp.rooms[fp.hallRoom].x1);
+    // spanning tree: BFS over the interior doors from the hall reaches every room
+    {
+        const int n = static_cast<int>(fp.rooms.size());
+        std::vector<std::vector<int>> adj(n);
+        int interiorDoors = 0;
+        for (const PlanDoor& d : fp.doors)
+            if (!d.exterior) {
+                adj[d.roomA].push_back(d.roomB);
+                adj[d.roomB].push_back(d.roomA);
+                ++interiorDoors;
+            }
+        CHECK(interiorDoors >= n - 1); // spanning tree covers all rooms
+        std::vector<char> seen(n, 0);
+        std::vector<int> stack{fp.hallRoom};
+        seen[fp.hallRoom] = 1;
+        while (!stack.empty()) {
+            const int u = stack.back();
+            stack.pop_back();
+            for (const int v : adj[u])
+                if (!seen[v]) { seen[v] = 1; stack.push_back(v); }
+        }
+        for (char s : seen) CHECK(s); // every room reachable from the hall
+    }
+    // step 3: windows only on exterior walls (|fixed| = half extent minus half thickness),
+    // with min distance to corners and to the doors on the same wall
+    CHECK(!fp.windows.empty());
+    for (const PlanWindow& win : fp.windows) {
+        const float hw = p.width * 0.5f - t * 0.5f, hd = p.depth * 0.5f - t * 0.5f;
+        const bool onExt = std::fabs(std::fabs(win.fixed) - hw) < 1e-3f ||
+                           std::fabs(std::fabs(win.fixed) - hd) < 1e-3f;
+        CHECK(onExt);
+        CHECK(win.center - win.width * 0.5f > -p.width * 0.5f + 0.4f); // corner margin
+        CHECK(win.center + win.width * 0.5f < p.width * 0.5f - 0.4f + 1.f);
+    }
+    // min distance window<->door on the same wall
+    for (const PlanWindow& win : fp.windows)
+        for (const PlanDoor& d : fp.doors)
+            if (d.axis == win.axis && std::fabs(d.fixed - win.fixed) < 1e-3f &&
+                d.floor0 <= win.floor1 && win.floor0 <= d.floor1)
+                CHECK(std::fabs(win.center - d.center) >=
+                      (win.width + d.width) * 0.5f + 0.2f);
+    // storage rooms get no windows
+    for (const PlanWindow& win : fp.windows)
+        CHECK(fp.rooms[win.room].type != RoomType::Storage);
+    // step 4: shell walls carry the openings — walls mesh outer faces at |z| = depth/2,
+    // interior mesh has faces inside the footprint, door leaves + glass exist
+    float maxAbsZ = 0.f;
+    for (std::size_t i = 0; i < hm.walls.vertexCount(); ++i)
+        maxAbsZ = std::max(maxAbsZ, std::fabs(hm.walls.vertices[i * 11 + 2]));
+    CHECK_NEAR(maxAbsZ, p.depth * 0.5f, 1e-3f); // outer silhouette unchanged (facade POM fits)
+    checkMeshValid(hm.walls);
+    checkMeshValid(hm.interior);
+    checkMeshValid(hm.doors);
+    checkMeshValid(hm.glass);
+    CHECK(hm.interior.vertexCount() > 0);
+    CHECK(hm.doors.vertexCount() >= 24); // at least one leaf box (front door)
+    CHECK(hm.glass.vertexCount() >= 24 * hm.spec.windowCount); // one pane box per window (floors)
+    CHECK(hm.spec.furniture > 0); // rooms got furniture (CSG sub-meshes)
+    // determinism incl. the plan
+    const HouseMesh hm2 = gen.generate(p);
+    CHECK(hm2.interior.vertices == hm.interior.vertices);
+    CHECK(hm2.doors.vertices == hm.doors.vertices);
+    CHECK(hm2.floorplan.rooms.size() == fp.rooms.size());
+    CHECK(hm2.floorplan.doors.size() == fp.doors.size());
+}
+
+void testInteriorModes() {
+    HouseGenerator gen;
+    // interior off -> old hollow shell, empty plan
+    HouseGenerator::Params p;
+    p.style = HouseStyle::Town;
+    p.width = 6.f; p.depth = 4.5f; p.floors = 2; p.seed = 5u;
+    p.interior = false;
+    HouseMesh hm = gen.generate(p);
+    CHECK(!hm.spec.hasInterior);
+    CHECK(hm.floorplan.rooms.empty());
+    CHECK(hm.interior.vertexCount() == 0 && hm.doors.vertexCount() == 0);
+    CHECK(hm.walls.vertexCount() > 0);
+    // highrise ignores the interior flag (window-grid facade)
+    p.interior = true;
+    p.style = HouseStyle::Highrise;
+    p.floors = 6;
+    hm = gen.generate(p);
+    CHECK(!hm.spec.hasInterior);
+    CHECK(hm.spec.roofType == RoofType::Flat);
+    // tiny footprints fall back to the hollow shell (no room fits)
+    p.style = HouseStyle::Village;
+    p.floors = 1;
+    p.width = 2.8f; p.depth = 2.8f;
+    hm = gen.generate(p);
+    CHECK(!hm.spec.hasInterior);
+    // stairwell: upper-floor slab keeps the opening -> the interior mesh has geometry above
+    // floor 0 in the stair room; just check the interior mesh spans multiple floors
+    p.width = 7.f; p.depth = 5.5f; p.floors = 3;
+    hm = gen.generate(p);
+    CHECK(hm.spec.hasInterior);
+    float maxY = 0.f;
+    for (std::size_t i = 0; i < hm.interior.vertexCount(); ++i)
+        maxY = std::max(maxY, hm.interior.vertices[i * 11 + 1]);
+    CHECK(maxY > 2.f * p.floorHeight); // slabs/stairs reach the upper floors
+}
+
 } // namespace
 
 void runProceduralHouseTests() {
@@ -370,4 +520,6 @@ void runProceduralHouseTests() {
     testSocioEconomyRules();
     testStilts();
     testOrganicFeatures();
+    testInteriorPipeline();
+    testInteriorModes();
 }

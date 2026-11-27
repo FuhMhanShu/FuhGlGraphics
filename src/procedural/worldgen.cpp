@@ -774,6 +774,8 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
                     pm.detailMesh = hm.details;
                     pm.roofMesh = hm.roof;
                     pm.glassMesh = hm.glass;
+                    pm.interiorMesh = hm.interior;
+                    pm.doorMesh = hm.doors;
                     pm.roofType = static_cast<int>(hm.spec.roofType);
                     pm.facade = static_cast<int>(hm.spec.facade);
                     pm.position = {hx, w.heightAt(hx, hz), hz};
@@ -1177,6 +1179,8 @@ void generateCity(const WorldGenParams& p, GeneratedWorld& w) {
                 pm.detailMesh = hm.details;
                 pm.roofMesh = hm.roof;
                 pm.glassMesh = hm.glass;
+                pm.interiorMesh = hm.interior;
+                pm.doorMesh = hm.doors;
                 pm.roofType = static_cast<int>(hm.spec.roofType);
                 pm.facade = static_cast<int>(hm.spec.facade);
                 pm.position = {wx, 0.05f, wz};
