@@ -64,9 +64,15 @@ fuhglgraphics_asset_creator [--project scene.fasset] [--lang en|de]
 
 - **Linkes Dock:** Szenenbaum (Kind/Shape/Licht/Wasser hinzufügen, glTF laden, entfernen),
   Inspektor (Name, TRS, per-Node-Effekt-Toggles, gängige Renderer-Parameter, G13-Wasser-Parameter),
-  Asset-Browser (Projektordner; Doppelklick auf `.gltf/.glb` lädt unter die Selektion).
+  Asset-Browser (Projektordner; Doppelklick auf `.gltf/.glb` lädt unter die Selektion;
+  P5: `.gltf/.glb`-Zeilen zeigen gerenderte **Thumbnails** aus `<projekt>/.cache/thumbs`).
 - **Mitte:** G3-Viewport — Orbit-Kamera (links ziehen = drehen, rechts/mitte = pan, Rad = Zoom),
   Klick pickt (`scene::pick`); alle Edits laufen als `QUndoCommand` (Undo/Redo im Edit-Menü).
+  P5: ein **3D-Gizmo** am selektierten Node (Ansicht-Menü oder `T`/`R`/`S` für
+  Verschieben/Drehen/Skalieren — die farbigen Achsen/Ringe ziehen, der zentrale Würfel =
+  Bewegung in der Bildebene / gleichmäßige Skalierung; jeder Drag ist ein undo-fähiger
+  Command) und **Animations-Playback** (Ansicht → Animation abspielen oder `Leertaste`;
+  die Node-TRS beim Start werden beim Stoppen wiederhergestellt).
 - **Rechtes Dock:** MCP-Chat. Einstellungsdialog: Server-Kommando — externer MCP-Server
   (stdio, JSON-RPC 2.0; API-Keys kommen aus der Umgebung, nie aus der Projektdatei) oder
   `builtin`, das den In-Repo-Katalog **in-process** gegen das geöffnete Dokument serviert.

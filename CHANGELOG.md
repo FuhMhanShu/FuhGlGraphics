@@ -9,6 +9,21 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G12 P5 polishing** (`tools/asset_creator/`, design: `docs/ASSET_CREATOR.md` §9): 3D gizmo
+  on the selected node — `GizmoOverlay` (`gizmo.{hpp,cpp}`) renders translate/rotate/scale
+  parts (arrows/rings/center cube from FuhGLCore solids, emissive flat colors) as extra draw
+  items appended to the document's `FrameData`, so the gizmo shares the G3 G-buffer depth;
+  picking runs via `scene::pick` (G18) on a gizmo-only `scene::Scene`. View menu or `T`/`R`/`S`
+  switches the mode; a drag mutates the node TRS live and pushes one undoable command
+  (`makeGizmoDragCommand`) on release. glTF **thumbnails** in the asset browser:
+  `thumbnailer.{hpp,cpp}` renders an offscreen `DeferredRenderer` preview per `.gltf/.glb`
+  and caches it as PNG in `<project>/.cache/thumbs` (G11 cache folder); a proxy model on the
+  `QFileSystemModel` supplies the icons; thumbnails are generated once the GL context is up
+  and on every project (re)load. **Animation playback** in the viewport (View → Play
+  animation / `Space`): every `scene::AnimationComponent` player is advanced per painted
+  frame with continuous re-rendering; the node TRS captured at play start is restored on
+  stop. Docs: `docs/ASSET_CREATOR.md`, `docs/REQUIREMENTS.md` (G12), G12 tutorials en/de,
+  `i18n/asset_creator_de.ts`. Open remainder of P5: glb export.
 - **G38 weather system — renderer side (A3–A9)** (`weather/weather.hpp` core was A2; design:
   `docs/WEATHER_SYSTEM.md`, tutorials `docs/{en,de}/tutorials/g38_weather.md`): new
   `render::Effect::Sky` + `render::Effect::Lightning` (kEffectCount 28 → 30) with a shared

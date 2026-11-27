@@ -11,6 +11,8 @@ set(ASSET_CREATOR_SOURCES
     viewport_widget.cpp
     viewport_controller.cpp
     commands.cpp
+    gizmo.cpp
+    thumbnailer.cpp
     scene_tree_model.cpp
     scene_tree_panel.cpp
     inspector_panel.cpp
@@ -25,6 +27,8 @@ set(ASSET_CREATOR_HEADERS
     viewport_widget.hpp
     viewport_controller.hpp
     commands.hpp
+    gizmo.hpp
+    thumbnailer.hpp
     scene_tree_model.hpp
     scene_tree_panel.hpp
     inspector_panel.hpp

@@ -45,6 +45,7 @@ private slots:
 
 private:
     void pushCommand(std::unique_ptr<QUndoCommand> cmd);
+    void refreshThumbnails(); ///< P5: render missing glTF thumbnails (needs the GL context up)
 
     AssetDocument* doc_ = nullptr;
     ViewportWidget* viewport_ = nullptr;
@@ -59,6 +60,7 @@ private:
     QString pendingProject_;
     QAction* undoAction_ = nullptr;
     QAction* redoAction_ = nullptr;
+    QAction* playAction_ = nullptr; ///< P5: animation playback toggle
 };
 
 } // namespace assetcreator

@@ -49,6 +49,17 @@ std::unique_ptr<QUndoCommand> makeSetTrsCommand(AssetDocument* doc, fuhglgraphic
                                                 const fuhgl::math::Quat& rotation,
                                                 const fuhgl::math::Vec3& scale);
 
+/// @brief P5 gizmo drag: redo applies the drag end TRS, undo restores the start TRS captured
+/// at beginDrag (the node was already mutated live during the drag).
+std::unique_ptr<QUndoCommand> makeGizmoDragCommand(AssetDocument* doc,
+                                                   fuhglgraphics::scene::Node* node,
+                                                   const fuhgl::math::Vec3& startT,
+                                                   const fuhgl::math::Quat& startR,
+                                                   const fuhgl::math::Vec3& startS,
+                                                   const fuhgl::math::Vec3& endT,
+                                                   const fuhgl::math::Quat& endR,
+                                                   const fuhgl::math::Vec3& endS);
+
 /// @brief Enables/disables one render::Effect on `node`.
 std::unique_ptr<QUndoCommand> makeSetEffectCommand(AssetDocument* doc,
                                                    fuhglgraphics::scene::Node* node,

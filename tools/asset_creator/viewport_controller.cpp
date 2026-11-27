@@ -1,5 +1,7 @@
 #include "viewport_controller.hpp"
 
+#include "commands.hpp"
+
 #include <fuhglgraphics/scene/picking.hpp>
 
 #include <QEvent>
@@ -7,6 +9,7 @@
 #include <QWheelEvent>
 
 #include <cmath>
+#include <string>
 
 namespace assetcreator {
 
@@ -27,6 +30,20 @@ bool ViewportController::eventFilter(QObject* watched, QEvent* event) {
         moved_ = false;
         dragging_ = (me->button() == Qt::LeftButton);
         panning_ = (me->button() == Qt::RightButton || me->button() == Qt::MiddleButton);
+        // P5: left-press on a gizmo part starts a gizmo drag (no orbit, no pick)
+        if (me->button() == Qt::LeftButton && vp_->gizmo().created() && vp_->gizmo().target()) {
+            const float px = static_cast<float>(me->position().x());
+            const float py = static_cast<float>(me->position().y());
+            const std::string part =
+                vp_->gizmo().pickPart(vp_->camera(), glw->width(), glw->height(), px, py);
+            if (!part.empty()) {
+                vp_->gizmo().beginDrag(part, vp_->camera(), glw->width(), glw->height(), px, py);
+                gizmoDragging_ = true;
+                dragging_ = panning_ = false;
+                emit statusMessage(QStringLiteral("gizmo %1").arg(QString::fromStdString(part)));
+                return true;
+            }
+        }
         return true;
     }
     if (event->type() == QEvent::MouseMove) {
@@ -34,6 +51,14 @@ bool ViewportController::eventFilter(QObject* watched, QEvent* event) {
         const QPoint delta = me->position().toPoint() - lastPos_;
         lastPos_ = me->position().toPoint();
         if ((dragging_ || panning_) && (me->position().toPoint() - pressPos_).manhattanLength() > 3) moved_ = true;
+        // P5: live gizmo drag (mutates the target TRS directly; undo command on release)
+        if (gizmoDragging_ && vp_->gizmo().dragging()) {
+            vp_->gizmo().dragTo(vp_->camera(), glw->width(), glw->height(),
+                               static_cast<float>(me->position().x()),
+                               static_cast<float>(me->position().y()));
+            doc_->setDirty(true); // emits changed() -> repaint
+            return true;
+        }
         ViewportWidget::Orbit& orbit = vp_->orbit();
         if (dragging_ && moved_) {
             orbit.yaw -= static_cast<float>(delta.x()) * 0.008f;
@@ -52,6 +77,17 @@ bool ViewportController::eventFilter(QObject* watched, QEvent* event) {
     }
     if (event->type() == QEvent::MouseButtonRelease) {
         auto* me = static_cast<QMouseEvent*>(event);
+        if (gizmoDragging_ && me->button() == Qt::LeftButton) {
+            scene::Node* n = vp_->gizmo().target();
+            if (pushCommand && n) {
+                pushCommand(makeGizmoDragCommand(doc_, n, vp_->gizmo().dragStartT,
+                                                 vp_->gizmo().dragStartR, vp_->gizmo().dragStartS,
+                                                 n->translation, n->rotation, n->scale));
+            }
+            vp_->gizmo().endDrag();
+            gizmoDragging_ = false;
+            return true;
+        }
         if (!moved_ && me->button() == Qt::LeftButton) {
             // click without drag -> pick
             scene::PickHit hit;

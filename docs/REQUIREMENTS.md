@@ -264,7 +264,7 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   bloom threshold adjustable via `bloomThreshold` since G17): implemented — see
   `tests/test_tonemap.cpp`, `tests/gl_smoke_tonemap.cpp`, `examples/tonemap_screenshot`,
   `docs/images/g23_tonemap_*.png` and the [G23 tutorial](en/tutorials/g23_tonemap.md).
-- **G12 — asset creator Qt tool + MCP** — implemented (phases P1, P2, P4; P5 polish open):
+- **G12 — asset creator Qt tool + MCP** — implemented (phases P1–P5; open: glb export):
   `tools/asset_creator/` executable `fuhglgraphics_asset_creator` (built with
   `FUHGLGRAPHICS_WITH_QT=ON` + `FUHGLGRAPHICS_BUILD_TOOLS=ON`): MVC tool with scene tree +
   inspector + asset browser (left dock), a G3 `DeferredRenderer` viewport with orbit camera
@@ -288,7 +288,10 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   `tests/test_mcp.cpp`, `tools/mcp_server/main.cpp`, CI MCP smoke (stdio tools/list +
   tools/call) and `xvfb-run ... --version`, `docs/images/` n/a (no screenshot),
   [G12 tutorial](en/tutorials/g12_asset_creator.md) and
-  [docs/ASSET_CREATOR.md](ASSET_CREATOR.md). Open: P5 (3D gizmo, thumbnails).
+  [docs/ASSET_CREATOR.md](ASSET_CREATOR.md). P5 done: 3D gizmo (translate/rotate/scale with
+  undoable drags, `tools/asset_creator/gizmo.*`), glTF thumbnails in the asset browser
+  (`thumbnailer.*`, cached in `<project>/.cache/thumbs`), animation playback in the viewport
+  (View menu / Space).
 - **G24 — procedural noise module (CPU)** — implemented: `procedural::Noise` in
   `include/fuhglgraphics/procedural/noise.hpp` (header-only value type, deterministic per
   seed): value noise 2D/3D, Perlin 2D/3D (delegates to `fuhgl::math::Noise`), Simplex
@@ -343,8 +346,11 @@ Linux X11 + EGL / macOS Cocoa. The Qt6 editor runs on all three.
   creature.cpp`; presets `makeQuadruped()` / `makeReptile()`. See
   `tests/test_procedural_creature.cpp`, `examples/creature_screenshot`,
   `docs/images/g30_creature_*.png` and the [G30 tutorial](en/tutorials/g30_creature.md).
-- **G38 — weather system** — planned; requirement + task breakdown (phases A1–A9) in
-  [docs/WEATHER_SYSTEM.md](WEATHER_SYSTEM.md).
+- **G38 — weather system** — implemented (phases A1–A9, see
+  [docs/WEATHER_SYSTEM.md](WEATHER_SYSTEM.md) and the G38 row above): `weather::WeatherSystem`
+  core, `Effect::Sky`/`Effect::Lightning` in the G3 renderer, cloud-driven volumetrics, rain
+  emitter preset + wetness coupling, lightning bolt helper, `scene::WeatherComponent` +
+  serialization; CPU sky twins in `render/sky.hpp`.
 - **G37 — ecophysiological vegetation generator** — implemented: `procedural::VegetationGenerator`
   in `include/fuhglgraphics/procedural/vegetation.hpp` + `src/procedural/vegetation.cpp`:
   `EcoEnvironment` (temperature/humidity/wind/standDensity/season — same parameter space as

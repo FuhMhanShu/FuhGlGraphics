@@ -1,6 +1,7 @@
 #include "viewport_widget.hpp"
 
 #include <fuhglgraphics/scene/component.hpp>
+#include <fuhglgraphics/scene/node.hpp>
 
 #include <fuhgl/gl/framebuffer.hpp>
 
@@ -10,9 +11,26 @@
 #include <QOpenGLVersionFunctionsFactory>
 #include <QVBoxLayout>
 
+#include <algorithm>
+#include <vector>
+
 namespace assetcreator {
 
 using namespace fuhglgraphics;
+
+namespace {
+
+void collectAnimNodes(scene::Node& n, std::vector<scene::Node*>& out) {
+    if (n.find<scene::AnimationComponent>()) out.push_back(&n);
+    for (const auto& ch : n.children()) collectAnimNodes(*ch, out);
+}
+
+void snapshotTrs(scene::Node& n, std::map<scene::Node*, ViewportWidget::Trs>& snap) {
+    snap[&n] = ViewportWidget::Trs{n.translation, n.rotation, n.scale};
+    for (const auto& ch : n.children()) snapshotTrs(*ch, snap);
+}
+
+} // namespace
 
 ViewportWidget::ViewportWidget(AssetDocument* doc, QWidget* parent)
     : QWidget(parent), doc_(doc) {
@@ -33,9 +51,16 @@ ViewportWidget::ViewportWidget(AssetDocument* doc, QWidget* parent)
         renderer_->enableCsmShadows(1024, 4);
         renderer_->skyTop = {0.10f, 0.22f, 0.50f};
         renderer_->skyBottom = {0.98f, 0.80f, 0.58f};
+        gizmo_.create(); // P5 gizmo part meshes (current GL context here)
         glReady_ = true;
         emit glReadyChanged(true);
         return true;
+    });
+    connect(gl_, &fuhglgraphics::editor::GlViewportWidget::glAboutToBeDestroyed, this, [this]() {
+        if (gl_->context() && gl_->windowHandle()) {
+            gl_->context()->makeCurrent(gl_->windowHandle());
+            gizmo_.release();
+        }
     });
     gl_->setResizeHandler([this](int w, int h) {
         devW_ = w;
@@ -44,11 +69,20 @@ ViewportWidget::ViewportWidget(AssetDocument* doc, QWidget* parent)
     });
     gl_->setPaintHandler([this]() {
         if (!glReady_ || !renderer_) return;
+        if (animPlaying_) {
+            const float dt = animClock_.isValid() ? std::min(0.1f, animClock_.restart() / 1000.f)
+                                                  : 0.016f;
+            stepAnimation(dt);
+        }
         applyOrbitToCamera();
         scene::Scene& sc = doc_->scene();
         sc.updateWorldTransforms();
         scene::FrameData frame;
         sc.fillFrame(frame, &camera_, devW_, devH_, true);
+        if (gizmo_.created() && gizmo_.target()) { // P5 gizmo overlay items (own G-buffer depth)
+            gizmo_.updateForTarget(camera_);
+            gizmo_.appendToFrame(frame, camera_, devW_, devH_);
+        }
         frame.effects.applyTo(*renderer_);
         renderer_->render(frame.view, &frame.materialIds, &frame.castShadow, nullptr, nullptr,
                           &frame.decals, frame.water, &frame.skins);
@@ -65,6 +99,7 @@ ViewportWidget::ViewportWidget(AssetDocument* doc, QWidget* parent)
             glf->glBlitFramebuffer(0, 0, renderer_->width(), renderer_->height(), 0, 0, devW_, devH_,
                                    GL_COLOR_BUFFER_BIT, GL_NEAREST);
         }
+        if (animPlaying_) requestRender(); // continuous playback
     });
     connect(gl_, &fuhglgraphics::editor::GlViewportWidget::frameRendered, this,
             &ViewportWidget::frameRendered);
@@ -75,6 +110,47 @@ void ViewportWidget::setRenderScale(float s) {
     renderScale_ = s;
     if (glReady_ && renderer_) renderer_->setRenderScale(s);
     requestRender();
+}
+
+void ViewportWidget::setAnimationPlaying(bool on) {
+    if (on == animPlaying_) return;
+    animPlaying_ = on;
+    if (on) {
+        animSnapshot_.clear();
+        snapshotTrs(doc_->scene().root(), animSnapshot_);
+        animClock_.start();
+    } else {
+        for (const auto& [n, trs] : animSnapshot_) {
+            n->translation = trs.t;
+            n->rotation = trs.r;
+            n->scale = trs.s;
+        }
+        animSnapshot_.clear();
+    }
+    requestRender();
+}
+
+int ViewportWidget::animationClipCount() const {
+    int count = 0;
+    std::vector<scene::Node*> nodes;
+    collectAnimNodes(const_cast<scene::Node&>(doc_->scene().root()), nodes);
+    for (const scene::Node* n : nodes)
+        count += static_cast<int>(n->find<scene::AnimationComponent>()->player.clips().size());
+    return count;
+}
+
+void ViewportWidget::stepAnimation(float dt) {
+    std::vector<scene::Node*> nodes;
+    collectAnimNodes(doc_->scene().root(), nodes);
+    if (nodes.empty()) {
+        animPlaying_ = false;
+        return;
+    }
+    for (scene::Node* n : nodes) {
+        scene::AnimationComponent* ac = n->find<scene::AnimationComponent>();
+        ac->player.update(dt);
+        ac->player.applyTo(doc_->scene());
+    }
 }
 
 void ViewportWidget::applyOrbitToCamera() {

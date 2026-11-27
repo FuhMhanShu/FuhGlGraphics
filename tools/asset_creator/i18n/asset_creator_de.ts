@@ -95,6 +95,42 @@
         <source>UI language</source>
         <translation>UI-Sprache</translation>
     </message>
+    <message>
+        <source>&amp;View</source>
+        <translation>&amp;Ansicht</translation>
+    </message>
+    <message>
+        <source>Gizmo: &amp;Translate</source>
+        <translation>Gizmo: &amp;Verschieben</translation>
+    </message>
+    <message>
+        <source>Gizmo: &amp;Rotate</source>
+        <translation>Gizmo: &amp;Drehen</translation>
+    </message>
+    <message>
+        <source>Gizmo: &amp;Scale</source>
+        <translation>Gizmo: &amp;Skalieren</translation>
+    </message>
+    <message>
+        <source>&amp;Play animation</source>
+        <translation>&amp;Animation abspielen</translation>
+    </message>
+    <message>
+        <source>no animation clips in the scene</source>
+        <translation>keine Animations-Clips in der Szene</translation>
+    </message>
+    <message>
+        <source>animation playing (%1 clips)</source>
+        <translation>Animation läuft (%1 Clips)</translation>
+    </message>
+    <message>
+        <source>animation stopped</source>
+        <translation>Animation gestoppt</translation>
+    </message>
+    <message>
+        <source>generated %1 thumbnails</source>
+        <translation>%1 Vorschaubilder erzeugt</translation>
+    </message>
 </context>
 <context>
     <name>assetcreator::ChatPanel</name>

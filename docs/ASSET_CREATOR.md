@@ -194,16 +194,21 @@ All of these keep the `WITH_QT=OFF` CI jobs green (no Qt includes). Tests:
    command; `builtin` = in-repo catalog in-process), ChatPanel/ChatController, settings
    dialog, `assetAction` → QUndoCommand bridge; the catalog exposes the procedural G24–G31
    functions, the deferred-render settings and the G13 water params (see §4).
-5. **P5 polishing — open:** 3D gizmo, thumbnails, animation playback in the viewport,
-   glb export.
+5. **P5 polishing — mostly done:** 3D gizmo (translate/rotate/scale, View menu or T/R/S;
+   drag axes/rings/center, one undoable command per drag — `gizmo.{hpp,cpp}`, rendered as
+   extra emissive draw items in the document's FrameData so it shares the G-buffer depth,
+   picked via `scene::pick` on a gizmo-only scene), glTF **thumbnails** in the asset browser
+   (`thumbnailer.{hpp,cpp}`: offscreen DeferredRenderer preview cached as PNG in
+   `<project>/.cache/thumbs`, proxy model supplies the icons), **animation playback** in the
+   viewport (View → Play animation / Space; advances every `AnimationComponent` per frame,
+   restores the node TRS of play start on stop). Open: glb export.
 
 Delivery: branch `vibe/<slug>-<id>`, one PR per phase after review (per
 [DEVELOPMENT.md](DEVELOPMENT.md) "Adding a feature").
 
 ## 10. Open points
 
-- 3D gizmo rendering path (overlay meshes in a second `SceneView` vs. FuhGLCore blitter) — P5.
-- Thumbnail generation (separate small render vs. cached PNG in the asset cache, G11) — P5.
+- glb export from the asset creator — P5 remainder.
 - MCP chat-tool contract for **external** servers (name/arguments) — still defined by the
   configured server; the tool stays generic and shows `tools/list` results. The **builtin**
   contract is now fixed in-repo: `mcp/tool_catalog.hpp` (scene ops, `render_*` settings,
