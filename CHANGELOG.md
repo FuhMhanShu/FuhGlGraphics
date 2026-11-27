@@ -32,7 +32,18 @@ All notable changes to FuhGlGraphics are documented here. The format follows
   (`fuhglgraphics_comic_screenshot`, CI `docs-screenshots` renders
   `docs/images/g40_comic_{on,off,levels3}.png`); tutorial
   `docs/en|de/tutorials/g40_custom_post_passes.md`.
-
+- **G31 worldgen screenshot `--mode tropical`** (`examples/worldgen_screenshot`): renders
+  `docs/images/g31_worldgen_tropical_sunset.png` — a tropical seaside fishing village at
+  sunset with light cloud cover. One big sea bay + a flattened beach plateau from
+  `procedural::generateWorld` (hot/humid shore climate → jungle vegetation), Village-style
+  houses with dusk-lit windows + lantern point lights, dense planting around them (tree
+  ring + garden bushes), and a G38 `WeatherComponent` (~17.9 h, partly cloudy, damp) that
+  drives the sun light, the `Effect::Sky` procedural sky and the volumetric clouds via
+  `DeferredRenderer::render(..., frame.weather)`. Full framework effect stack: HDR chain +
+  ACES tonemap, CSM + contact shadows, IBL, HBAO, SSR, bloom, volumetric fog, god rays,
+  lens flare + anamorphic streaks, GI, subsurface scattering, wetness and chromatic
+  aberration. The CI docs-screenshots job renders the same shot; the G31
+  tutorials (en/de) embed it.
 - **G12 P5 polishing** (`tools/asset_creator/`, design: `docs/ASSET_CREATOR.md` §9): 3D gizmo
   on the selected node — `GizmoOverlay` (`gizmo.{hpp,cpp}`) renders translate/rotate/scale
   parts (arrows/rings/center cube from FuhGLCore solids, emissive flat colors) as extra draw

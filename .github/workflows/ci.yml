@@ -309,6 +309,10 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_cobble --width 1280 --height 720 --frames 16 --seed 777 --mode city --surface cobble --wet
           mkdir -p docs/images/ci/manual
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/manual/g31 --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline || true
+          # tropical fishing village at sunset (--mode tropical): dense vegetation + full effect
+          # stack is sensitive to llvmpipe rasterizer differences between runners (~26 dB PSNR),
+          # so like the pipeline shots it goes into manual/ and is NOT PSNR-gated
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/manual/g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode tropical || true
 
       # G4: glTF demo needs a WITH_QT build (PNG/JPEG decode via QImage) + the CC0 demo
       # asset (Kenney, pinned commit — not vendored into the repo, see N7).

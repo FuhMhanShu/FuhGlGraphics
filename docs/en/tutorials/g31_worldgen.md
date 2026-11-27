@@ -340,9 +340,13 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
     --prefix g31 --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline
 FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
     --prefix g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode village
-# writes g31_worldgen_{landscape,city,city_street,village}.png and g31_pipeline{,_street}.png
+FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
+    --prefix g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode tropical
+# writes g31_worldgen_{landscape,city,city_street,village,tropical_sunset}.png and g31_pipeline{,_street}.png
 # (--mode village: big landscape + small procedural village on the lake shore, rendered with
 #  water, CSM shadows, IBL, HBAO, SSR, bloom, volumetric fog and wetness enabled)
+# (--mode tropical: tropical fishing village by the sea at sunset with light clouds —
+#  big bay, jungle climate, G38 weather sky with the low sun)
 # road surface + wet streets for the city modes (default: asphalt, dry):
 #   --surface asphalt|cobble|paving|dirt   (cobble/paving render with POM parallax)
 #   --wet                                  (dark reflective streets: SSR + roughness 0.12)
@@ -351,6 +355,7 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
 ![G31 landscape](../../images/g31_worldgen_landscape.png)
 ![G31 street-level roads at the main hamlet](../../images/g31_worldgen_roads.png)
 ![G31 village on the lake shore](../../images/g31_worldgen_village.png)
+![G31 tropical fishing village by the sea at sunset with light clouds](../../images/g31_worldgen_tropical_sunset.png)
 ![G31 panorama: vegetated landscape with a WFC city at a river and a village at the lake, connected by a G38 road](../../images/g31_worldgen_panorama.png)
 ![G31 city overview](../../images/g31_worldgen_city.png)
 ![G31 city street level](../../images/g31_worldgen_city_street.png)
