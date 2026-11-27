@@ -1,5 +1,5 @@
-#include "thumbnailer.hpp"
-
+// NOTE: fuhglgraphics/FuhGLCore headers must come before any Qt header — Qt's qobjectdefs.h
+// defines the `emit` macro, which clashes with particles::CpuSim::emit (repo-wide convention).
 #include <fuhglgraphics/io/gltf.hpp>
 #include <fuhglgraphics/render/deferred_renderer.hpp>
 #include <fuhglgraphics/scene/component.hpp>
@@ -8,6 +8,8 @@
 
 #include <fuhgl/cam/first_person.hpp>
 #include <fuhgl/math.hpp>
+
+#include "thumbnailer.hpp"
 
 #include <QCryptographicHash>
 #include <QDir>

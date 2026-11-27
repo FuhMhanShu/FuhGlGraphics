@@ -10,6 +10,7 @@
 #include <QOpenGLFunctions_3_0>
 #include <QOpenGLVersionFunctionsFactory>
 #include <QVBoxLayout>
+#include <QWindow>
 
 #include <algorithm>
 #include <vector>
