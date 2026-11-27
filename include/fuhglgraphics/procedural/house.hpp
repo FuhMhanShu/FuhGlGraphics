@@ -2,8 +2,12 @@
 
 /// @file house.hpp
 /// @brief HouseGenerator: a class-based, highly variadic procedural house generator.
-/// One call `generate(params)` builds a complete house as three mesh parts (walls / details /
-/// roof) plus a spec describing what was built. Variants per style (Village / Town / Highrise):
+/// One call `generate(params)` builds a complete house as mesh parts (walls / details / roof /
+/// glass / interior / doors) plus a spec describing what was built. With `Params::interior`
+/// (default, Village/Town) the house gets a real 2D floorplan (BSP rooms + room types + adjacency
+/// graph), spanning-tree doors, rule-based windows and a wall shell with true openings (segmented
+/// extrusion, inside/outside materials) — slabs, frames, door leaves and furniture are CSG solids
+/// from FuhGLCore (render/solid.hpp). Variants per style (Village / Town / Highrise):
 /// roof types gable (Satteldach), lean-to (Schleppdach), hipped (Walmdach) and flat; features
 /// bay window (Erker), dormers (Dachgauben), side annex (Anbau), porch canopy (Vordach),
 /// chimney, timber framing (Fachwerk) and highrise window grids with setbacks. Pure CPU,
@@ -13,6 +17,7 @@
 #include <fuhgl/render/mesh.hpp>
 
 #include <cstdint>
+#include <vector>
 
 namespace fuhglgraphics::procedural {
 
@@ -33,6 +38,55 @@ enum class FacadeMaterial { Brick = 0, Plaster = 1, Stone = 2, Wood = 3, Adobe =
 /// 5 jungle, 6 taiga, 7 tundra, 8 rock, 9 snow, 1 shore); high-density wealthy zones override
 /// to Concrete (metropole decouples from natural resources).
 enum class LocalMaterial { Auto = 0, Wood, Stone, Brick, Adobe, Concrete };
+
+/// @brief Room function assigned by the floorplan graph rules: the street-side room becomes the
+/// hall (Flur), large rooms with much exterior wall become living/bedrooms, small inner rooms
+/// become bath/storage; one room per house (multi-storey) is reserved as the stairwell.
+enum class RoomType { Hall = 0, Living, Bedroom, Bath, Storage, Stairwell };
+
+/// @brief One room of the 2D floorplan: axis-aligned rect in local footprint coords.
+struct PlanRoom {
+    float x0 = 0.f, z0 = 0.f, x1 = 0.f, z1 = 0.f; ///< rect (inside the wall shell)
+    RoomType type = RoomType::Hall;
+    int id = -1;
+};
+
+/// @brief One door opening in a wall. The exterior door sits on the street-facing (+z) wall of
+/// the hall; interior doors connect two rooms on their shared wall (spanning tree over the room
+/// adjacency graph, so every room stays reachable). `floor0..floor1` = floor range (0-based).
+struct PlanDoor {
+    bool exterior = false;
+    int roomA = -1, roomB = -1;   ///< interior door: the two rooms sharing the wall
+    int axis = 0;                 ///< 0 = wall runs along X (door varies in x), 1 = along Z
+    float fixed = 0.f;            ///< wall center coordinate (z for axis 0, x for axis 1)
+    float center = 0.f;           ///< door center along the wall
+    float width = 0.9f, height = 2.05f;
+    int floor0 = 0, floor1 = 0;
+};
+
+/// @brief One window opening — only ever on an exterior wall (an edge without a neighbor room),
+/// placed per room rules (living: large regular windows; hall/bath: small high windows;
+/// storage: none) with minimum distances to building corners and doors. Sill/top are relative
+/// to the floor level.
+struct PlanWindow {
+    int room = -1;
+    int axis = 0;                 ///< 0 = front/back wall (runs along X), 1 = side wall
+    float fixed = 0.f;            ///< wall center coordinate
+    float center = 0.f;           ///< window center along the wall
+    float width = 1.1f, sill = 0.8f, height = 1.3f;
+    int floor0 = 0, floor1 = 0;
+};
+
+/// @brief The 2D floorplan (BSP rooms + adjacency-derived doors + rule-based windows).
+/// Introspection for tests/apps; the 3D shell in HouseMesh is built from exactly this plan.
+struct Floorplan {
+    std::vector<PlanRoom> rooms;
+    std::vector<PlanDoor> doors;
+    std::vector<PlanWindow> windows;
+    int hallRoom = -1;            ///< entrance/hall room (front-door side)
+    int stairRoom = -1;           ///< stairwell room (upper-floor slabs keep this opening)
+    float width = 0.f, depth = 0.f, wallThickness = 0.24f;
+};
 
 /// @brief Environment + socio-economy context of one building site. The generator derives
 /// form, materials and colors from these few values (climate -> architecture, local resources
@@ -81,6 +135,12 @@ struct HouseSpec {
     bool hasRoofWindow = false;///< flush roof windows (Dachfenster) in a slope
     bool hasIvy = false;       ///< vines growing up a facade (humidity-driven)
     int props = 0;             ///< number of human clutter props (flower boxes, AC, dish, firewood...)
+    bool hasInterior = false;  ///< real floorplan: wall shell with true openings + interior mesh
+    float wallThickness = 0.24f; ///< shell + partition wall thickness (20-30 cm)
+    int roomCount = 0;         ///< rooms of the 2D floorplan
+    int doorCount = 0;         ///< door openings (incl. the front door)
+    int windowCount = 0;       ///< window openings on exterior walls
+    int furniture = 0;         ///< placed interior props (CSG sub-meshes)
     float roofHeight = 0.f;    ///< roof rise (steep when wet/snowy)
     float roofOverhang = 0.14f;///< eave overhang (wide when rainy — keeps the facade dry)
     float windowScale = 1.f;   ///< window size factor (small when hot, large when cold)
@@ -93,10 +153,13 @@ struct HouseSpec {
 /// (walls: facade POM set per FacadeMaterial; glass: reflective window panes; details: plain
 /// vertex colors; roof: shingle texture).
 struct HouseMesh {
-    fuhgl::render::MeshData walls;    ///< wall boxes + annex + garage + setback (target for facade POM)
-    fuhgl::render::MeshData details;  ///< door, window frames, shutters, chimney, bay, dormer fronts, timber frame, gutters, balcony railing, garage door
+    fuhgl::render::MeshData walls;    ///< exterior shell outer faces with real openings + annex + garage + setback (target for facade POM)
+    fuhgl::render::MeshData details;  ///< door/window frames (CSG), shutters, chimney, bay, dormer fronts, timber frame, gutters, balcony railing, garage door, plinth
     fuhgl::render::MeshData roof;     ///< roof solid(s): main roof, annex roof, dormer roofs, porch, garage roof
-    fuhgl::render::MeshData glass;    ///< window glass panes (own MeshEntry — reflective material)
+    fuhgl::render::MeshData glass;    ///< window glass panes in the real openings (own MeshEntry — reflective material)
+    fuhgl::render::MeshData interior; ///< inner wall faces + reveals, floor slabs (CSG with stair hole), stairs, furniture — interior material
+    fuhgl::render::MeshData doors;    ///< door leaves hinged in their frames (separate part, so the app can animate them)
+    Floorplan floorplan;              ///< the 2D plan the 3D shell was built from (empty when !spec.hasInterior)
     HouseSpec spec;
 };
 
@@ -115,9 +178,13 @@ public:
         float wallIrregularity = 0.012f; ///< per-vertex wall jitter amplitude (bump-like relief; 0 = flat)
         BuildingContext context;  ///< environment + socio-economy -> derived architecture rules
         float warpAmount = 0.045f;///< low-freq vertex warp of walls/roof (bowed walls, sagging ridge; 0 = straight)
-        bool bevelEdges = true;   ///< chamfer the 90° edges of the wall body (realistic specular highlights)
+        bool bevelEdges = true;   ///< chamfer the 90° edges of the wall body (realistic specular highlights; hollow-shell mode only)
         float clutter = 0.6f;     ///< 0..1 probability scale for human props (flower boxes, AC, dish, firewood)
         bool ivy = true;          ///< vines growing up the facade (density follows context.humidity)
+        bool interior = true;     ///< Village/Town: build a real floorplan — 2D BSP rooms, spanning-tree doors,
+                                  ///< rule-based windows, wall shell with true openings, CSG slabs/frames/furniture.
+                                  ///< Highrise keeps the window-grid facade (interior ignored).
+        float wallThickness = 0.24f; ///< shell + partition wall thickness (20-30 cm, interior mode)
     };
 
     /// @brief Generates one house. Local space, base at y = 0 (stilt houses: base at the

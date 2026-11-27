@@ -1106,6 +1106,20 @@ int main(int argc, char** argv) {
                 det.castShadow = true;
                 det.materialId = 8;
             }
+            if (b.interiorMesh.vertexCount() > 0) { // rooms behind the real wall openings
+                scene::MeshEntry& im = mc.addMesh(arena.add(b.interiorMesh));
+                im.albedo = {1.2f, 1.2f, 1.2f};
+                im.roughness = 0.9f;
+                im.castShadow = true;
+                im.materialId = 8;
+            }
+            if (b.doorMesh.vertexCount() > 0) { // hinged door leaves
+                scene::MeshEntry& dm = mc.addMesh(arena.add(b.doorMesh));
+                dm.albedo = {1.3f, 1.3f, 1.3f};
+                dm.roughness = 0.5f;
+                dm.castShadow = true;
+                dm.materialId = 8;
+            }
             if (b.roofMesh.vertexCount() > 0) {
                 scene::MeshEntry& roof = mc.addMesh(arena.add(b.roofMesh));
                 roof.albedoTexture = &shingle;
@@ -1418,6 +1432,20 @@ int main(int argc, char** argv) {
                     det.roughness = 0.4f;
                     det.castShadow = true;
                     det.materialId = 8;
+                }
+                if (hm.interior.vertexCount() > 0) { // rooms behind the real wall openings
+                    scene::MeshEntry& im = mc.addMesh(arena.add(hm.interior));
+                    im.albedo = {1.2f, 1.2f, 1.2f};
+                    im.roughness = 0.9f;
+                    im.castShadow = true;
+                    im.materialId = 8;
+                }
+                if (hm.doors.vertexCount() > 0) { // hinged door leaves
+                    scene::MeshEntry& dm = mc.addMesh(arena.add(hm.doors));
+                    dm.albedo = {1.3f, 1.3f, 1.3f};
+                    dm.roughness = 0.5f;
+                    dm.castShadow = true;
+                    dm.materialId = 8;
                 }
                 if (hm.roof.vertexCount() > 0) {
                     scene::MeshEntry& roof = mc.addMesh(arena.add(hm.roof));

@@ -468,6 +468,8 @@ CityWorld generateCityWorld(const CityGenParams& p) {
                     pm.detailMesh = hm.details;
                     pm.roofMesh = hm.roof;
                     pm.glassMesh = hm.glass;
+                    pm.interiorMesh = hm.interior;
+                    pm.doorMesh = hm.doors;
                     pm.roofType = static_cast<int>(hm.spec.roofType);
                     pm.facade = static_cast<int>(hm.spec.facade);
                     pm.position = {obb.center.x, plateauY + 0.06f, obb.center.y};
