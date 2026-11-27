@@ -298,6 +298,8 @@ jobs:
           cmake --build build -j --target fuhglgraphics_worldgen_screenshot
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode both
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode village
+          # tropical fishing village on the sea at sunset with light clouds (G38 weather sky)
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode tropical
           # cobblestone + wet streets showcase (POM parallax, reflective) as extra gated refs
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot --prefix docs/images/ci/g31_cobble --width 1280 --height 720 --frames 16 --seed 777 --mode city --surface cobble --wet
           mkdir -p docs/images/ci/manual

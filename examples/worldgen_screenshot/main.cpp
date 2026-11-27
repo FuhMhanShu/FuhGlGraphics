@@ -18,7 +18,7 @@
 // Rendered headless (surfaceless EGL) to PNG for docs/images/.
 //
 // Usage: fuhglgraphics_worldgen_screenshot --prefix g31_worldgen [--width 1280] [--height 720]
-//          [--frames 16] [--seed 777] [--mode both|landscape|city|pipeline|village|panorama] [--style town]
+//          [--frames 16] [--seed 777] [--mode both|landscape|city|pipeline|village|panorama|tropical] [--style town]
 //          [--fx all|none|hbao,ssr,bloom,volumetric,wetness] (village extra-effect selection)
 //          [--surface asphalt|cobble|paving|dirt] [--wet]
 //   writes <prefix>_landscape.png, <prefix>_roads.png (street-level at the main hamlet),
@@ -29,6 +29,9 @@
 //   <prefix>_village.png and <prefix>_pipeline*.png (skipping unselected modes).
 //   --mode village: big landscape + small procedural village on the lake shore with many
 //   effects (water, CSM shadows, IBL, HBAO, SSR, bloom, volumetric fog, wetness).
+//   --mode tropical: writes <prefix>_tropical_sunset.png — a big sea bay with a fishing
+//   village on the west beach, rendered at sunset with light cloud cover (G38 weather
+//   drives sun/sky/volumetric clouds, tropical climate maps drive jungle vegetation).
 //
 // Exit code 2 when no headless GL context is available.
 
@@ -115,18 +118,30 @@ void aimAt(fuhgl::FirstPersonCamera& cam, const fuhgl::math::Vec3& target) {
 bool renderToPng(fuhglgraphics::scene::Scene& scn, fuhgl::FirstPersonCamera& cam,
                  fuhglgraphics::render::DeferredRenderer& renderer, int frames, int width, int height,
                  const std::string& outPath, fuhglgraphics::water::WaterSurface* water = nullptr,
-                 const fuhgl::render::Environment* env = nullptr) {
+                 const fuhgl::render::Environment* env = nullptr,
+                 fuhglgraphics::weather::WeatherSystem* weather = nullptr,
+                 float sunDiskBoost = 1.f) {
     using namespace fuhglgraphics;
     for (int i = 0; i < frames; ++i) {
         scene::FrameData frame;
         scn.fillFrame(frame, &cam, width, height);
         frame.view.env = env; // IBL environment baked from the sky cubemap
         frame.effects.applyTo(renderer);
-        frame.view.fogColor = {0.80f, 0.83f, 0.90f};
-        frame.view.fogDensity = 0.0009f;
+        if (!frame.weather) { // a G38 weather state owns fog/sun/sky itself
+            frame.view.fogColor = {0.80f, 0.83f, 0.90f};
+            frame.view.fogDensity = 0.0009f;
+        }
+        if (weather) {
+            // HDR-boost the sun disk of a low sun so bloom picks up the sunset glow
+            frame.view.sunColor = frame.view.sunColor * sunDiskBoost;
+            weather->update(1.f / 60.f);
+            renderer.skyTime += 1.f / 60.f;
+            renderer.volumetricTime = renderer.skyTime;
+        }
         if (water) water->update(1.f / 60.f);
         renderer.render(frame.view, &frame.materialIds, &frame.castShadow, &frame.particleSystems,
-                        frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface);
+                        frame.lightProbes, &frame.decals, frame.water, &frame.skins, &frame.subsurface,
+                        frame.weather);
     }
     fuhgl::gl::flush();
     renderer.output().bind();
@@ -752,6 +767,7 @@ int main(int argc, char** argv) {
     const bool doCity = args.mode == "both" || args.mode == "city";
     const bool doPipeline = args.mode == "pipeline";
     const bool doPanorama = args.mode == "both" || args.mode == "panorama";
+    const bool doTropical = args.mode == "tropical";
 
     // --- landscape: generateWorld(Landscape) -> terrain + water + grass + trees + bushes ---
     if (doLandscape) {
@@ -1514,6 +1530,373 @@ int main(int argc, char** argv) {
             return 1;
         }
         std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", vPath.c_str());
+    }
+
+    // --- tropical: a big sea bay with a fishing village on the west beach, rendered at
+    //     sunset with light cloud cover. The G38 weather state drives sun light, the
+    //     procedural sky, volumetric clouds and fog; the tropical climate maps (hot +
+    //     humid shore) drive the jungle vegetation. Writes <prefix>_tropical_sunset.png --
+    if (doTropical) {
+        procedural::WorldGenParams p;
+        p.mode = procedural::WorldGenParams::Mode::Landscape;
+        p.seed = args.seed;
+        p.worldSize = 420.f;        // big enough for a land strip west of the bay
+        p.terrainGrid = 193;
+        p.terrainHeight = 22.f;
+        p.warpStrength = 0.5f;
+        p.heightExponent = 0.8f;
+        p.waterLevel = 0.33f;       // the sea (a bit higher -> wider beach band)
+        p.lakeCarve = 0.22f;
+        p.lakeRadius = 120.f;       // one big bay: the far shore stays below the horizon
+        p.erosionDroplets = 3000;
+        p.thermalPasses = 3;
+        p.riverCount = 6;
+        p.treeCount = 600;          // humid shore -> jungle biome -> broadleaf G37 trees
+        p.bushCount = 500;
+        p.rockCount = 40;
+        p.grassBlades = 12000;
+        p.treeMinDist = 5.f;
+        p.settlementCount = 0;      // the fishing village is placed explicitly below
+        p.clutterCount = 0;         // G39a: re-scattered below on the flattened beach plateau
+        p.tempNoiseScale = 0.004f;  // little temperature variation: stays hot at the equator
+        p.humidityRiverBoost = 0.9f;
+        p.lapseRate = 0.3f;         // hills stay warm, so the shore stays jungle
+        procedural::GeneratedWorld world = procedural::generateWorld(p);
+        printLifeZones(world.lifeZones);
+        const int g = world.gridW;
+
+        // sea center + west waterline: the beach (and village) faces east, toward the low
+        // evening sun over the water
+        float seaCx = 0.f, seaCz = 0.f, westX = 1e9f, westZ = 0.f;
+        int seaN = 0;
+        const float searchR = p.lakeRadius * 1.25f;
+        for (int j = 0; j < world.gridH; ++j)
+            for (int i = 0; i < world.gridW; ++i) {
+                if (world.heightmap[static_cast<std::size_t>(i) + world.gridW * j] >= p.waterLevel) continue;
+                const float x = (static_cast<float>(i) / (g - 1) - 0.5f) * world.sizeX;
+                const float z = (static_cast<float>(j) / (g - 1) - 0.5f) * world.sizeZ;
+                if (std::hypot(x, z) > searchR) continue;
+                seaCx += x; seaCz += z; ++seaN;
+                if (x < westX) { westX = x; westZ = z; }
+            }
+        if (seaN > 0) { seaCx /= seaN; seaCz /= seaN; } else { westX = -p.lakeRadius; westZ = 0.f; }
+        std::fprintf(stderr,
+                     "worldgen_screenshot: tropical seed %u: sea center (%.1f, %.1f), west shore (%.1f, %.1f)\n",
+                     args.seed, seaCx, seaCz, westX, westZ);
+
+        // flatten a beach plateau for the fishing village just inland of the west waterline
+        const fuhgl::math::Vec2 vc{westX - 15.f, westZ};
+        const float vr = 20.f;
+        const float plateauY = world.waterLevelWorld + 1.3f;
+        const float plateauN = plateauY / world.heightScale;
+        const auto ss = [](float e0, float e1, float x) {
+            const float t = std::min(1.f, std::max(0.f, (x - e0) / (e1 - e0)));
+            return t * t * (3.f - 2.f * t);
+        };
+        for (int j = 0; j < world.gridH; ++j)
+            for (int i = 0; i < world.gridW; ++i) {
+                const float x = (static_cast<float>(i) / (g - 1) - 0.5f) * world.sizeX;
+                const float z = (static_cast<float>(j) / (g - 1) - 0.5f) * world.sizeZ;
+                const float d = std::hypot(x - vc.x, z - vc.y);
+                const float t = 1.f - ss(vr * 0.55f, vr, d);
+                float& h = world.heightmap[static_cast<std::size_t>(i) + g * j];
+                h = h * (1.f - t) + plateauN * t;
+            }
+        // keep the village disc clear of scatter, then re-scatter clutter on the final terrain
+        const auto inVillage = [&](const fuhgl::math::Vec3& pos) {
+            return std::hypot(pos.x - vc.x, pos.z - vc.y) < vr + 5.f;
+        };
+        const auto notInVillage = [&](const procedural::PlacedMesh& pm) { return !inVillage(pm.position); };
+        world.trees.erase(std::remove_if(world.trees.begin(), world.trees.end(), notInVillage),
+                          world.trees.end());
+        world.bushes.erase(std::remove_if(world.bushes.begin(), world.bushes.end(), notInVillage),
+                           world.bushes.end());
+        world.rocks.erase(std::remove_if(world.rocks.begin(), world.rocks.end(), notInVillage),
+                          world.rocks.end());
+        // keep trees clear of the camera line (a tree crossing the near plane renders as a
+        // green star blob); the beach camera sits west of the village looking east
+        const float camX = vc.x - 30.f, camZ = vc.y + 10.f;
+        world.trees.erase(std::remove_if(world.trees.begin(), world.trees.end(),
+                                         [&](const procedural::PlacedMesh& pm) {
+                                             return std::hypot(pm.position.x - camX,
+                                                               pm.position.z - camZ) < 9.f;
+                                         }),
+                          world.trees.end());
+        std::vector<fuhgl::math::Vec2> clutterBuildings{{vc.x, vc.y}};
+        const std::vector<procedural::ClutterItem> clutter =
+            rescatterClutter(world, nullptr, world.trees, clutterBuildings, 600, args.seed ^ 0xC17u);
+
+        scene::Scene scene;
+        MeshArena arena;
+        const fuhgl::Texture splatTex = makeSplatAlbedoTex(world);
+        scene::Node& tn = scene.root().createChild("terrain");
+        fuhgl::render::Mesh terrainMesh;
+        terrainMesh.setMeshData(terrainMeshData(world));
+        {
+            scene::MeshEntry& te = tn.attach<scene::MeshComponent>().addMesh(&terrainMesh);
+            te.albedoTexture = &splatTex;
+            te.roughness = 1.f;
+            te.castShadow = true;
+            te.materialId = 1;
+        }
+
+        // the sea: one big tropical water surface (turquoise shallows)
+        scene::Node& wn = scene.root().createChild("sea");
+        wn.translation = {0.f, world.waterLevelWorld, 0.f};
+        scene::WaterComponent* water = &wn.attach<scene::WaterComponent>();
+        if (!water->surface.create(200, p.worldSize * 1.2f)) {
+            std::fprintf(stderr, "worldgen_screenshot: sea create failed\n");
+            return 1;
+        }
+        water->surface.waves = {
+            {{1.f, 0.20f}, 0.20f, 18.f, 2.2f, 0.60f},
+            {{0.6f, 0.8f}, 0.12f, 9.f, 1.5f, 0.50f},
+            {{-0.4f, 0.9f}, 0.07f, 5.f, 1.1f, 0.40f},
+        };
+        water->surface.reflectionStrength = 0.85f;
+        water->surface.foamStrength = 0.8f;
+        water->surface.deepColor = {0.004f, 0.10f, 0.16f};
+        water->surface.shallowColor = {0.06f, 0.45f, 0.48f};
+
+        // instanced grass, tropical green, masked by the splatmap like the other shots
+        {
+            scene::Node& grass = scene.root().createChild("grass");
+            grass.instancing.enabled = true;
+            grass.instancing.count = p.grassBlades;
+            grass.instancing.layout = scene::InstanceLayout::Random;
+            grass.instancing.extent = {p.worldSize - 8.f, 4.f, p.worldSize - 8.f};
+            grass.instancing.seed = 7u;
+            grass.instancing.heightFn = [&world](float x, float z) {
+                const float h = world.heightAt(x, z);
+                if (h < world.waterLevelWorld + 0.15f) return -1000.f;
+                const int gg = world.gridW;
+                const float u = std::min(1.f, std::max(0.f, x / world.sizeX + 0.5f)) * (gg - 1);
+                const float v = std::min(1.f, std::max(0.f, z / world.sizeZ + 0.5f)) * (gg - 1);
+                const std::size_t idx = (static_cast<std::size_t>(u) + gg * static_cast<std::size_t>(v)) * 4;
+                if (world.splatmap[idx + 0] < 110) return -1000.f;
+                return h + 0.22f;
+            };
+            scene::MeshEntry& ge = grass.attach<scene::MeshComponent>().addMesh(
+                arena.add(fuhgl::render::shapes::boxData({0.015f, 0.22f, 0.015f}, {0.30f, 0.55f, 0.20f})));
+            ge.albedo = {0.50f, 0.78f, 0.28f};
+            ge.roughness = 1.f;
+            ge.castShadow = false;
+            ge.materialId = 2;
+        }
+
+        auto addPlant = [&](const std::string& prefix, const std::vector<procedural::PlacedMesh>& plants,
+                            std::uint32_t materialId) {
+            for (std::size_t i = 0; i < plants.size(); ++i) {
+                const auto& t = plants[i];
+                scene::Node& n = scene.root().createChild(prefix + std::to_string(i));
+                n.translation = t.position;
+                n.rotation = fuhgl::math::fromAxisAngle(t.rotY, {0.f, 1.f, 0.f});
+                n.scale = {t.scale, t.scale, t.scale};
+                scene::MeshEntry& e = n.attach<scene::MeshComponent>().addMesh(arena.add(t.mesh));
+                e.albedo = t.tint;
+                e.roughness = 0.9f;
+                e.castShadow = true;
+                e.materialId = materialId;
+            }
+        };
+        addPlant("tree", world.trees, 30);
+        addPlant("bush", world.bushes, 31);
+        addPlant("rock", world.rocks, 32);
+        attachClutter(scene, arena, clutter);
+
+        // the fishing village: rustic Village-style houses on the plateau, smaller huts down
+        // at the beach strip; the BuildingContext comes from the shore climate maps
+        procedural::BuildingContext vctx;
+        {
+            const auto sampleF = [&](const std::vector<float>& m) -> float {
+                if (m.empty()) return 0.5f;
+                const float u = std::min(1.f, std::max(0.f, vc.x / world.sizeX + 0.5f)) * (g - 1);
+                const float v = std::min(1.f, std::max(0.f, vc.y / world.sizeZ + 0.5f)) * (g - 1);
+                return m[static_cast<std::size_t>(u) + g * static_cast<std::size_t>(v)];
+            };
+            vctx.temperature = sampleF(world.temperature);
+            vctx.humidity = sampleF(world.humidity);
+            vctx.precipitation = std::min(1.f, vctx.humidity * 0.95f);
+            vctx.biome = world.biome.empty() ? -1
+                : static_cast<int>(world.biome[static_cast<std::size_t>(
+                      std::min(1.f, std::max(0.f, vc.x / world.sizeX + 0.5f)) * (g - 1)) +
+                    g * static_cast<std::size_t>(
+                      std::min(1.f, std::max(0.f, vc.y / world.sizeZ + 0.5f)) * (g - 1))]);
+            vctx.wealth = 0.4f;   // poor fishing village
+            vctx.density = 0.25f;
+            vctx.soilColor = {0.72f, 0.62f, 0.44f}; // sandy soil
+        }
+        std::fprintf(stderr, "worldgen_screenshot: tropical beach climate: T=%.2f H=%.2f biome=%d\n",
+                     vctx.temperature, vctx.humidity, vctx.biome);
+        procedural::HouseGenerator houseGen;
+        std::uint32_t hs = args.seed ^ 0x11EAu;
+        auto nextr = [&]() {
+            hs = hs * 1664525u + 1013904223u;
+            return static_cast<float>(hs >> 8) * (1.f / 16777216.f);
+        };
+        int houseCount = 0;
+        auto placeHouse = [&](const procedural::HouseMesh& hm, float x, float y, float z, float rotY) {
+            scene::Node& n = scene.root().createChild("fhouse" + std::to_string(houseCount++));
+            n.translation = {x, y, z};
+            n.rotation = fuhgl::math::fromAxisAngle(rotY, {0.f, 1.f, 0.f});
+            scene::MeshComponent& mc = n.attach<scene::MeshComponent>();
+            fuhgl::math::Vec3 facTint;
+            const FacadeTexSet* ft =
+                facadeSet(static_cast<int>(hm.spec.facade), plasterTex, stoneTex, facTint);
+            scene::MeshEntry& walls = mc.addMesh(arena.add(hm.walls));
+            walls.albedo = facTint;
+            walls.albedoTexture = ft ? &ft->albedo : &brickAlbedo;
+            walls.normalMap = ft ? &ft->normal : &brickNormal;
+            walls.heightMap = ft ? &ft->height : &brickHeight; // POM parallax on the facade
+            walls.parallaxScale = 0.05f;
+            walls.parallaxLayers = 24;
+            walls.roughness = 0.85f;
+            walls.castShadow = true;
+            walls.materialId = 5;
+            if (hm.glass.vertexCount() > 0) {
+                scene::MeshEntry& gl = mc.addMesh(arena.add(hm.glass));
+                setupGlassEntry(gl);
+                gl.emissive = {1.6f, 0.9f, 0.4f}; // warm lamplight in the windows at dusk
+            }
+            if (hm.details.vertexCount() > 0) {
+                scene::MeshEntry& det = mc.addMesh(arena.add(hm.details));
+                det.albedo = {1.4f, 1.4f, 1.4f};
+                det.roughness = 0.4f;
+                det.castShadow = true;
+                det.materialId = 8;
+            }
+            if (hm.interior.vertexCount() > 0) { // rooms behind the real wall openings
+                scene::MeshEntry& im = mc.addMesh(arena.add(hm.interior));
+                im.albedo = {1.2f, 1.2f, 1.2f};
+                im.roughness = 0.9f;
+                im.castShadow = true;
+                im.materialId = 8;
+            }
+            if (hm.doors.vertexCount() > 0) { // hinged door leaves
+                scene::MeshEntry& dm = mc.addMesh(arena.add(hm.doors));
+                dm.albedo = {1.3f, 1.3f, 1.3f};
+                dm.roughness = 0.5f;
+                dm.castShadow = true;
+                dm.materialId = 8;
+            }
+            if (hm.roof.vertexCount() > 0) {
+                scene::MeshEntry& roof = mc.addMesh(arena.add(hm.roof));
+                roof.albedoTexture = &shingle;
+                roof.albedo = {1.6f, 1.6f, 1.6f};
+                roof.roughness = 0.7f;
+                roof.castShadow = true;
+                roof.materialId = 6;
+            }
+        };
+        for (int gz = -2; gz <= 2; ++gz)
+            for (int gx = -1; gx <= 2; ++gx) {
+                if (nextr() < 0.3f) continue;
+                const float hx = vc.x + gx * 7.f + (nextr() - 0.5f) * 2.f;
+                const float hz = vc.y + gz * 7.f + (nextr() - 0.5f) * 2.f;
+                if (std::hypot(hx - vc.x, hz - vc.y) > vr - 4.f) continue;
+                const float groundY = world.heightAt(hx, hz);
+                if (groundY < world.waterLevelWorld + 0.8f) continue; // keep houses on dry sand
+                const bool beachHut = hx > vc.x + vr * 0.5f; // small huts down at the waterline
+                const std::uint32_t hseed =
+                    args.seed ^ (0x5EEDu + static_cast<std::uint32_t>(houseCount) * 7919u);
+                auto hp = procedural::HouseGenerator::randomParams(procedural::HouseStyle::Village,
+                                                                    8.f, hseed, vctx);
+                hp.seed = hseed;
+                hp.width = beachHut ? 4.f + nextr() * 1.5f : 6.f + nextr() * 2.5f;
+                hp.depth = beachHut ? 3.5f + nextr() * 1.5f : 5.f + nextr() * 2.5f;
+                auto hm = houseGen.generate(hp);
+                hm.spec.facade = procedural::FacadeMaterial::Plaster; // whitewashed tropical huts
+                placeHouse(hm, hx, groundY, hz, nextr() * 2.f * fuhgl::math::kPi);
+            }
+        // a ring of broadleaf trees around the village clearing
+        procedural::PlantGenerator plantGen;
+        for (int t = 0; t < 16; ++t) {
+            const float ang = nextr() * 2.f * fuhgl::math::kPi;
+            const float rad = vr + 3.f + nextr() * 8.f;
+            const float tx = vc.x + std::cos(ang) * rad, tz = vc.y + std::sin(ang) * rad;
+            const float th = world.heightAt(tx, tz);
+            if (th < world.waterLevelWorld + 0.3f) continue;
+            procedural::PlantParams pp;
+            pp.kind = procedural::PlantKind::Deciduous; // broadleaf
+            pp.seed = args.seed ^ (0x7EAFu + static_cast<std::uint32_t>(t) * 131u);
+            pp.scale = 0.7f + 0.6f * nextr();
+            const auto pm = plantGen.generate(pp);
+            scene::Node& n = scene.root().createChild("beachtree" + std::to_string(t));
+            n.translation = {tx, th, tz};
+            n.rotation = fuhgl::math::fromAxisAngle(nextr() * 2.f * fuhgl::math::kPi, {0.f, 1.f, 0.f});
+            n.scale = {pp.scale, pp.scale, pp.scale};
+            scene::MeshEntry& e = n.attach<scene::MeshComponent>().addMesh(arena.add(pm.mesh));
+            e.albedo = {0.85f, 1.f, 0.85f};
+            e.roughness = 0.9f;
+            e.castShadow = true;
+            e.materialId = 30;
+        }
+        std::fprintf(stderr, "worldgen_screenshot: tropical seed %u: %d houses on the beach\n",
+                     args.seed, houseCount);
+
+        // G38 weather: sunset (low sun toward +X, over the sea) + light cloud cover; the
+        // weather state drives the sun light, the procedural sky, volumetric clouds and fog
+        scene::WeatherComponent& wcomp =
+            scene.root().createChild("weather").attach<scene::WeatherComponent>();
+        wcomp.system = weather::WeatherSystem(args.seed ^ 0x7A0Fu);
+        wcomp.system.setTimeOfDay(17.9f); // sun ~1.6 deg above the horizon toward +X, over the sea
+        weather::WeatherParams wp = weather::presetFor(weather::WeatherType::PartlyCloudy);
+        wp.cloudCoverage = 0.42f;  // light cloud cover
+        wp.cloudDensity = 0.65f;
+        wp.fogDensity = 0.0012f;
+        wp.sunVisibility = 1.f;
+        wp.windSpeed = 2.5f;
+        wcomp.system.setParams(wp);
+
+        // warm sunset sky cubemap + IBL (the procedural G38 sky overrides the cubemap)
+        fuhgl::Skybox sunsetSky;
+        fuhgl::render::Environment envSunset;
+        const fuhgl::render::Environment* envUse = &env;
+        if (sunsetSky.create()) {
+            sunsetSky.makeGradient({0.16f, 0.20f, 0.42f}, {1.0f, 0.52f, 0.22f}, 256);
+            if (sunsetSky.texture().id() != 0) {
+                renderer.setSkyCubemap(&sunsetSky.texture());
+                if (envSunset.createFromCubemap(sunsetSky.texture(), 16, 32, 64)) {
+                    envSunset.intensity = 0.55f;
+                    envUse = &envSunset;
+                }
+            }
+        }
+
+        cam.fovY = fuhgl::math::radians(55.f);
+        scene.root().createChild("camera").attach<scene::CameraComponent>().camera = &cam;
+        scene.root().effects.enable(render::Effect::Taa);
+        scene.root().effects.enable(render::Effect::Upscale);
+        scene.root().effects.enable(render::Effect::Tonemap);
+        scene.root().effects.enable(render::Effect::CsmShadows);
+        scene.root().effects.enable(render::Effect::Ibl);
+        scene.root().effects.enable(render::Effect::Sky);
+        scene.root().effects.enable(render::Effect::VolumetricFog);
+        scene.root().effects.enable(render::Effect::Water);
+        scene.root().effects.enable(render::Effect::Bloom);
+        enableWeathering(scene, plateauY, vctx.humidity, vctx.soilColor);
+        scene.root().effects.params.exposure = 1.4f;
+        scene.root().effects.params.taaBlend = 0.08f;
+        scene.root().effects.params.shadowCenter = {vc.x, plateauY, vc.y};
+        scene.root().effects.params.shadowRadius = 140.f;
+        scene.root().effects.params.shadowZNear = 1.f;
+        scene.root().effects.params.shadowZFar = 500.f;
+        renderer.bloomThreshold = 0.85f; // the low sun disk + its halo glow
+        renderer.bloomStrength = 0.9f;
+        renderer.volumetricSteps = 24;
+        renderer.volumetricMaxDist = 300.f;
+
+        // beach vantage west of the village looking east and slightly down: village close
+        // in the midground, beach in the foreground, sea and the low sun beyond
+        cam.position = {vc.x - 16.f, plateauY + 8.f, vc.y + 12.f};
+        aimAt(cam, {vc.x + 12.f, plateauY + 2.f, vc.y - 2.f});
+        const std::string tPath = args.prefix + "_tropical_sunset.png";
+        if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, tPath,
+                         &water->surface, envUse, &wcomp.system, 16.f)) {
+            std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", tPath.c_str());
+            return 1;
+        }
+        std::fprintf(stderr, "worldgen_screenshot: wrote %s\n", tPath.c_str());
     }
 
     // --- panorama: big vegetated landscape + WFC city at a river + village at the lake,

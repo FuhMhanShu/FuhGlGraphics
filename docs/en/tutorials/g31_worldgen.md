@@ -340,9 +340,13 @@ FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
     --prefix g31 --width 1280 --height 720 --frames 16 --seed 777 --mode pipeline
 FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
     --prefix g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode village
-# writes g31_worldgen_{landscape,city,city_street,village}.png and g31_pipeline{,_street}.png
+FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_worldgen_screenshot \
+    --prefix g31_worldgen --width 1280 --height 720 --frames 16 --seed 777 --mode tropical
+# writes g31_worldgen_{landscape,city,city_street,village,tropical_sunset}.png and g31_pipeline{,_street}.png
 # (--mode village: big landscape + small procedural village on the lake shore, rendered with
 #  water, CSM shadows, IBL, HBAO, SSR, bloom, volumetric fog and wetness enabled)
+# (--mode tropical: tropical fishing village by the sea at sunset with light clouds —
+#  big bay, jungle climate, G38 weather sky with the low sun)
 # road surface + wet streets for the city modes (default: asphalt, dry):
 #   --surface asphalt|cobble|paving|dirt   (cobble/paving render with POM parallax)
 #   --wet                                  (dark reflective streets: SSR + roughness 0.12)
