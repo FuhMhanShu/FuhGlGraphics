@@ -120,13 +120,16 @@ bool renderToPng(fuhglgraphics::scene::Scene& scn, fuhgl::FirstPersonCamera& cam
                  const std::string& outPath, fuhglgraphics::water::WaterSurface* water = nullptr,
                  const fuhgl::render::Environment* env = nullptr,
                  fuhglgraphics::weather::WeatherSystem* weather = nullptr,
-                 float sunDiskBoost = 1.f) {
+                 float sunDiskBoost = 1.f, float exposureOverride = 0.f) {
     using namespace fuhglgraphics;
     for (int i = 0; i < frames; ++i) {
         scene::FrameData frame;
         scn.fillFrame(frame, &cam, width, height);
         frame.view.env = env; // IBL environment baked from the sky cubemap
         frame.effects.applyTo(renderer);
+        // a G38 weather state overwrites EffectParams::exposure (exposureScale) in fillFrame,
+        // so an explicit exposure has to be applied after applyTo()
+        if (exposureOverride > 0.f) renderer.exposure = exposureOverride;
         if (!frame.weather) { // a G38 weather state owns fog/sun/sky itself
             frame.view.fogColor = {0.80f, 0.83f, 0.90f};
             frame.view.fogDensity = 0.0009f;
@@ -1887,11 +1890,11 @@ int main(int argc, char** argv) {
         scene::WeatherComponent& wcomp =
             scene.root().createChild("weather").attach<scene::WeatherComponent>();
         wcomp.system = weather::WeatherSystem(args.seed ^ 0x7A0Fu);
-        wcomp.system.setTimeOfDay(17.9f); // sun ~1.6 deg above the horizon toward +X: visible over the rooftops
+        wcomp.system.setTimeOfDay(17.4f); // sun ~6 deg up: clearly blue zenith, warm glow at the horizon/sea
         weather::WeatherParams wp = weather::presetFor(weather::WeatherType::PartlyCloudy);
-        wp.cloudCoverage = 0.38f;  // light cloud cover
-        wp.cloudDensity = 0.55f;   // thin clouds: the volumetric layer must not wash out the dusk
-        wp.fogDensity = 0.0009f;   // clearer air -> less washed-out distance
+        wp.cloudCoverage = 0.22f;  // few scattered clouds: the sky stays blue
+        wp.cloudDensity = 0.20f;   // light volumetric haze only
+        wp.fogDensity = 0.0005f;   // clear air
         wp.wetness = 0.25f;        // damp beach at dusk (Wetness + SSR puddles)
         wp.sunVisibility = 1.f;
         wp.windSpeed = 2.5f;
@@ -1944,21 +1947,21 @@ int main(int argc, char** argv) {
         }
         // crepuscular god rays toward the low sun (tonemap pass)
         renderer.godRays.enabled = true;
-        renderer.godRays.strength = 0.5f; // clearly visible crepuscular rays toward the sun
+        renderer.godRays.strength = 0.18f; // crepuscular rays toward the sun, without hazing the sky
         renderer.godRays.decay = 0.95f;
         renderer.godRays.samples = 48;
-        renderer.lensFlareStrength = 0.7f;
-        renderer.anamorphicStrength = 0.4f;
-        scene.root().effects.params.exposure = 1.55f; // the sun at the horizon dims the scene
+        renderer.lensFlareStrength = 0.35f;
+        renderer.anamorphicStrength = 0.25f;
+        // exposure is applied via renderToPng's override (weather would overwrite the param)
         scene.root().effects.params.taaBlend = 0.08f;
         scene.root().effects.params.shadowCenter = {vc.x, plateauY, vc.y};
         scene.root().effects.params.shadowRadius = 140.f;
         scene.root().effects.params.shadowZNear = 1.f;
         scene.root().effects.params.shadowZFar = 500.f;
-        renderer.bloomThreshold = 1.0f; // only the low sun disk + its halo glow
-        renderer.bloomStrength = 0.7f;
+        renderer.bloomThreshold = 1.3f; // only the sun disk itself blooms
+        renderer.bloomStrength = 0.5f;
         renderer.volumetricSteps = 16;
-        renderer.volumetricMaxDist = 220.f;
+        renderer.volumetricMaxDist = 30.f; // short volume: ground haze only, the sky stays blue
         renderer.ssrMaxSteps = 16;
         renderer.ssrMaxDist = 45.f;
 
@@ -1968,7 +1971,7 @@ int main(int argc, char** argv) {
         aimAt(cam, {vc.x + 12.f, world.waterLevelWorld + 1.5f, vc.y});
         const std::string tPath = args.prefix + "_tropical_sunset.png";
         if (!renderToPng(scene, cam, renderer, args.frames, args.width, args.height, tPath,
-                         &water->surface, envUse, &wcomp.system, 20.f)) {
+                         &water->surface, envUse, &wcomp.system, 4.f, 1.0f)) {
             std::fprintf(stderr, "worldgen_screenshot: failed to write %s\n", tPath.c_str());
             return 1;
         }
