@@ -49,6 +49,7 @@ add_library(fuhglgraphics STATIC
     src/io/json.cpp
     src/io/gltf.cpp
     src/io/asset_cache.cpp
+    src/io/glb_export.cpp
     src/mcp/jsonrpc.cpp
     src/mcp/tool_catalog.cpp
     src/mcp/tool_catalog_procedural.cpp

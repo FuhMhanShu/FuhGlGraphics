@@ -79,6 +79,10 @@ fuhglgraphics_asset_creator [--project scene.fasset] [--lang en|de]
   (LLM → editor bridge).
 - **Project file:** own `.fasset` JSON (`io::Json` + `scene::serialize` + `io::writeJson`);
   imported assets are content-hash cached in `<project>/.cache` (G11 `io::AssetCache`).
+  **Export:** File → "Export glTF (.glb)..." writes the scene as glTF 2.0 binary via
+  `io::exportSceneGlb` (pure CPU, no GL context needed; mesh entries with CPU `meshData`
+  are exported, mesh-less entries are skipped and reported; round-trips through
+  `io::loadGltf`).
 - **UI language:** English default, German first translation (`--lang de`, QTranslator).
 
 ## 4. Library-side JSON for render settings (G11 config)

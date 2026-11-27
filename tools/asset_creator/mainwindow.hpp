@@ -34,6 +34,7 @@ private slots:
     void onOpen();
     void onSave();
     void onSaveAs();
+    void onExportGlb(); ///< P5: export the scene as glTF 2.0 binary (.glb, pure CPU)
     void onConnectMcp();
     void onSettings();
     void onAbout();

@@ -183,6 +183,32 @@ std::unique_ptr<QUndoCommand> makeAddShapeCommand(AssetDocument* doc, scene::Nod
             e.albedo = {0.8f, 0.8f, 0.85f};
             if (spec.at("shape").asString() == "quad")
                 e.localOffset = fuhgl::math::rotateX(-fuhgl::math::kPi * 0.5f);
+            // CPU meshData for picking (G18) and glb export (G12 P5) — pure CPU, no GL
+            const std::string shp = spec.at("shape").asString();
+            fuhgl::math::Vec3 col{0.8f, 0.8f, 0.85f};
+            const io::Json& cj = spec.at("color");
+            if (cj.isArray() && cj.arr.size() >= 3)
+                col = {static_cast<float>(cj.arr[0].asNumber(0.8)),
+                       static_cast<float>(cj.arr[1].asNumber(0.8)),
+                       static_cast<float>(cj.arr[2].asNumber(0.85))};
+            fuhgl::render::MeshData md;
+            if (shp == "box") {
+                fuhgl::math::Vec3 he{0.5f, 0.5f, 0.5f};
+                const io::Json& hj = spec.at("halfExtents");
+                if (hj.isArray() && hj.arr.size() >= 3)
+                    he = {static_cast<float>(hj.arr[0].asNumber(0.5)),
+                          static_cast<float>(hj.arr[1].asNumber(0.5)),
+                          static_cast<float>(hj.arr[2].asNumber(0.5))};
+                md = fuhgl::render::makeCube(he)->buildMeshData(6, col);
+            } else if (shp == "quad") {
+                const float hs = static_cast<float>(spec.at("halfSize").asNumber(4.0));
+                md = fuhgl::render::makeCube({hs, hs, 0.001f})->buildMeshData(4, col);
+            } else {
+                const float r = static_cast<float>(spec.at("radius").asNumber(1.0));
+                md = fuhgl::render::makeSphere(r)->buildMeshData(24, col, fuhgl::render::SolidUv::Spherical);
+            }
+            doc->meshDataArena().push_back(std::make_unique<fuhgl::render::MeshData>(std::move(md)));
+            e.meshData = doc->meshDataArena().back().get();
         }
     };
     auto undo = [parent, created]() {

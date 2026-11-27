@@ -208,7 +208,6 @@ Delivery: branch `vibe/<slug>-<id>`, one PR per phase after review (per
 
 ## 10. Open points
 
-- glb export from the asset creator — P5 remainder.
 - MCP chat-tool contract for **external** servers (name/arguments) — still defined by the
   configured server; the tool stays generic and shows `tools/list` results. The **builtin**
   contract is now fixed in-repo: `mcp/tool_catalog.hpp` (scene ops, `render_*` settings,
