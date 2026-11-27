@@ -1551,8 +1551,8 @@ int main(int argc, char** argv) {
         p.erosionDroplets = 3000;
         p.thermalPasses = 3;
         p.riverCount = 6;
-        p.treeCount = 900;          // humid shore -> jungle biome -> dense broadleaf G37 trees
-        p.bushCount = 700;
+        p.treeCount = 1100;         // humid shore -> jungle biome -> dense broadleaf G37 trees
+        p.bushCount = 900;
         p.rockCount = 40;
         p.grassBlades = 18000;
         p.treeMinDist = 5.f;
@@ -1750,6 +1750,7 @@ int main(int argc, char** argv) {
             return static_cast<float>(hs >> 8) * (1.f / 16777216.f);
         };
         int houseCount = 0;
+        std::vector<fuhgl::math::Vec2> houseSpots; // for keeping garden plants clear of doors
         auto placeHouse = [&](const procedural::HouseMesh& hm, float x, float y, float z, float rotY) {
             scene::Node& n = scene.root().createChild("fhouse" + std::to_string(houseCount++));
             n.translation = {x, y, z};
@@ -1824,30 +1825,50 @@ int main(int argc, char** argv) {
                 auto hm = houseGen.generate(hp);
                 hm.spec.facade = procedural::FacadeMaterial::Plaster; // whitewashed tropical huts
                 placeHouse(hm, hx, groundY, hz, nextr() * 2.f * fuhgl::math::kPi);
+                houseSpots.push_back({hx, hz});
             }
-        // a ring of broadleaf trees around the village clearing
+        // dense tropical planting around the village: a broadleaf tree ring around the
+        // clearing plus garden plants (bushes/small trees) between and around the houses,
+        // kept 2.5 wu clear of the house spots
         procedural::PlantGenerator plantGen;
-        for (int t = 0; t < 24; ++t) {
-            const float ang = nextr() * 2.f * fuhgl::math::kPi;
-            const float rad = vr + 3.f + nextr() * 8.f;
-            const float tx = vc.x + std::cos(ang) * rad, tz = vc.y + std::sin(ang) * rad;
-            const float th = world.heightAt(tx, tz);
-            if (th < world.waterLevelWorld + 0.3f) continue;
+        int plantCount = 0;
+        auto placePlant = [&](procedural::PlantKind kind, float x, float z, float scale) {
+            const float th = world.heightAt(x, z);
+            if (th < world.waterLevelWorld + 0.15f) return;
             procedural::PlantParams pp;
-            pp.kind = procedural::PlantKind::Deciduous; // broadleaf
-            pp.seed = args.seed ^ (0x7EAFu + static_cast<std::uint32_t>(t) * 131u);
-            pp.scale = 0.7f + 0.6f * nextr();
+            pp.kind = kind;
+            pp.seed = args.seed ^ (0x7EAFu + static_cast<std::uint32_t>(plantCount) * 131u);
+            pp.scale = scale;
             const auto pm = plantGen.generate(pp);
-            scene::Node& n = scene.root().createChild("beachtree" + std::to_string(t));
-            n.translation = {tx, th, tz};
+            scene::Node& n = scene.root().createChild("vplant" + std::to_string(plantCount++));
+            n.translation = {x, th, z};
             n.rotation = fuhgl::math::fromAxisAngle(nextr() * 2.f * fuhgl::math::kPi, {0.f, 1.f, 0.f});
-            n.scale = {pp.scale, pp.scale, pp.scale};
+            n.scale = {scale, scale, scale};
             scene::MeshEntry& e = n.attach<scene::MeshComponent>().addMesh(arena.add(pm.mesh));
             e.albedo = {0.85f, 1.f, 0.85f};
             e.roughness = 0.9f;
             e.castShadow = true;
             e.materialId = 30;
+        };
+        for (int t = 0; t < 60; ++t) { // broadleaf tree ring around the clearing
+            const float ang = nextr() * 2.f * fuhgl::math::kPi;
+            const float rad = vr + 2.f + nextr() * 9.f;
+            placePlant(procedural::PlantKind::Deciduous, vc.x + std::cos(ang) * rad,
+                       vc.y + std::sin(ang) * rad, 0.7f + 0.6f * nextr());
         }
+        for (int t = 0; t < 60; ++t) { // garden plants in the village disc, clear of houses
+            const float ang = nextr() * 2.f * fuhgl::math::kPi;
+            const float rad = vr * 0.3f + nextr() * (vr * 0.85f);
+            const float bx = vc.x + std::cos(ang) * rad, bz = vc.y + std::sin(ang) * rad;
+            bool nearHouse = false;
+            for (const auto& hs : houseSpots)
+                if (std::hypot(bx - hs.x, bz - hs.y) < 2.5f) { nearHouse = true; break; }
+            if (nearHouse) continue;
+            placePlant(nextr() < 0.75f ? procedural::PlantKind::Bush : procedural::PlantKind::Deciduous,
+                       bx, bz, 0.4f + 0.5f * nextr());
+        }
+        std::fprintf(stderr, "worldgen_screenshot: tropical seed %u: %d garden plants around %d houses\n",
+                     args.seed, plantCount, houseCount);
         std::fprintf(stderr, "worldgen_screenshot: tropical seed %u: %d houses on the beach\n",
                      args.seed, houseCount);
 
@@ -1856,7 +1877,7 @@ int main(int argc, char** argv) {
         scene::WeatherComponent& wcomp =
             scene.root().createChild("weather").attach<scene::WeatherComponent>();
         wcomp.system = weather::WeatherSystem(args.seed ^ 0x7A0Fu);
-        wcomp.system.setTimeOfDay(17.98f); // sun ~0.3 deg above the horizon toward +X, over the sea
+        wcomp.system.setTimeOfDay(18.0f); // sun right at the horizon toward +X: full dusk colors
         weather::WeatherParams wp = weather::presetFor(weather::WeatherType::PartlyCloudy);
         wp.cloudCoverage = 0.38f;  // light cloud cover
         wp.cloudDensity = 0.55f;   // thin clouds: the volumetric layer must not wash out the dusk
@@ -1893,7 +1914,6 @@ int main(int argc, char** argv) {
         scene.root().effects.enable(render::Effect::Bloom);
         scene.root().effects.enable(render::Effect::Hbao);
         scene.root().effects.enable(render::Effect::Ssr);      // glossy wet sand + water
-        scene.root().effects.enable(render::Effect::Dof);      // bokeh around the village
         scene.root().effects.enable(render::Effect::LensFlare); // glow/ghosts/streak at the sun
         scene.root().effects.enable(render::Effect::Anamorphic);
         scene.root().effects.enable(render::Effect::ChromaticAberration);
@@ -1903,12 +1923,9 @@ int main(int argc, char** argv) {
         renderer.godRays.strength = 0.35f;
         renderer.godRays.decay = 0.95f;
         renderer.godRays.samples = 48;
-        renderer.dofFocusDist = 24.f; // focus on the village, beach/sea blur softly
-        renderer.dofStrength = 6.f;
-        renderer.dofMaxCoC = 12.f;
         renderer.lensFlareStrength = 0.7f;
         renderer.anamorphicStrength = 0.4f;
-        scene.root().effects.params.exposure = 1.35f;
+        scene.root().effects.params.exposure = 1.55f; // the sun at the horizon dims the scene
         scene.root().effects.params.taaBlend = 0.08f;
         scene.root().effects.params.shadowCenter = {vc.x, plateauY, vc.y};
         scene.root().effects.params.shadowRadius = 140.f;
