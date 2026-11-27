@@ -31,6 +31,8 @@ void runProceduralCreatureTests();
 void runProceduralCreaturegenTests();
 void runProceduralWorldgenTests();
 void runProceduralRoadgenTests();
+void runProceduralClutterTests();
+void runProceduralLifegenTests();
 void runProceduralHouseTests();
 void runProceduralCitygenTests();
 void runProceduralPlantTests();

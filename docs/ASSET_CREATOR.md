@@ -155,6 +155,16 @@ All of these keep the `WITH_QT=OFF` CI jobs green (no Qt includes). Tests:
   maps known ops onto QUndoCommands.
 - **Security:** server command + env come from the settings dialog / env only; no
   credentials in `.fasset`; child process gets a clean, explicit environment.
+- **Reference dev server:** `tools/asset_creator/mcp_server.py` — Python 3 stdlib only
+  (no pip), speaks MCP over stdio (line-delimited JSON-RPC 2.0). Tools: `chat` (Mistral
+  API via `MISTRAL_API_KEY`/`MISTRAL_MODEL` env, offline stub without a key),
+  `list_assets`, `inspect_gltf` (.gltf/.glb parse), `render_preview` (runs the compiled
+  `fuhglgraphics_gltf_demo` headless through the G3 renderer, returns the PNG as MCP
+  image content), `asset_action` (returns the `assetAction` JSON the editor maps onto
+  QUndoCommands), `editor_command` (appends to `EDITOR_BRIDGE_FILE` for direct control,
+  e.g. via QFileSystemWatcher). Optional `--http <port>` loopback mode
+  (127.0.0.1 only: `/health`, `/tools`, `POST /call`). Tests:
+  `python3 tools/asset_creator/test_mcp_server.py`.
 - **Later:** HTTP/streamable transport via `Qt6::Network`; server→client
   `sampling/createMessage` for real LLM sampling; client-side MCP tools.
 

@@ -269,6 +269,7 @@ io::Json tProceduralWorldgen(const io::Json& a, ToolHost& host, std::string* err
     p.riverCount = clampInt(argInt(a, "riverCount", 0), 0, 20);
     p.settlementCount = clampInt(argInt(a, "settlementCount", 3), 0, 12);
     p.housesPerSettlement = clampInt(argInt(a, "housesPerSettlement", 7), 0, 24);
+    p.clutterCount = clampInt(argInt(a, "clutterCount", 1200), 0, 4000); // G39a causal clutter
     procedural::GeneratedWorld w = procedural::generateWorld(p);
     int attached = 0;
     scene::Node* parent = host.scene ? findNode(*host.scene, argStr(a, "parent", "root")) : nullptr;
@@ -306,6 +307,26 @@ io::Json tProceduralWorldgen(const io::Json& a, ToolHost& host, std::string* err
             if (w.roads.vertexCount() && attachMeshData(host, base + "_roads", w.roads, wnode, Vec3{0.f, 0.02f, 0.f})) ++attached;
             if (w.bridges.vertexCount() && attachMeshData(host, base + "_bridges", w.bridges, wnode, Vec3{0.f, 0.f, 0.f})) ++attached;
             placeAll(w.roadProps, "roadprop");
+            // G39a landscape: causal clutter baked into one static mesh (vertex colors per kind)
+            if (!w.clutter.empty()) {
+                fuhgl::render::MeshData baked;
+                for (const auto& c : w.clutter) {
+                    const fuhgl::math::Mat4 m = fuhgl::math::translate(c.position) *
+                                                fuhgl::math::rotateY(c.rotY) *
+                                                fuhgl::math::scale({c.scale, c.scale, c.scale});
+                    const fuhgl::math::Mat3 m3(m);
+                    const std::uint32_t b0 = static_cast<std::uint32_t>(baked.vertexCount());
+                    for (std::size_t i = 0; i < c.mesh.vertexCount(); ++i) {
+                        const float* v = &c.mesh.vertices[i * 11];
+                        const fuhgl::math::Vec4 p = m * fuhgl::math::Vec4{v[0], v[1], v[2], 1.f};
+                        const fuhgl::math::Vec3 n = fuhgl::math::normalize(m3 * fuhgl::math::Vec3{v[3], v[4], v[5]});
+                        const float nv[11] = {p.x, p.y, p.z, n.x, n.y, n.z, v[6], v[7], v[8], v[9], v[10]};
+                        baked.vertices.insert(baked.vertices.end(), nv, nv + 11);
+                    }
+                    for (const std::uint32_t idx : c.mesh.indices) baked.indices.push_back(b0 + idx);
+                }
+                if (baked.vertexCount() && attachMeshData(host, base + "_clutter", baked, wnode, Vec3{0.f, 0.f, 0.f})) ++attached;
+            }
         }
     }
     return payload({{"mode", jsonString(mode)}, {"seed", jsonNumber(p.seed)},
@@ -319,6 +340,8 @@ io::Json tProceduralWorldgen(const io::Json& a, ToolHost& host, std::string* err
                     {"cityCells", jsonNumber(static_cast<double>(w.cells.size()))},
                     {"settlements", jsonNumber(static_cast<double>(w.settlements.size()))},
                     {"roadProps", jsonNumber(static_cast<double>(w.roadProps.size()))},
+                    {"clutter", jsonNumber(static_cast<double>(w.clutter.size()))},
+                    {"lifeZones", jsonNumber(static_cast<double>(w.lifeZones.size()))},
                     {"attachedNodes", jsonNumber(attached)}});
 }
 
