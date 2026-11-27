@@ -62,6 +62,27 @@ std::unique_ptr<QUndoCommand> makeSetTrsCommand(AssetDocument* doc, scene::Node*
         });
 }
 
+std::unique_ptr<QUndoCommand> makeGizmoDragCommand(AssetDocument* doc, scene::Node* node,
+                                                   const fuhgl::math::Vec3& startT,
+                                                   const fuhgl::math::Quat& startR,
+                                                   const fuhgl::math::Vec3& startS,
+                                                   const fuhgl::math::Vec3& endT,
+                                                   const fuhgl::math::Quat& endR,
+                                                   const fuhgl::math::Vec3& endS) {
+    return std::make_unique<LambdaCommand>(
+        doc, QObject::tr("Gizmo drag %1").arg(QString::fromStdString(node ? node->name() : "")),
+        [node, endT, endR, endS]() {
+            node->translation = endT;
+            node->rotation = endR;
+            node->scale = endS;
+        },
+        [node, startT, startR, startS]() {
+            node->translation = startT;
+            node->rotation = startR;
+            node->scale = startS;
+        });
+}
+
 std::unique_ptr<QUndoCommand> makeSetEffectCommand(AssetDocument* doc, scene::Node* node,
                                                    render::Effect effect, bool on) {
     const bool was = node->effects.enabled(effect);

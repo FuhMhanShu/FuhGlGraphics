@@ -1,8 +1,11 @@
 #include "mainwindow.hpp"
 
+#include "thumbnailer.hpp"
+
 #include <fuhglgraphics/version.hpp>
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QComboBox>
 #include <QDialog>
@@ -11,11 +14,13 @@
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QOpenGLContext>
+#include <QTextEdit>
 #include <QWindow>
 #include <QSettings>
 #include <QSpinBox>
@@ -66,6 +71,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     browser_->pushCommand = push;
     browser_->selectedNodeFn = [this]() { return currentNode_; };
     chatController_->pushCommand = push;
+    vpController_->pushCommand = push; // P5 gizmo drags
 
     connect(treePanel_, &SceneTreePanel::nodeSelected, this, &MainWindow::onSelectionChanged);
     connect(vpController_, &ViewportController::nodePicked, this, &MainWindow::onNodePicked);
@@ -78,7 +84,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(doc_, &AssetDocument::documentReset, this, [this]() {
         currentNode_ = nullptr;
         inspector_->setNode(nullptr);
+        viewport_->setGizmoTarget(nullptr); // P5
         browser_->setProjectDir(doc_->projectDir());
+        refreshThumbnails(); // P5: render missing glTF thumbnails (GL context up by now)
         refreshTitle();
     });
 
@@ -108,6 +116,56 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* aSettings = mcpMenu->addAction(tr("&Settings..."));
     connect(aConnect, &QAction::triggered, this, &MainWindow::onConnectMcp);
     connect(aSettings, &QAction::triggered, this, &MainWindow::onSettings);
+
+    // --- view menu: P5 gizmo mode + animation playback ---
+    // shortcuts must not fire while typing into the chat input
+    auto textInputFocused = []() {
+        QWidget* w = QApplication::focusWidget();
+        return qobject_cast<QLineEdit*>(w) || qobject_cast<QTextEdit*>(w);
+    };
+    auto* viewMenu = menuBar()->addMenu(tr("&View"));
+    auto* gizmoGroup = new QActionGroup(this);
+    gizmoGroup->setExclusive(true);
+    auto addGizmoMode = [this, viewMenu, gizmoGroup, textInputFocused](const QString& text, int key,
+                                                                      GizmoOverlay::Mode mode) {
+        auto* a = viewMenu->addAction(text);
+        a->setShortcut(QKeySequence(key));
+        a->setCheckable(true);
+        a->setChecked(mode == GizmoOverlay::Mode::Translate);
+        gizmoGroup->addAction(a);
+        connect(a, &QAction::triggered, this, [this, a, mode, textInputFocused](bool on) {
+            if (textInputFocused()) { // keep the button in sync, ignore the keypress
+                a->setChecked(viewport_->gizmo().mode() == mode);
+                return;
+            }
+            if (!on) return;
+            viewport_->gizmo().setMode(mode);
+            viewport_->requestRender();
+        });
+    };
+    addGizmoMode(tr("Gizmo: &Translate"), Qt::Key_T, GizmoOverlay::Mode::Translate);
+    addGizmoMode(tr("Gizmo: &Rotate"), Qt::Key_R, GizmoOverlay::Mode::Rotate);
+    addGizmoMode(tr("Gizmo: &Scale"), Qt::Key_S, GizmoOverlay::Mode::Scale);
+    viewMenu->addSeparator();
+    playAction_ = viewMenu->addAction(tr("&Play animation"));
+    playAction_->setShortcut(QKeySequence(Qt::Key_Space));
+    playAction_->setCheckable(true);
+    connect(playAction_, &QAction::triggered, this, [this, textInputFocused](bool on) {
+        if (textInputFocused()) {
+            playAction_->setChecked(viewport_->animationPlaying());
+            return;
+        }
+        if (on && viewport_->animationClipCount() == 0) {
+            playAction_->setChecked(false);
+            statusBar()->showMessage(tr("no animation clips in the scene"), 4000);
+            return;
+        }
+        viewport_->setAnimationPlaying(on);
+        statusBar()->showMessage(
+            on ? tr("animation playing (%1 clips)").arg(viewport_->animationClipCount())
+               : tr("animation stopped"),
+            4000);
+    });
 
     auto* helpMenu = menuBar()->addMenu(tr("&Help"));
     auto* aAbout = helpMenu->addAction(tr("&About"));
@@ -139,10 +197,23 @@ void MainWindow::openProject(const QString& path) {
 }
 
 void MainWindow::onGlReady(bool ready) {
-    if (!ready || pendingProject_.isEmpty()) return;
-    const QString path = pendingProject_;
-    pendingProject_.clear();
-    openProject(path);
+    if (!ready) return;
+    if (!pendingProject_.isEmpty()) {
+        const QString path = pendingProject_;
+        pendingProject_.clear();
+        openProject(path);
+    }
+    refreshThumbnails(); // P5
+}
+
+void MainWindow::refreshThumbnails() {
+    if (!viewport_->glReady()) return;
+    auto* glw = viewport_->glWidget();
+    if (!glw->context() || !glw->windowHandle()) return;
+    glw->context()->makeCurrent(glw->windowHandle()); // thumbnailer needs a current GL context
+    const int made = browser_->generateThumbnails();
+    browser_->refreshIcons();
+    if (made > 0) statusBar()->showMessage(tr("generated %1 thumbnails").arg(made), 5000);
 }
 
 void MainWindow::onNew() {
@@ -238,11 +309,13 @@ void MainWindow::onAbout() {
 void MainWindow::onSelectionChanged(scene::Node* node) {
     currentNode_ = node;
     inspector_->setNode(node);
+    viewport_->setGizmoTarget(node); // P5
 }
 
 void MainWindow::onNodePicked(scene::Node* node) {
     currentNode_ = node;
     inspector_->setNode(node);
+    viewport_->setGizmoTarget(node); // P5
     if (node) {
         const QModelIndex idx = treePanel_->model()->indexOf(node);
         if (idx.isValid()) treePanel_->setCurrentIndex(idx);

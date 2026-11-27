@@ -11,6 +11,11 @@
 
 #include <QObject>
 
+#include <functional>
+#include <memory>
+
+class QUndoCommand;
+
 namespace assetcreator {
 
 class ViewportController : public QObject {
@@ -20,6 +25,9 @@ public:
 
     /// @brief Installs the event filter on the GL widget.
     void install();
+
+    /// @brief P5: a finished gizmo drag pushes one undo command (wired by MainWindow).
+    std::function<void(std::unique_ptr<QUndoCommand>)> pushCommand;
 
 signals:
     void nodePicked(fuhglgraphics::scene::Node* node);
@@ -34,6 +42,7 @@ private:
     bool dragging_ = false;
     bool panning_ = false;
     bool moved_ = false;
+    bool gizmoDragging_ = false; ///< P5: left-drag on a gizmo part instead of orbit/pick
     QPoint pressPos_;
     QPoint lastPos_;
 };

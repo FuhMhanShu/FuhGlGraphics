@@ -63,10 +63,14 @@ fuhglgraphics_asset_creator [--project scene.fasset] [--lang en|de]
 
 - **Left dock:** scene tree (add child/shape/light/water, load glTF, remove), inspector
   (name, TRS, per-node effect toggles, common renderer params, G13 water params), asset
-  browser (project folder; double-click a `.gltf/.glb` to load it under the selection).
+  browser (project folder; double-click a `.gltf/.glb` to load it under the selection;
+  P5: `.gltf/.glb` rows show rendered **thumbnails** cached in `<project>/.cache/thumbs`).
 - **Center:** G3 viewport — orbit camera (left-drag rotate, right/middle-drag pan, wheel
   zoom), click to pick (`scene::pick`), all edits as `QUndoCommand`s (undo/redo in the Edit
-  menu).
+  menu). P5: a **3D gizmo** on the selected node (View menu or `T`/`R`/`S` for
+  translate/rotate/scale — drag the colored axes/rings, the center cube = screen-plane move
+  / uniform scale; each drag is one undoable command) and **animation playback**
+  (View → Play animation or `Space`; node TRS at play start is restored on stop).
 - **Right dock:** MCP chat. Settings dialog: server command — an external MCP server
   (stdio, JSON-RPC 2.0; API keys come from the environment, never from the project file)
   or `builtin`, which serves the in-repo catalog **in-process** against the open document.
