@@ -9,6 +9,8 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G41 2D engine / UI layer** (new `ui/` module, namespace `fuhglgraphics::ui`, Qt-free core, GL 3.3): `ui::Batch2D` batched 2D renderer (one dynamic VBO + one shader: quads, textured quads, SDF rounded rects, lines, embedded 8x8 font atlas from `fuhgl::render::font8x8Glyph`, scissor stack); `ui::Font` metrics + word wrap; platform-neutral `ui::Event` input; Qt-free `ui::Signal` / `ui::Property<T>` + `bindTwoWay`/`bindOneWay` for backend↔GUI data flow (change-only + re-entrancy guard, loop-free); widget tree (`ui::Widget`/`ui::Container`) with Free/HBox/VBox/Grid layouts and `ui::Theme`; widgets Label, Button, Checkbox, RadioButton, Slider, ProgressBar, LineEdit (caret/selection/clipboard/validator/commit), ListBox, Panel, Image (9-slice); `ui::UiRoot` (event dispatch, hover/press/capture, Tab focus, layout pass, render). G3 deferred-renderer integration: `ui::makeOverlayPass` (screen-space overlay as a G40 custom post pass after the tonemap) and `ui::WorldSurface` + `WorldSurface::pickUv` (UI rendered into an offscreen texture bound as the albedo of a 3D screen mesh — a menu on a 3D monitor model; G18 `scene::pick` ray hits are mapped to surface UV so clicks reach the widgets). Tests: `tests/test_ui.cpp` (pure CPU) and `tests/gl_smoke_ui.cpp` (headless GL; skips 77 without GL); example `examples/ui_screenshot`; G41 tutorial en/de (`docs/en|de/tutorials/g41_ui_2d.md`); REQUIREMENTS.md G41 row.
+
 - **G38 bridge generation rework** (`procedural::BridgeGenerator` in new
   `procedural/bridgegen.{hpp,cpp}`, wired into `RoadGenerator`): bridge runs are detected over
   water (`h < waterLevel`) AND deep dry ravines, analyzed in `RoadGenerator::generate()` into
