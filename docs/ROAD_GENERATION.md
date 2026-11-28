@@ -47,9 +47,9 @@ RoadInput (heightmap, flow, biome, sites)          RoadGenParams
         ▼                     ▼
    carveTerrain():        buildGeometry():
    bench/embankment       cross-section extrusion (profiles per class),
-   into the heightmap     bridge decks + posts, props (milestones,
-   (water + border       lanterns, signs at junctions, guard walls)
-   ring untouched)
+   into the heightmap     bridge decks + substructure + abutments (BridgeGenerator),
+   (water + border       props (milestones, lanterns, signs, guard walls,
+   ring untouched)        bridge entrance props)
         │
         ▼
 RoadNetwork: paths (smoothed polylines + bridge flags), roadMesh, bridgeMesh, props,
@@ -114,10 +114,9 @@ if existingMask(b) > 0:  step *= 1 − existingRoadDiscount · existingMask(b)  
   - *Country road*: two wheel ruts at `t = ±rutOffset` (`−rutDepth`) with a grass ridge in
     the middle (5 points).
   - *Trail*: one narrow trodden depression (3 points).
-- **Bridge runs** (every water crossing): points flagged `bridge` get a flat deck at
-  `max(terrain, waterLevelWorld + 0.7)` in a separate `bridgeMesh`, plus posts down to the
-  ground/water every few samples. Terrain carving skips water cells, so the riverbed under a
-  bridge stays intact.
+- **Bridge runs** (every water / deep-ravine crossing) are analyzed into `RoadPath::spans`
+  and built by the **BridgeGenerator** (`procedural/bridgegen.{hpp,cpp}`) into the separate
+  `bridgeMesh` — see section 5.
 - Vertex colors carry the **material**: per class + local biome (mountains → stone slabs,
   forest country road → dirt, flatland highway → asphalt); rut vertices are darkened
   (`color·0.5`) so the shader can lower roughness there and **puddles form in the ruts**
@@ -140,7 +139,55 @@ if existingMask(b) > 0:  step *= 1 − existingRoadDiscount · existingMask(b)  
   *way signs* at junctions (closest sample pair of two different paths), *guard walls*
   where the ground drops more than `wallMinDrop` at the road edge.
 
-## 5. World integration (G31 `generateWorld` landscape)
+## 5. Bridges (`BridgeGenerator`, `procedural/bridgegen.{hpp,cpp}`)
+
+When the A* is routed over water (`h < waterLevel`) or over a deep dry ravine (a point more
+than `bridges.ravineDepth` below the higher ground on **both** sides within
+`bridges.maxAnchorSearch`; long runs without any water cell are valley floors and stay
+normal roads), the crossing becomes a bridge run:
+
+1. **Detection & anchors**: contiguous `bridge`-flagged points form a run. From both run ends
+   the algorithm walks outward to the first **stable shore point** above
+   `waterLevelWorld + floodMargin` (Hochwasser-Abstand) — or, for a dry ravine, above
+   `bankHeight − ravineDepth/2` — bounded by `maxAnchorSearch`. Those two points are the
+   **abutments (Widerlager)**; the arc distance between them is the **span**. The deck base is
+   `max(anchor heights, waterLevelWorld + deckClearance)`. When the river is **navigable**
+   (`flow ≥ navigableFlow` at the run center) the deck middle is lifted by a **parabolic arch**
+   (`deckY + rise·4s(1−s)`, s ∈ [0,1] along the span) for the Durchfahrtshöhe.
+2. **Type selection** from span, tech level (`bridges.techLevel` — worldgen sets it to the
+   average settlement importance = Wohlstand) and the local biome (resources):
+   - span `< woodSpanMax` (10 m) and village/forest/low tech → **WoodBeam** (Holzsteg:
+     Querträger auf eingerammten Holzpfählen + Bohlenbelag),
+   - `woodSpanMax..archSpanMax` (10–60 m), not deep, stone region or medium tech →
+     **StoneArch** (Steinbogenbrücke),
+   - deep (`maxDepth > ravineDepth`, raycast from the deck to the ground) → **Suspension**
+     (Hängebrücke — keine Pfeiler im tiefen Wasser),
+   - otherwise (> 60 m / high tech) → **Truss** (Fachwerkbrücke).
+3. **Geometry along the spline**, three structural levels in `bridgeMesh`:
+   - *Deck*: a closed cross-section loop extruded along the span — slab bottom, side walls,
+     **parapets (Brüstungen)** at both edges, **curbs (Bordsteine)** and **drainage gutters
+     (Entwässerungsrinnen)** on the carriageway.
+   - *Substructure*: WoodBeam → pile pairs + cross beams every `pileEvery`; StoneArch →
+     half-sine **arches** between **piers** (`pierEvery`) in the riverbed; Truss → verticals +
+     top chord + alternating diagonals at both edges; Suspension → **pylons** at both anchors
+     with **main cables on the catenary** `y = a·cosh(x/a)` between the pylon tops (a solved by
+     bisection for the sag `cableSag`) and vertical **hangers** every `hangerEvery` down to the
+     deck.
+   - *Piers & foundations*: at every pier/pile position a vertical **raycast** onto the
+     heightmap (`raycastGround`) — the piers always reach exactly into the riverbed/ravine
+     floor, however deep the water is there.
+4. **Shore blending**: massive abutment blocks (`abutmentSize`, sunk `abutmentDepth` into both
+   banks) are anchored optically in the slope, and `carveTerrain` additionally blends the
+   surrounding **land** cells near the anchors smoothly up to the deck approach height
+   (smoothstep over `abutmentBlend`) — no edges or gaps at the bridge heads. Water cells and
+   the border ring stay untouched; bridge points get no bench carve (the deck flies over them).
+5. **Realism**: entrance **props** per type (Prellsteine/Bollards at wood bridges, Steinlöwen
+   at stone arches, Wachturm + Zollhäuschen at big highway bridges), and in the lighting pass a
+   **waterline band** on bridge meshes (G-buffer material ID 10): `worldPos.y − uWaterLevelWorld`
+   just above the water → dark, wet (roughness → 0.08) with green algae/moss
+   (`kLightFragBridgeWaterline`, CPU twin in `render/wetness.hpp`).
+
+## 6. World integration (G31 `generateWorld` landscape)
 
 Pipeline order in `generateLandscape`: relief → erosion/terracing/rivers → splatmap →
 climate maps → **settlements + G38 roads** → scatter.
@@ -163,13 +210,14 @@ climate maps → **settlements + G38 roads** → scatter.
   distance field, ~1e9 without roads) lets creature AI treat roads as fast routes through
   rough terrain.
 
-## 6. Data output (all plain CPU data, no GL)
+## 7. Data output (all plain CPU data, no GL)
 
 ```cpp
 struct RoadNetwork {
-    std::vector<RoadPath> paths;     // cls, fromSite/toSite, smoothed points (world, y=height), bridge flags
-    std::vector<RoadProp> props;     // kind (Milestone/Lantern/Sign/Wall), position, rotY, local mesh
-    MeshData roadMesh, bridgeMesh;   // extruded profiles + bridge decks/posts, vertex colors
+    std::vector<RoadPath> paths;     // cls, fromSite/toSite, smoothed points (world, y=height), bridge flags,
+                                     // spans (BridgeSpan: anchors, span, deckY/rise, type) — analyzed by generate()
+    std::vector<RoadProp> props;     // kind (Milestone/Lantern/Sign/Wall + bridge entrance props), position, rotY, local mesh
+    MeshData roadMesh, bridgeMesh;   // extruded profiles + bridge decks/substructure/abutments, vertex colors
     std::vector<float> mask;         // gridW*gridH [0,1], noise-frayed road edge mask
     std::vector<float> rutMask;      // [0,1] wheel ruts (puddles)
     std::vector<unsigned char> bridgeMask;

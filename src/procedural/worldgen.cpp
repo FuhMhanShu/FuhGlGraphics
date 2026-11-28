@@ -679,10 +679,18 @@ void generateLandscape(const WorldGenParams& p, GeneratedWorld& w) {
             rin.flow = &w.flowmap;
             rin.biome = w.biome.empty() ? nullptr : &w.biome;
             rin.sites = sites;
+            // Wohlstand/Tech-Level der Brücken = mittlere Siedlungs-Importance (reichere
+            // Siedlungen -> Steinbogen/Fachwerk statt Holzsteg)
+            RoadGenParams roadParams = p.roads;
+            float techSum = 0.f;
+            for (const RoadSite& rs : sites) techSum += rs.importance;
+            roadParams.bridges.techLevel =
+                sites.empty() ? 0.5f
+                              : std::min(1.f, std::max(0.f, techSum / sites.size()));
             RoadGenerator roadGen;
-            RoadNetwork net = roadGen.generate(rin, p.roads);
-            roadGen.carveTerrain(w.heightmap, net, p.roads); // bench + embankment into the terrain
-            roadGen.buildGeometry(net, rin, p.roads);        // road sits on the carved bench now
+            RoadNetwork net = roadGen.generate(rin, roadParams);
+            roadGen.carveTerrain(w.heightmap, net, roadParams); // bench + embankment into the terrain
+            roadGen.buildGeometry(net, rin, roadParams);        // road sits on the carved bench now
             appendMeshData(w.roads, net.roadMesh);
             appendMeshData(w.bridges, net.bridgeMesh);
             for (auto& prop : net.props) {

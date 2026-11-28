@@ -274,7 +274,7 @@ bool DeferredRenderer::createInternal() {
     if (!im.decalBox.create()) return false;
     im.decalBox.setMeshData(fuhgl::render::shapes::boxData({1.f, 1.f, 1.f}, {1.f, 1.f, 1.f}));
     const std::string lightFrag = std::string(kLightFragHead) + kLightFragKit +
-                                  fuhgl::render::kSkFuncs + kLightFragProbes + kLightFragSsao + kLightFragWetness + kLightFragWeathering + kLightFragPbr + kLightFragSky + kLightFragTail;
+                                  fuhgl::render::kSkFuncs + kLightFragProbes + kLightFragSsao + kLightFragWetness + kLightFragWeathering + kLightFragBridgeWaterline + kLightFragPbr + kLightFragSky + kLightFragTail;
     im.ssaoKernel = ssaoKernel(std::min(ssaoSamples > 0 ? ssaoSamples : 24, 64), 1337u);
     if (!compilePostFs(im.lightingMat, lightFrag, "lighting") ||
         !compilePostFs(im.ssaoMat, kSsaoFrag, "ssao") ||
@@ -1262,6 +1262,10 @@ void DeferredRenderer::drawLighting(fuhgl::render::RenderGraph::PassContext& ctx
         p.setUniform("uWeatherSoil", weatherSoilColor);
         p.setUniform("uWeatherMoss", weatherMossColor);
         p.setUniform("uWeatherBrick", weatherBrickColor);
+        // G38 bridge waterline (wet algae band just above the water on bridge matId 10)
+        p.setUniform("uWaterLevelWorld", waterLevelWorld);
+        p.setUniform("uBridgeWaterline",
+                     effectEnabled(Effect::Weathering) ? bridgeWaterlineStrength : 0.f);
         p.setUniform(p.uniformLocation("uShadowMap"), fuhgl::render::kTextureUnitShadowMap);
         p.setUniform(p.uniformLocation("uShadowMapArray"), fuhgl::render::kTextureUnitShadowMapArray);
         p.setUniform(p.uniformLocation("uShadowMoments"), fuhgl::render::kTextureUnitShadowMoments);

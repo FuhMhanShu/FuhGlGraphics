@@ -747,6 +747,31 @@ void applyWeathering(inout vec3 albedo, inout float roughness, vec3 worldPos, ve
 }
 )GLSL";
 
+// --- G38 bridge waterline for the lighting pass (rides on Effect::Weathering) ----------
+// Bridge meshes (G-buffer material ID 10) get a wet, dark band with green algae/moss just
+// above the water level: the fragment shader uses the difference worldPos.y - uWaterLevelWorld.
+// Knapp über dem Wasserspiegel werden Brückenpfeiler dunkel, feucht (niedrige Roughness) und
+// mit Algen-/Moosbelag überzogen. Reuses wetNoise() from kLightFragWetness and uWeatherMoss
+// from kLightFragWeathering above.
+constexpr const char* kLightFragBridgeWaterline = R"GLSL(
+uniform float uWaterLevelWorld;  // world y of the water plane (<= 0 disables the effect)
+uniform float uBridgeWaterline;  // strength 0..1
+void applyBridgeWaterline(inout vec3 albedo, inout float roughness, vec3 worldPos, float matId) {
+    if (uBridgeWaterline <= 0.0 || uWaterLevelWorld <= 0.0) return;
+    float bridge = (matId > 9.5 && matId < 10.5) ? 1.0 : 0.0; // material ID 10 = bridge meshes
+    if (bridge < 0.5) return;
+    float h = worldPos.y - uWaterLevelWorld;        // Differenz WorldPos.y - WaterLevel
+    float band = 1.0 - smoothstep(0.05, 1.1, h);    // Band knapp über dem Wasserspiegel
+    if (band <= 0.0) return;
+    float algae = wetNoise(worldPos.xz * 1.7 + worldPos.y * 2.3);
+    float w = band * clamp(uBridgeWaterline, 0.0, 1.0);
+    albedo *= 1.0 - 0.45 * w;                       // dunkel + nass
+    albedo = mix(albedo, uWeatherMoss * (0.75 + 0.45 * algae),
+                 clamp(w * smoothstep(0.35, 0.75, algae), 0.0, 0.85)); // Algen-/Moosbelag
+    roughness = mix(roughness, 0.08, w);           // feucht: niedrige Roughness
+}
+)GLSL";
+
 // --- fullscreen triangle (all post passes) ------------------------------------------
 constexpr const char* kFsVert = R"GLSL(#version 330 core
 out vec2 vUV;
@@ -1215,6 +1240,8 @@ void main() {
     applyWetness(albedo, pbr.g, worldPos, N);
     // G31: building weathering (moss / soil splash stain / rain streaks / plaster chips)
     applyWeathering(albedo, pbr.g, worldPos, N, texture(uGMatId, vUV).r);
+    // G38: bridge waterline (wet dark algae band just above the water level, matId 10)
+    applyBridgeWaterline(albedo, pbr.g, worldPos, texture(uGMatId, vUV).r);
     // G15/G31: multiply the material AO with the screen-space AO factor (HBAO preferred when on)
     float ssao = (uHbaoEnabled == 1) ? texture(uHbao, vUV).r
                                      : ((uSsaoEnabled == 1) ? texture(uSsao, vUV).r : 1.0);

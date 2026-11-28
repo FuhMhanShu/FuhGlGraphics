@@ -68,4 +68,31 @@ inline float wetnessAlbedoScale(float wet) {
     return 1.f - 0.35f * w;
 }
 
+/// @brief G38 bridge waterline band in [0, 1]: 1 at the waterline, smoothstep-fading to 0 over
+/// `bandWidth` world units above it (mirror of applyBridgeWaterline in kLightFragBridgeWaterline:
+/// band = 1 - smoothstep(0.05, 1.1, worldY - waterLevel)). <= 0 below/at the waterline handled
+/// by the caller; the band is only evaluated for worldY > waterLevel.
+inline float bridgeWaterlineBand(float worldY, float waterLevelWorld, float bandWidth = 1.1f,
+                                 float edge = 0.05f) {
+    const float h = worldY - waterLevelWorld;
+    if (h <= edge) return 1.f;
+    const float t = (h - edge) / std::max(bandWidth - edge, 1e-6f);
+    const float c = t < 0.f ? 0.f : (t > 1.f ? 1.f : t);
+    return 1.f - c * c * (3.f - 2.f * c);
+}
+
+/// @brief G38 bridge waterline: wet-surface roughness in the band (mixes toward glossy 0.08).
+inline float bridgeWaterlineRoughness(float roughness, float band, float strength) {
+    const float w = band < 0.f ? 0.f : (band > 1.f ? 1.f : band) *
+                                      (strength < 0.f ? 0.f : (strength > 1.f ? 1.f : strength));
+    return roughness + (0.08f - roughness) * w;
+}
+
+/// @brief G38 bridge waterline: albedo darkening in the band (mirror of the GLSL 1 - 0.45*w).
+inline float bridgeWaterlineAlbedoScale(float band, float strength) {
+    const float w = band < 0.f ? 0.f : (band > 1.f ? 1.f : band) *
+                                      (strength < 0.f ? 0.f : (strength > 1.f ? 1.f : strength));
+    return 1.f - 0.45f * w;
+}
+
 } // namespace fuhglgraphics::render

@@ -77,9 +77,71 @@ struct RoadInput {
     std::vector<RoadSite> sites;     ///< points of interest to connect
 };
 
+/// @brief Konstruktionsweise einer Bruecke — gewaehlt aus Spannweite, Wohlstand/Tech-Level
+/// und lokalen Ressourcen (Biome) des Brueckenstandorts, siehe BridgeGenerator::analyzeRuns().
+enum class BridgeType {
+    WoodBeam = 0,   ///< Holzsteg / Balkenbruecke: Quertraeger auf eingerammten Holzpfahlen + Bohlenbelag
+    StoneArch = 1,  ///< Steinbogenbruecke: Halbkreis-/Ellipsenboegen mit massiven Pfeilern im Flussbett
+    Truss = 2,      ///< Fachwerkbruecke: Stahl-Fachwerk ueber dem Deck (grosse Spannweite / hoher Tech-Level)
+    Suspension = 3, ///< Haengebruecke: Pylone an den Ufern + Hauptseile als Kettenlinie (tiefe Schlucht)
+};
+
+/// @brief Knobs der Bruecken-Generierung (BridgeGenerator) — alle mit Defaults.
+struct BridgeParams {
+    // --- Erkennung & Ankerpunkte ---
+    float floodMargin = 0.5f;      ///< Hochwasser-Sicherheitsabstand: Ufer-Anker liegen >= Wasserspiegel + dies
+    float deckClearance = 0.7f;    ///< lichte Hoehe des Decks ueber dem Wasserspiegel (Welt-Einheiten)
+    float maxAnchorSearch = 30.f;  ///< maximale Ufersuche vom Brueckenlauf-Ende (Welt-Einheiten)
+    float ravineDepth = 12.f;      ///< ab dieser Tiefe unter dem Deck gilt die Querung als tiefe Schlucht
+                                   ///< (oder als Brueckenlauf ueber einem trockenen Tobel)
+    float navigableFlow = 0.6f;    ///< flow accumulation ab der ein Fluss als schiffbar gilt (Durchfahrtshoehe)
+    float clearanceRise = 1.4f;    ///< parabolische Anhebung der Brueckenmitte bei schiffbaren Fluessen
+
+    // --- Statik-Auswahl (Spannweiten-Schwellen) ---
+    float woodSpanMax = 10.f;      ///< Spannweite < 10 m (Dorf/Wald) -> Holzsteg / Balkenbruecke
+    float archSpanMax = 60.f;      ///< 10..60 m (Stein-Region) -> Steinbogenbruecke
+    float techLevel = 0.5f;        ///< Wohlstand/Tech-Level 0..1 (worldgen: mittlere Siedlungs-Importance)
+
+    // --- Geometrie-Aufbau ---
+    float slabThickness = 0.35f;   ///< Deckplatten-Dicke (Welt-Einheiten)
+    float parapetHeight = 0.9f;    ///< Brusthoehe (Gelaender/Bruestung) an beiden Deckkanten
+    float curbHeight = 0.10f;      ///< Bordstein-Hoehe
+    float archHeight = 2.2f;       ///< Stichhoehe der Boegen (Steinbogenbruecke)
+    float pierEvery = 6.f;         ///< Pfeiler-Abstand im Flussbett (Bogenbruecke, Welt-Einheiten)
+    float pileEvery = 3.f;         ///< Pfahl-Abstand (Holzbruecke)
+    float pylonHeight = 7.f;       ///< Pylonhoehe ueber dem Deck (Haengebruecke)
+    float cableSag = 1.6f;         ///< Durchhang des Hauptseils in Brueckenmitte (Kettenlinie)
+    float hangerEvery = 3.f;       ///< Haenger-Abstand Hauptseil -> Fahrbahn (Haengebruecke)
+    float trussHeight = 2.4f;      ///< Fachwerkhoehe ueber dem Deck (Fachwerkbruecke)
+
+    // --- Ufer-Verschmelzung (Widerlager / Terrain-Blending) ---
+    float abutmentDepth = 2.5f;    ///< Einbindetiefe der Widerlager-Bloecke in den Hang (Welt-Einheiten)
+    float abutmentSize = 2.4f;     ///< Kantenlaenge der massiven Widerlager-Bloecke am Ufer
+    float abutmentBlend = 4.f;     ///< weiche Terrain-Aufschuettung am Ufer (Smoothstep-Bereich)
+};
+
+/// @brief Ein Brueckenlauf (Spannweite) entlang eines RoadPath: erkannter Lauf ueber Wasser /
+/// Schlucht mit Ufer-Ankern, Spannweite, Deck-Profil und gewaehltem Brueckentyp.
+/// Wird in RoadGenerator::generate() analysiert und von carveTerrain() (Ufer-Blending) sowie
+/// buildGeometry() (Meshes + Props) konsumiert.
+struct BridgeSpan {
+    std::size_t first = 0, last = 0; ///< inkl. Punktbereich des Decks [first..last] (inkl. beider Anker)
+    BridgeType type = BridgeType::WoodBeam; ///< gewaehlte Konstruktionsweise
+    float span = 0.f;                ///< Abstand der Ufer-Anker entlang des Weges (Welt-Einheiten)
+    float deckY = 0.f;               ///< Deckhoehe an den Ankern (flach; Welt-y)
+    float rise = 0.f;                ///< parabolische Mittelerhoehung (schiffbarer Fluss, Welt-Einheiten)
+    float maxDepth = 0.f;            ///< tiefster Boden (Raycast) unter dem Deck entlang des Laufs
+    bool navigable = false;          ///< Fluss schiffbar -> Durchfahrtshoehe via Parabel-Bogen
+    int biome = -1;                  ///< Biome am Lauf-Mittelpunkt (-1 = unbekannt)
+    fuhgl::math::Vec3 anchorA{0.f, 0.f, 0.f}; ///< linker Ufer-Anker (erstes stabiles Land ueber Wasser + floodMargin)
+    fuhgl::math::Vec3 anchorB{0.f, 0.f, 0.f}; ///< rechter Ufer-Anker
+};
+
 /// @brief Knobs of RoadGenerator::generate() — all with sensible defaults.
 struct RoadGenParams {
     unsigned seed = 1;
+
+    BridgeParams bridges;           ///< G38 bridge generation knobs (ankerpoints, types, geometry, blending)
 
     // --- hierarchy ---
     float highwayMinImportance = 0.7f;  ///< sites with importance >= this become highway hubs
@@ -139,13 +201,21 @@ struct RoadPath {
     int toSite = -1;
     std::vector<fuhgl::math::Vec3> points; ///< smoothed, resampled polyline (world XZ, y = height)
     std::vector<char> bridge;              ///< aligned with `points`
+    std::vector<BridgeSpan> spans;         ///< analyzed bridge runs (anchors, span, type) — see
+                                           ///< BridgeGenerator::analyzeRuns(), filled by generate()
     float length() const;
 };
 
-/// @brief A prop placed along a road (milestone / lantern / sign / guard wall) as local
-/// mesh + placement; the caller wraps it into a scene PlacedMesh.
+/// @brief A prop placed along a road (milestone / lantern / sign / guard wall / bridge
+/// entrance props) as local mesh + placement; the caller wraps it into a scene PlacedMesh.
 struct RoadProp {
-    enum class Kind { Milestone, Lantern, Sign, Wall } kind = Kind::Milestone;
+    enum class Kind {
+        Milestone, Lantern, Sign, Wall,
+        StoneLion,   ///< Steinloewe am Brueckeneingang (Steinbogenbruecke)
+        Watchtower,  ///< Wachturm am Brueckeneingang (grosse Bruecken)
+        TollHouse,   ///< Zollhaeuschen am Brueckeneingang (Handelsstrassen-Bruecken)
+        Bollard      ///< Prellstein am Brueckeneingang (Holzstege)
+    } kind = Kind::Milestone;
     fuhgl::math::Vec3 position{0.f, 0.f, 0.f};
     float rotY = 0.f;
     fuhgl::render::MeshData mesh;      ///< local space, base at y = 0
@@ -156,7 +226,8 @@ struct RoadNetwork {
     std::vector<RoadPath> paths;
     std::vector<RoadProp> props;
     fuhgl::render::MeshData roadMesh;   ///< extruded road profiles (vertex colors per class)
-    fuhgl::render::MeshData bridgeMesh; ///< bridge decks + posts (separate mesh, e.g. wood/stone)
+    fuhgl::render::MeshData bridgeMesh; ///< bridge decks + substructure (arches/truss/cables/piles/piers)
+                                        ///< + abutments, built by BridgeGenerator (separate mesh: wood/stone/steel)
     std::vector<float> mask;            ///< gridW*gridH [0,1] road mask, noise-frayed edges —
                                         ///< terrain-shader edge blending + scatter suppression
     std::vector<float> rutMask;         ///< gridW*gridH [0,1] wheel-rut mask (puddles/dark ruts)

@@ -663,14 +663,17 @@ const FacadeTexSet* facadeSet(int facade, const FacadeTexSet& plaster, const Fac
     }
 }
 
-// G31 weathering (moss / soil splash / rain streaks) for building material IDs 5..8
+// G31 weathering (moss / soil splash / rain streaks) for building material IDs 5..8, plus the
+// G38 bridge waterline (wet algae band just above `waterLevelWorld` on bridge material ID 10)
 void enableWeathering(fuhglgraphics::scene::Scene& scene, float baseY, float humidity,
-                      const fuhgl::math::Vec3& soil) {
+                      const fuhgl::math::Vec3& soil, float waterLevelWorld = 0.f) {
     scene.root().effects.enable(fuhglgraphics::render::Effect::Weathering);
     scene.root().effects.params.weatherStrength = 0.85f;
     scene.root().effects.params.weatherHumidity = humidity;
     scene.root().effects.params.weatherBaseY = baseY;
     scene.root().effects.params.weatherSoilColor = soil;
+    scene.root().effects.params.waterLevelWorld = waterLevelWorld;
+    scene.root().effects.params.bridgeWaterlineStrength = 1.f;
 }
 
 // reflective window glass entry (PlacedMesh::glassMesh) — metallic + near-zero roughness so
@@ -1090,7 +1093,7 @@ int main(int argc, char** argv) {
             be.albedo = {1.f, 1.f, 1.f};
             be.roughness = 0.8f;
             be.castShadow = true;
-            be.materialId = 1;
+            be.materialId = 10; // G38 waterline band in the lighting pass gates on material ID 10
         }
         addPlant("roadprop", world.roadProps, 33);
 
@@ -1515,7 +1518,7 @@ int main(int argc, char** argv) {
         if (fxOn("bloom")) scene.root().effects.enable(render::Effect::Bloom);
         if (fxOn("volumetric")) scene.root().effects.enable(render::Effect::VolumetricFog);
         if (fxOn("wetness")) scene.root().effects.enable(render::Effect::Wetness);
-        enableWeathering(scene, plateauY, vctx.humidity, vctx.soilColor);
+        enableWeathering(scene, plateauY, vctx.humidity, vctx.soilColor, world.waterLevelWorld);
         std::fprintf(stderr, "worldgen_screenshot: village fx='%s'\n", args.fx.c_str());
         scene.root().effects.params.exposure = 1.1f;
         scene.root().effects.params.shadowCenter = {vc.x, plateauY, vc.y};
@@ -1936,7 +1939,7 @@ int main(int argc, char** argv) {
         scene.root().effects.enable(render::Effect::LensFlare); // glow/ghosts/streak at the sun
         scene.root().effects.enable(render::Effect::Anamorphic);
         scene.root().effects.enable(render::Effect::ChromaticAberration);
-        enableWeathering(scene, plateauY, vctx.humidity, vctx.soilColor);
+        enableWeathering(scene, plateauY, vctx.humidity, vctx.soilColor, world.waterLevelWorld);
         // two warm lantern point lights in the village square (the directional sun comes
         // from the weather state; point lights survive WeatherSystem::applyTo)
         for (int l = 0; l < 2; ++l) {
@@ -2549,7 +2552,7 @@ int main(int argc, char** argv) {
         }
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.4f, 0.65f, 0.5f}));
         scene.root().effects.enable(render::Effect::Ssr); // screen-space reflections (wet roads, glass)
-        enableWeathering(scene, 0.05f, 0.55f, {0.36f, 0.29f, 0.21f}); // houses sit on the y=0 plate
+        enableWeathering(scene, 0.05f, 0.55f, {0.36f, 0.29f, 0.21f}, 0.f); // houses sit on the y=0 plate
 
         // oblique overview of the whole WFC layout
         cam.position = {0.f, 80.f, 100.f};
@@ -2706,7 +2709,8 @@ int main(int argc, char** argv) {
         }
         addSunAndSky(scene, cam, fuhgl::math::normalize(fuhgl::math::Vec3{-0.3f, 0.55f, 0.6f}));
         scene.root().effects.enable(render::Effect::Ssr); // reflections on wet roads / glass
-        enableWeathering(scene, world.waterLevelWorld * 1.05f, 0.55f, {0.36f, 0.29f, 0.21f}); // city plateau
+        enableWeathering(scene, world.waterLevelWorld * 1.05f, 0.55f, {0.36f, 0.29f, 0.21f},
+                        world.waterLevelWorld); // city plateau
 
         // overview steeply down onto the plateau, same camera as the (stable) WFC city
         // overview: road grid + houses fill the lower frame, sky above
