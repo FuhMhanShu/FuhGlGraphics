@@ -6,6 +6,7 @@
 int main() {
     runVersionTests();
     runRenderTests();
+    runPostPassTests();
     runSceneTests();
     runIoTests();
     runParticlesTests();

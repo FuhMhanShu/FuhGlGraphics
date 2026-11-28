@@ -13,7 +13,7 @@ using namespace fuhglgraphics::render;
 
 void runRenderTests() {
     // --- effectName / kEffectCount ---
-    CHECK(kEffectCount == 30); // + Weathering (G31)
+    CHECK(kEffectCount == 31); // + Weathering (G31), ComicLook (G40)
     CHECK(std::string(effectName(Effect::Taa)) == "TAA");
     CHECK(std::string(effectName(Effect::Upscale)) == "upscaling");
     CHECK(std::string(effectName(Effect::Tonemap)) == "tonemap");
@@ -41,6 +41,7 @@ void runRenderTests() {
     CHECK(std::string(effectName(Effect::ChromaticAberration)) == "chromatic aberration");
     CHECK(std::string(effectName(Effect::Subsurface)) == "subsurface scattering");
     CHECK(std::string(effectName(Effect::Gi)) == "GI");
+    CHECK(std::string(effectName(Effect::ComicLook)) == "comic look");
 
     // --- effectFromName: inverse of effectName for every effect ---
     for (int e = 0; e < kEffectCount; ++e) {

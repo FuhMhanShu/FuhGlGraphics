@@ -9,6 +9,29 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G40 — flexible custom post passes + comic look** (`render::DeferredRenderer`): new
+  `PostPass` registry (`addPostPass` / `removePostPass` / `setPostPassEnabled` / `postPass` /
+  `postPassNames`) appends user-defined passes to the final chain of the post graph
+  (`tonemap` -> [custom passes] -> `comic` -> `present`), ordered by resource dependencies.
+  The `"@chain"` input placeholder resolves at runtime to the previous *enabled* pass's
+  output (`"ldr"` first), so disabling a chain pass falls through without stale reads.
+  `drawFs()` is now public for custom-pass callbacks. All named stage resources
+  (`gAlbedo`..`gDepth`, `hdr`..`hdrF`, `taa`, `up`, `ca`, `dof`, `ldr`) are reusable as pass
+  inputs or via `postGraph().texture(name)` + the typed accessors. The `tonemap` pass now
+  writes the `"ldr"` graph resource and a new no-output `"present"` pass copies the chain
+  end into `output()` (fixes the LIFO ordering trap for no-output passes). Structural pass
+  changes rebuild the GL resources like `resize()`; runtime toggles use
+  `RenderGraph::setPassEnabled` (FuhGLCore re-compile verified: `compile()` re-resolves
+  order + reallocates, but the renderer uses the cleaner full-`Impl` rebuild instead).
+  Built-in example: **`Effect::ComicLook`** (kEffectCount 30 -> 31) — final pass after the
+  tonemap with posterized cel colors + Sobel ink edges from the G-buffer normal/depth;
+  params `comicLevels` / `comicEdgeStrength` / `comicEdgeThreshold` / `comicSaturation` /
+  `comicInkColor` on the renderer and in `scene::EffectParams` (+ G19 serialization).
+  Tests: `tests/test_postpass.cpp` (registry, no GL), `tests/gl_smoke_comic.cpp`
+  (comic on/off pixels + custom pass on/off fallback); example `examples/comic_screenshot`
+  (`fuhglgraphics_comic_screenshot`, CI `docs-screenshots` renders
+  `docs/images/g40_comic_{on,off,levels3}.png`); tutorial
+  `docs/en|de/tutorials/g40_custom_post_passes.md`.
 - **G31 worldgen screenshot `--mode tropical`** (`examples/worldgen_screenshot`): renders
   `docs/images/g31_worldgen_tropical_sunset.png` — a tropical seaside fishing village at
   sunset with light cloud cover. One big sea bay + a flattened beach plateau from

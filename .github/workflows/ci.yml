@@ -289,6 +289,13 @@ jobs:
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_weather_screenshot --out docs/images/ci/g38_weather_storm.png --weather storm --tod 20 --width 1280 --height 720 --frames 24 --flash
           FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_weather_screenshot --out docs/images/ci/g38_weather_transition.png --weather storm --tod 18 --transition 8 --width 1280 --height 720 --frames 32
 
+      - name: Build + render G40 screenshots (custom post passes + comic/cel look, on vs off)
+        run: |
+          cmake --build build -j --target fuhglgraphics_comic_screenshot
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_comic_screenshot --out docs/images/ci/g40_comic_on.png --width 1280 --height 720 --frames 24
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_comic_screenshot --out docs/images/ci/g40_comic_off.png --width 1280 --height 720 --frames 24 --no-comic
+          FUHGL_BACKEND=surfaceless ./build/examples/fuhglgraphics_comic_screenshot --out docs/images/ci/g40_comic_levels3.png --width 1280 --height 720 --frames 24 --levels 3 --edge 2.0
+
       # G31 pipeline shots (--mode pipeline, ~6500 houses) are flaky under headless llvmpipe
       # (occasionally an empty frame), so they are rendered into the manual/ subdir: uploaded
       # with the artifact but NOT PSNR-gated (screenshot_diff only lists the top level of

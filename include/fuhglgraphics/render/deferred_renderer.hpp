@@ -36,6 +36,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace fuhglgraphics::anim {
@@ -148,8 +149,52 @@ public:
     /// @brief G13: planar-reflection target (RGBA16F, internal size * waterReflectionScale),
     /// rendered from the mirrored camera before the G-buffer when a water surface is active.
     const fuhgl::Texture& reflectionTexture() const;
-    /// @brief The post-processing render graph (passes "lighting", "taa", "upscale", "tonemap").
+    /// @brief The post-processing render graph (passes "lighting", "taa", "upscale", "tonemap",
+    /// plus the final chain "tonemap" -> [custom passes] -> "comic" -> "present").
     fuhgl::render::RenderGraph& postGraph();
+
+    // --- G40: custom post passes (user-defined final passes after the tonemap) ------------
+    /// @brief A user-defined post pass appended to the final chain of the post graph
+    /// (after "tonemap", before the built-in "comic"/"present" passes). The pass reads
+    /// graph resources and writes one owned output resource; the next pass in the chain
+    /// reads that output, so the execution order follows from the resource dependencies.
+    struct PostPass {
+        std::string name;                 ///< unique pass name (also the graph pass name)
+        std::vector<std::string> inputs;  ///< resources bound at units 0..n-1 before fn runs;
+                                          ///< the placeholder "@chain" resolves to the output of the
+                                          ///< previous (enabled) pass in the final chain ("ldr" first)
+        std::string output;               ///< owned output resource name (required, unique)
+        /// @brief Internal format of the output resource. 0 = default RGBA16F (resolved in
+        /// the .cpp — the header must not spell GL_* constants: Qt's qopengl.h defines them
+        /// as macros and would break every Qt TU including this header).
+        fuhgl::gl::GLenum outputFormat = 0;
+        bool atOutputSize = true;         ///< true: output-size resource (like "up"/"dof"), false: internal render-scale size
+        bool enabled = true;              ///< runtime toggle (see setPostPassEnabled)
+        /// @brief Draw callback. All declared inputs are already bound at units 0..n-1
+        /// ("@chain" resolved at runtime), so fn only sets uniforms and draws a fullscreen
+        /// triangle via drawFs() with its own material.
+        fuhgl::render::RenderGraph::PassFn fn;
+    };
+
+    /// @brief Registers a custom post pass at the end of the final chain (before the built-in
+    /// "comic" pass). When the renderer is already created the GL resources are rebuilt
+    /// (same path as resize()). Fails (false + log) on empty name/output/fn or duplicate
+    /// name/output resource. Needs a current GL context only when called after create().
+    bool addPostPass(const PostPass& pass);
+    /// @brief Removes a custom post pass by name (rebuilds GL resources when created).
+    bool removePostPass(const std::string& name);
+    /// @brief Runtime toggle of a custom post pass (no rebuild). When a chain pass is disabled,
+    /// its successors automatically read the previous enabled output ("@chain" resolution) —
+    /// declare "@chain" as the first input to get the fallback for free.
+    bool setPostPassEnabled(const std::string& name, bool on);
+    /// @brief Looks up a registered custom post pass by name (nullptr when unknown).
+    const PostPass* postPass(const std::string& name) const;
+    /// @brief Names of all registered custom post passes in chain order.
+    std::vector<std::string> postPassNames() const;
+    /// @brief Draws the fullscreen triangle of the current pass with `mat` (for custom pass
+    /// callbacks): disables depth test + blend, binds the material, applies `setUniforms`,
+    /// draws 3 vertices of impl's fsVao.
+    void drawFs(fuhgl::render::Material& mat, const std::function<void(fuhgl::Program&)>& setUniforms);
 
     // --- settings --------------------------------------------------------------------
     /// @brief Render scale in (0, 1]: G-buffer/lighting/TAA run at output*scale and are
@@ -370,6 +415,14 @@ public:
     float anamorphicThreshold = 1.0f; ///< HDR luminance threshold of the streak source
     fuhgl::math::Vec3 anamorphicTint{0.55f, 0.7f, 1.f}; ///< cool blue streak tint
 
+    /// @brief G40 comic/cel look (Effect::ComicLook): final post pass after the tonemap —
+    /// posterized (cel) colors + Sobel ink edges from the G-buffer normal/depth. Off by default.
+    float comicLevels = 6.f;          ///< posterize color levels (>= 2)
+    float comicEdgeStrength = 1.4f;   ///< ink edge intensity (Sobel response scale)
+    float comicEdgeThreshold = 0.06f; ///< Sobel response above which a pixel becomes an edge
+    float comicSaturation = 1.35f;    ///< cel color saturation boost (1 = unchanged)
+    fuhgl::math::Vec3 comicInkColor{0.04f, 0.03f, 0.05f}; ///< ink/outline color
+
     /// @brief G10 debug HUD (Effect::DebugHud): fps / frame time / effect toggles panel.
     DebugHud& hud() { return hud_; }
     const DebugHud& hud() const { return hud_; }
@@ -387,12 +440,20 @@ private:
     std::unique_ptr<Impl> impl_;
 
     bool createInternal(); ///< (re)builds all GL resources at the current sizes
+    /// @brief G40: (re)declares all post-graph resources + passes (built-in chain + custom
+    /// passes + comic + present) and compiles the graph. Called from createInternal().
+    bool buildPostGraph();
     void renderGBuffer(const fuhgl::render::SceneView& scene,
                        const std::vector<std::uint32_t>* materialIds,
                        const std::vector<const anim::GpuSkinner*>* skins,
                        const std::vector<float>* subsurface);
     void drawDecals(const fuhgl::render::SceneView& scene);
-    void drawFs(fuhgl::render::Material& mat, const std::function<void(fuhgl::Program&)>& setUniforms);
+    /// @brief G40: output of the previous pass in the final chain before custom pass `index`
+    /// (resource "ldr" for index 0 / when none of them is enabled).
+    std::string chainInputBefore(std::size_t index) const;
+    /// @brief G40: the resource the final chain currently ends in (output of the last enabled
+    /// custom pass / "comic", or "ldr") — what the "present" pass binds.
+    std::string finalChainOutput() const;
     /// @brief G13: planar reflection of the scene (without the water mesh) from the
     /// mirrored camera into the reflection FBO, clipped at the water plane.
     void renderReflection(const fuhgl::render::SceneView& scene, const fuhgl::math::Mat4& reflViewProj,
@@ -411,7 +472,9 @@ private:
     void drawTaa(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawUpscale(fuhgl::render::RenderGraph::PassContext& ctx);
     void drawDof(fuhgl::render::RenderGraph::PassContext& ctx);
-    void drawTonemap(fuhgl::render::RenderGraph::PassContext& ctx);
+    void drawTonemap(fuhgl::render::RenderGraph::PassContext& ctx);   ///< G40: writes the "ldr" resource now
+    void drawComic(fuhgl::render::RenderGraph::PassContext& ctx);       ///< G40, final chain (Effect::ComicLook)
+    void drawPresent(fuhgl::render::RenderGraph::PassContext& ctx);     ///< G40: last pass, copies the chain end into output()
     void drawHud(); ///< G10 HUD, called from render() after the post graph
     void applyCapabilities();
     void gate(Effect e, bool& flag);
@@ -448,6 +511,8 @@ private:
     bool weatheringEnabled_ = false; ///< Effect::Weathering (off by default)
     bool skyEnabled_ = false;        ///< Effect::Sky (off by default)
     bool lightningEnabled_ = false;  ///< Effect::Lightning (off by default)
+    bool comicEnabled_ = false;      ///< Effect::ComicLook (off by default)
+    std::vector<PostPass> customPasses_; ///< G40: user post passes (survive createInternal/resize)
     const weather::WeatherSystem* curWeather_ = nullptr; ///< G38: active weather state this frame
     const water::WaterSurface* curWater_ = nullptr; ///< G13: active water surface this frame
     fuhgl::math::Mat4 waterModel_{};                 ///< its draw item's model matrix

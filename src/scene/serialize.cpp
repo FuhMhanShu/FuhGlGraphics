@@ -116,6 +116,11 @@ io::Json effectsToJsonImpl(const Effects& fx) {
     p.obj["wetnessPuddle"] = numJson(q.wetnessPuddle);
     p.obj["wetnessNoiseScale"] = numJson(q.wetnessNoiseScale);
     p.obj["tonemapOperator"] = numJson(q.tonemapOperator);
+    p.obj["comicLevels"] = numJson(q.comicLevels);
+    p.obj["comicEdgeStrength"] = numJson(q.comicEdgeStrength);
+    p.obj["comicEdgeThreshold"] = numJson(q.comicEdgeThreshold);
+    p.obj["comicSaturation"] = numJson(q.comicSaturation);
+    p.obj["comicInkColor"] = vec3Json(q.comicInkColor);
     j.obj["params"] = p;
     return j;
 }
@@ -142,6 +147,8 @@ bool setParamField(EffectParams& q, const std::string& name, const io::Json& v) 
     P_NUM(volumetricNoiseScale) P_NUM(volumetricAnisotropy) P_NUM(volumetricMaxDist)
     P_NUM(volumetricStrength) P_INT(volumetricSteps)
     P_NUM(wetnessAmount) P_NUM(wetnessPuddle) P_NUM(wetnessNoiseScale)
+    P_NUM(comicLevels) P_NUM(comicEdgeStrength) P_NUM(comicEdgeThreshold) P_NUM(comicSaturation)
+    P_VEC3(comicInkColor)
     if (name == "tonemapOperator") {
         if (v.isString()) {
             const std::string op = v.asString();
@@ -570,7 +577,9 @@ std::vector<std::string> effectParamNames() {
             "volumetricDensity", "volumetricCloudiness", "volumetricHeightFalloff",
             "volumetricNoiseScale", "volumetricAnisotropy", "volumetricMaxDist",
             "volumetricStrength", "volumetricSteps", "wetnessAmount", "wetnessPuddle",
-            "wetnessNoiseScale", "tonemapOperator"};
+            "wetnessNoiseScale", "tonemapOperator",
+            "comicLevels", "comicEdgeStrength", "comicEdgeThreshold", "comicSaturation",
+            "comicInkColor"};
 }
 
 std::unique_ptr<fuhgl::render::Mesh> defaultShapeResolver(const io::Json& meshSpec) {

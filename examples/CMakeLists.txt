@@ -43,6 +43,12 @@ target_link_libraries(fuhglgraphics_decals_screenshot PRIVATE fuhglgraphics)
 add_executable(fuhglgraphics_dof_screenshot dof_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_dof_screenshot PRIVATE fuhglgraphics)
 
+# G40 demo: custom post passes + the built-in comic/cel look (Effect::ComicLook) as the
+# final post pass after the tonemap — posterized colors + Sobel ink edges from the
+# G-buffer — headless to PNG (docs/images/, `--no-comic` for the comparison shot).
+add_executable(fuhglgraphics_comic_screenshot comic_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_comic_screenshot PRIVATE fuhglgraphics)
+
 # G13 water demo: lake scene (terrain basin + Gerstner-wave water surface with planar
 # reflection, refraction, fresnel, crest/shore foam and sun glint) as a G9 scene graph —
 # WaterComponent -> FrameData::water -> DeferredRenderer with Effect::Water — headless to PNG.
