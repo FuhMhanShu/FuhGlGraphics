@@ -38,6 +38,7 @@ add_executable(fuhglgraphics_tests
     test_mcp.cpp
     test_procedural_vegetation.cpp
     test_weather.cpp
+    test_ui.cpp
 )
 target_link_libraries(fuhglgraphics_tests PRIVATE fuhglgraphics)
 add_test(NAME fuhglgraphics_tests COMMAND fuhglgraphics_tests)
@@ -280,3 +281,11 @@ if(FUHGLGRAPHICS_WITH_QT)
     add_test(NAME fuhglgraphics_editor_tests COMMAND fuhglgraphics_editor_tests)
     set_tests_properties(fuhglgraphics_editor_tests PROPERTIES LABELS "unit")
 endif()
+
+# Headless GL smoke test for the G41 2D UI layer (label "gl_context"): WorldSurface
+# offscreen UI pixels, the overlay post pass on the G3 renderer, pickUv mapping.
+# Skips (exit code 77) without GL >= 3.3.
+add_executable(fuhglgraphics_gl_smoke_ui gl_smoke_ui.cpp)
+target_link_libraries(fuhglgraphics_gl_smoke_ui PRIVATE fuhglgraphics)
+add_test(NAME fuhglgraphics_gl_smoke_ui COMMAND fuhglgraphics_gl_smoke_ui)
+set_tests_properties(fuhglgraphics_gl_smoke_ui PROPERTIES LABELS "gl_context" SKIP_RETURN_CODE 77)

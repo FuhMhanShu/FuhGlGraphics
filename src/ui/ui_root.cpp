@@ -24,6 +24,11 @@ void UiRoot::layoutRec(Widget& w, float ox, float oy) {
 
 void UiRoot::render() { render(width_, height_); }
 
+void UiRoot::layout() {
+    root.rect = {0.f, 0.f, static_cast<float>(width_), static_cast<float>(height_)};
+    layoutRec(root, 0.f, 0.f);
+}
+
 void UiRoot::render(int w, int h) {
     root.rect = {0.f, 0.f, static_cast<float>(w), static_cast<float>(h)};
     layoutRec(root, 0.f, 0.f);
@@ -57,7 +62,13 @@ void UiRoot::setHover(Widget* w) {
 }
 
 void UiRoot::focus(Widget* w) {
-    if (focused_ == w) return;
+    if (focused_ == w) { // same widget: still (re)wire the clipboard callbacks
+        if (auto* le = dynamic_cast<LineEdit*>(focused_)) {
+            le->clipboardGet = clipboardGet;
+            le->clipboardSet = clipboardSet;
+        }
+        return;
+    }
     if (focused_) focused_->focused = false;
     focused_ = w;
     if (focused_) {

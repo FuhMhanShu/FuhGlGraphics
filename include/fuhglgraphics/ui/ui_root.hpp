@@ -40,6 +40,9 @@ public:
     void dispatch(const Event& e);
     /// @brief Advances the UI clock (caret blink); call once per frame.
     void update(float dt);
+    /// @brief Runs the layout pass at the set size (also called by render(); public so
+    /// apps/tests can hit-test + dispatch before the first render, without GL).
+    void layout();
     /// @brief Layout + render into the currently bound framebuffer at the set size.
     void render();
     /// @brief Layout + render at an explicit size (post pass / WorldSurface target).

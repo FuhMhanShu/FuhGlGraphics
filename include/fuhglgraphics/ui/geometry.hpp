@@ -14,6 +14,8 @@ struct Rect {
 
     float right() const { return x + w; }
     float bottom() const { return y + h; }
+    bool operator==(const Rect& o) const { return x == o.x && y == o.y && w == o.w && h == o.h; }
+    bool operator!=(const Rect& o) const { return !(*this == o); }
     bool empty() const { return w <= 0.f || h <= 0.f; }
     bool contains(float px, float py) const { return px >= x && px < right() && py >= y && py < bottom(); }
     fuhgl::math::Vec2 center() const { return {x + w * 0.5f, y + h * 0.5f}; }

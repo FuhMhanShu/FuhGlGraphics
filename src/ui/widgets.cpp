@@ -193,10 +193,14 @@ void LineEdit::insert(const std::string& t) {
     deleteSelection();
     std::string s = text.get();
     s.insert(caret, t);
+    if (validator && !validator(s)) { // reject invalid edits, flag the error state
+        valid = false;
+        return;
+    }
     text.set(s);
     caret += t.size();
     anchor = caret;
-    valid = !validator || validator(text.get());
+    valid = true;
 }
 
 bool LineEdit::onEvent(const Event& e) {

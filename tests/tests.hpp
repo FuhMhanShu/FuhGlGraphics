@@ -40,3 +40,4 @@ void runProceduralPlantTests();
 void runMcpTests();
 void runProceduralVegetationTests();
 void runWeatherTests();
+void runUiTests();
