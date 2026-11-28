@@ -371,6 +371,12 @@ public:
     fuhgl::math::Vec3 weatherMossColor{0.24f, 0.33f, 0.16f}; ///< moss/lichen color
     fuhgl::math::Vec3 weatherBrickColor{0.45f, 0.22f, 0.16f}; ///< masonry under chipped plaster
 
+    /// @brief G38 bridge waterline (rides on Effect::Weathering): in the lighting pass, bridge
+    /// meshes (G-buffer material ID 10) get a dark, wet (low roughness), algae/moss-covered band
+    /// in the ~1.1 m just above `waterLevelWorld` (world y of the water plane; <= 0 disables).
+    float waterLevelWorld = 0.f;        ///< world y of the water plane (0 = waterline effect off)
+    float bridgeWaterlineStrength = 1.f; ///< strength of the waterline band 0..1
+
     /// @brief G31 HBAO (Effect::Hbao): the "hbao" post pass runs before lighting (next to G15
     /// SSAO) and writes the horizon-based AO factor into the "hbao" resource (RG16F, .r),
     /// sampled by the lighting pass on unit 24 when enabled (preferred over SSAO). Off by

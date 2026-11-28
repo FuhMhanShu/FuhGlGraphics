@@ -305,7 +305,7 @@ io::Json tProceduralWorldgen(const io::Json& a, ToolHost& host, std::string* err
         } else {
             // G38 landscape: organic road ribbons, bridges, props (hamlet houses are in buildings)
             if (w.roads.vertexCount() && attachMeshData(host, base + "_roads", w.roads, wnode, Vec3{0.f, 0.02f, 0.f})) ++attached;
-            if (w.bridges.vertexCount() && attachMeshData(host, base + "_bridges", w.bridges, wnode, Vec3{0.f, 0.f, 0.f})) ++attached;
+            if (w.bridges.vertexCount() && attachMeshData(host, base + "_bridges", w.bridges, wnode, Vec3{0.f, 0.f, 0.f}, 10)) ++attached; // matId 10 = bridge waterline in the lighting pass
             placeAll(w.roadProps, "roadprop");
             // G39a landscape: causal clutter baked into one static mesh (vertex colors per kind)
             if (!w.clutter.empty()) {

@@ -77,4 +77,29 @@ void runWetnessTests() {
         CHECK_NEAR(wetnessAlbedoScale(0.f), 1.f, 1e-6f);
         CHECK(wetnessAlbedoScale(0.5f) > 0.65f && wetnessAlbedoScale(0.5f) < 1.f);
     }
+
+    // --- G38 bridge waterline band (mirror of applyBridgeWaterline in the lighting pass) ---
+    {
+        const float wl = 3.0f; // water level (world y)
+        // at/just above the waterline the band is ~1, far above it fades to 0
+        CHECK_NEAR(bridgeWaterlineBand(wl + 0.01f, wl), 1.f, 1e-6f);
+        CHECK_NEAR(bridgeWaterlineBand(wl + 5.f, wl), 0.f, 1e-6f);
+        // monotonic decrease over the band
+        float prev = 2.f;
+        for (int i = 0; i <= 20; ++i) {
+            const float b = bridgeWaterlineBand(wl + 0.05f + 1.05f * i / 20.f, wl);
+            CHECK(b <= prev + 1e-6f);
+            CHECK(b >= 0.f && b <= 1.f);
+            prev = b;
+        }
+        // roughness: wet (glossy 0.08) at the waterline, unchanged far above
+        CHECK_NEAR(bridgeWaterlineRoughness(0.8f, 1.f, 1.f), 0.08f, 1e-6f);
+        CHECK_NEAR(bridgeWaterlineRoughness(0.8f, 0.f, 1.f), 0.8f, 1e-6f);
+        CHECK(bridgeWaterlineRoughness(0.8f, 0.5f, 1.f) < 0.8f);
+        // strength scales the effect
+        CHECK_NEAR(bridgeWaterlineRoughness(0.8f, 1.f, 0.f), 0.8f, 1e-6f);
+        // albedo darkens up to 45 % at the waterline
+        CHECK_NEAR(bridgeWaterlineAlbedoScale(1.f, 1.f), 0.55f, 1e-6f);
+        CHECK_NEAR(bridgeWaterlineAlbedoScale(0.f, 1.f), 1.f, 1e-6f);
+    }
 }

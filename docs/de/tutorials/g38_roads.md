@@ -58,10 +58,21 @@ Sumpf (hoher Flow nahe Wasser) → ·swampCost;  Wald-Biome → ·forestCost;  F
 bestehende Straße (Maske m) → step *= 1 − existingRoadDiscount·m  // verschmelzen, nicht parallel
 ```
 
-**Jeder** Pfadpunkt unterhalb des Wasserspiegels bekommt `bridge = 1` — Straßen überqueren
-Wasser nur als Brücke/Steg (Deck bei `max(terrain, waterLevel+0.7)` + Pfosten in
-`net.bridgeMesh`); das Terrain-Carving spart Wasserzellen aus, das Flussbett unter der
-Brücke bleibt intakt.
+**Jeder** Pfadpunkt unterhalb des Wasserspiegels (oder in einer tiefen trockenen Schlucht)
+bekommt `bridge = 1` — Straßen überqueren Wasser nur als Brücke. Der `BridgeGenerator`
+(`procedural/bridgegen.hpp`) analysiert jeden Brückenlauf in `RoadPath::spans`: Ufer-Anker
+(Widerlager) = erste stabile Punkte über `waterLevel + floodMargin`, Spannweite = Abstand der
+Anker, Deckhöhe = `max(Ufer, waterLevel + deckClearance)` (+ parabolische Mittelerhöhung bei
+schiffbaren Flüssen). Daraus wählt er den Brückentyp: < 10 m / Dorf / Wald → **Holzsteg**
+(Pfähle + Querträger), 10–60 m / Stein-Region → **Steinbogenbrücke** (Sinus-Bögen + Pfeiler per
+Raycast bis auf den Flussgrund), tiefe Schlucht → **Hängebrücke** (Pylone + Hauptseile als
+Kettenlinie `y = a·cosh(x/a)` + Hänger), > 60 m / hoher Tech-Level → **Fachwerkbrücke**. Das
+Deck ist ein extrudiertes Querschnitts-Profil mit Bordsteinen, Entwässerungsrinnen und
+Brüstungen; Widerlager-Blöcke verankern die Brückenenden im Hang, das Ufer-Terrain wird per
+Smoothstep an die Auffahrtshöhe angeglichen, und am Eingang stehen Props (Prellsteine,
+Steinlöwen, Wachturm, Zollhäuschen). Im Lighting-Pass färbt ein Wasserlinien-Band
+(Material-ID 10) die Pfeiler knapp über dem Wasserspiegel dunkel-nass mit Algenbelag. Das
+Terrain-Carving spart Wasserzellen aus, das Flussbett unter der Brücke bleibt intakt.
 
 ## Geometrie & Blending
 
@@ -71,7 +82,8 @@ Brücke bleibt intakt.
   Kopfstein / Schotter / Erde je nach Klasse + Biome; Reifenspuren abgedunkelt für Pfützen):
   Highway = gewölbte Fahrbahn + Bankette + Gräben; Landstraße = zwei Reifenspuren +
   Grasstreifen (`net.rutMask` markiert die Spuren); Trampelpfad = schmale Mulde.
-  Brückensegmente → ebene Decke + Pfosten in `net.bridgeMesh`.
+  Brückenläufe → `BridgeGenerator::buildSpan()`: Deck-Profil (Bordsteine/Rinnen/Brüstungen) +
+  Unterbau (Bögen/Fachwerk/Kettenlinie) + Pfeiler + Widerlager in `net.bridgeMesh`.
 - `carveTerrain()` schneidet die **Terrasse** bergseitig ein und schüttet talseitig den
   **Damm** auf (Wasser und äußerer Ring bleiben unberührt).
 - `net.mask` = Straßenmaske mit **Noise-ausgefransten Rändern** (Edge-Blending im
@@ -94,6 +106,9 @@ rp.minRadiusHighway = 45.f;  rp.highwayWidth = 6.f;  rp.shoulderWidth = 1.6f;
 rp.countryWidth = 3.6f;  rp.trailWidth = 1.3f;  rp.rutDepth = 0.09f;  rp.rutOffset = 0.3f;
 rp.benchCut = 1.2f;  rp.embankment = 1.0f;  rp.blendMargin = 2.5f;  // Carving
 rp.milestoneEvery = 26.f;  rp.lanternEvery = 18.f;  rp.wallMinDrop = 1.6f; // Props
+rp.bridges.techLevel = 0.5f;   // Wohlstand/Tech-Level (worldgen: mittlere Siedlungs-Importance)
+rp.bridges.woodSpanMax = 10.f; rp.bridges.archSpanMax = 60.f;  // Spannweiten-Schwellen
+rp.bridges.floodMargin = 0.5f; rp.bridges.deckClearance = 0.7f; // Anker + Deck über Wasser
 ```
 
 ## Im World-Generator (G31-Landschaft)

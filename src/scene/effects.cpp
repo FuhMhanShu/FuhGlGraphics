@@ -70,6 +70,9 @@ void Effects::applyTo(render::DeferredRenderer& renderer) const {
     renderer.weatherSoilColor = params.weatherSoilColor;
     renderer.weatherMossColor = params.weatherMossColor;
     renderer.weatherBrickColor = params.weatherBrickColor;
+    // G38 bridge waterline
+    renderer.waterLevelWorld = params.waterLevelWorld;
+    renderer.bridgeWaterlineStrength = params.bridgeWaterlineStrength;
     // G23 tonemap operator
     renderer.tonemapOperator = static_cast<render::TonemapOperator>(params.tonemapOperator);
     // G30 lens flare + anamorphic streaks

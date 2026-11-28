@@ -9,6 +9,31 @@ All notable changes to FuhGlGraphics are documented here. The format follows
 
 ### Added
 
+- **G38 bridge generation rework** (`procedural::BridgeGenerator` in new
+  `procedural/bridgegen.{hpp,cpp}`, wired into `RoadGenerator`): bridge runs are detected over
+  water (`h < waterLevel`) AND deep dry ravines, analyzed in `RoadGenerator::generate()` into
+  `RoadPath::spans` (shore anchors = first stable points above water + `floodMargin`, span =
+  anchor distance, deck base = `max(anchors, water + deckClearance)`, parabolic clearance rise
+  for navigable rivers `flow ≥ navigableFlow`). The bridge type is picked from span + tech
+  level (`RoadGenParams::bridges.techLevel`, worldgen sets it to the average settlement
+  importance) + local biome: < 10 m / village / forest → wood beam bridge (piles + cross
+  beams), 10–60 m / stone region → stone arch bridge (half-sine arches + piers in the riverbed),
+  deep ravine → suspension bridge (pylons + catenary main cables `y = a·cosh(x/a)` + hangers,
+  no piers in deep water), > 60 m / high tech → steel truss. The deck is a closed cross-section
+  loop (curbs, drainage gutters, parapets on both sides); piers/piles are raycast straight down
+  to the ground so they always reach the riverbed; massive abutment blocks anchor both bridge
+  heads in the banks and `carveTerrain()` blends the shore land smoothly up to the deck
+  approach height (smoothstep, water + border ring untouched; bridge points get no bench
+  carve). Entrance props per type (bollards, stone lions, watchtower, toll house). Lighting
+  pass: new `kLightFragBridgeWaterline` chunk — on bridge meshes (G-buffer material ID 10) the
+  band just above `uWaterLevelWorld` (`worldPos.y − uWaterLevelWorld`) goes dark, wet
+  (roughness → 0.08) with algae/moss; renderer members `waterLevelWorld` /
+  `bridgeWaterlineStrength` (+ `scene::EffectParams`, gated on `Effect::Weathering`), CPU
+  twins in `render/wetness.hpp`. Example/MCP attach bridges with `materialId = 10`. Docs:
+  `docs/ROAD_GENERATION.md` §5, `docs/de/tutorials/g38_roads.md`. Tests:
+  `tests/test_procedural_roadgen.cpp::testBridgeSpansTypesAndGeometry` (anchors, span, type
+  selection per scenario — wood/arch/truss/suspension/ravine —, deck parabola, shore blending,
+  props), `tests/test_wetness.cpp` (waterline band twins).
 - **G40 — flexible custom post passes + comic look** (`render::DeferredRenderer`): new
   `PostPass` registry (`addPostPass` / `removePostPass` / `setPostPassEnabled` / `postPass` /
   `postPassNames`) appends user-defined passes to the final chain of the post graph

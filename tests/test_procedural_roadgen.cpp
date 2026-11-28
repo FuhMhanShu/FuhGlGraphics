@@ -6,6 +6,7 @@
 
 #include "test_framework.hpp"
 
+#include <fuhglgraphics/procedural/bridgegen.hpp>
 #include <fuhglgraphics/procedural/roadgen.hpp>
 
 #include <algorithm>
@@ -265,7 +266,20 @@ void testGenerateHierarchyAndBridge() {
         for (std::size_t k = 0; k < netB.paths[i].points.size(); ++k)
             CHECK(netB.paths[i].points[k].x == net.paths[i].points[k].x &&
                   netB.paths[i].points[k].z == net.paths[i].points[k].z);
+        CHECK(netB.paths[i].spans.size() == net.paths[i].spans.size());
+        for (std::size_t s = 0; s < netB.paths[i].spans.size(); ++s) {
+            CHECK(netB.paths[i].spans[s].type == net.paths[i].spans[s].type);
+            CHECK(netB.paths[i].spans[s].first == net.paths[i].spans[s].first &&
+                  netB.paths[i].spans[s].last == net.paths[i].spans[s].last);
+            CHECK(netB.paths[i].spans[s].span == net.paths[i].spans[s].span);
+        }
     }
+    // bridge meshes are deterministic per seed too
+    RoadNetwork netC = net;
+    rg.buildGeometry(netC, w.in, p);
+    CHECK(netC.bridgeMesh.vertices == net2.bridgeMesh.vertices);
+    CHECK(netC.bridgeMesh.indices == net2.bridgeMesh.indices);
+    CHECK(netC.props.size() == net2.props.size());
 }
 
 void testGenerateEmptyAndSingleSite() {
@@ -287,6 +301,185 @@ void testGenerateEmptyAndSingleSite() {
     for (const auto& path : net1.paths) CHECK(path.cls == RoadClass::Trail);
 }
 
+/// @brief Finds the first path of `net` that has bridge runs, plus its first span.
+const RoadPath* pathWithSpan(const RoadNetwork& net, const BridgeSpan** spanOut) {
+    for (const auto& path : net.paths)
+        if (!path.spans.empty()) {
+            if (spanOut) *spanOut = &path.spans.front();
+            return &path;
+        }
+    return nullptr;
+}
+
+void testBridgeSpansTypesAndGeometry() {
+    // --- scenario A: narrow navigable river -> WoodBeam (Holzsteg) with clearance rise ---
+    {
+        FlatWorld w = flatWorld(81, 160.f, 10.f, 0.3f, 0.55f);
+        const int g = 81;
+        for (int z = 0; z < g; ++z) {
+            w.h[static_cast<std::size_t>(40) + g * z] = 0.05f;  // 2 m wide deep channel
+            w.flow[static_cast<std::size_t>(40) + g * z] = 1.0f; // navigable (schiffbar)
+        }
+        w.in.sites = {{{-40.f, 0.f}, 0.9f, 0}, {{40.f, 0.f}, 0.9f, 1}};
+        RoadGenParams p;
+        p.seed = 5u;
+        RoadGenerator rg;
+        const RoadNetwork net = rg.generate(w.in, p);
+        const BridgeSpan* span = nullptr;
+        const RoadPath* path = pathWithSpan(net, &span);
+        CHECK(path != nullptr);
+        if (!span) return;
+        const float waterWorld = w.in.waterLevel * w.in.heightScale; // 3.0
+        CHECK(span->span > 1.f && span->span < p.bridges.woodSpanMax); // narrow crossing
+        CHECK(span->type == BridgeType::WoodBeam); // short span + default tech level
+        // anchors are stable points above water + flood margin (Hochwasser-Abstand)
+        CHECK(span->anchorA.y >= waterWorld + p.bridges.floodMargin - 1e-3f);
+        CHECK(span->anchorB.y >= waterWorld + p.bridges.floodMargin - 1e-3f);
+        // deck stays above water + clearance; navigable -> parabolic rise in the middle
+        CHECK(span->deckY >= waterWorld + p.bridges.deckClearance - 1e-3f);
+        CHECK(span->navigable);
+        CHECK_NEAR(span->rise, p.bridges.clearanceRise, 1e-6f);
+        CHECK_NEAR(BridgeGenerator::deckHeightAt(*span, 0.5f),
+                   span->deckY + span->rise, 1e-4f); // Parabel-Scheitel in der Mitte
+        CHECK_NEAR(BridgeGenerator::deckHeightAt(*span, 0.f), span->deckY, 1e-6f);
+        // geometry: deck slab + wood piles + abutments in the bridge mesh, bollards as props
+        RoadNetwork net2 = net;
+        rg.buildGeometry(net2, w.in, p);
+        CHECK(net2.bridgeMesh.vertexCount() > 0);
+        CHECK(net2.bridgeMesh.indices.size() % 3 == 0);
+        int bollards = 0;
+        for (const auto& pr : net2.props)
+            if (pr.kind == RoadProp::Kind::Bollard) ++bollards;
+        CHECK(bollards >= 2); // Prellsteine at both bridge entrances
+        // shore blending: land cells at the anchors are raised toward the deck approach height
+        std::vector<float> carved = w.h;
+        rg.carveTerrain(carved, net, p);
+        const float deckN = span->deckY / w.in.heightScale;
+        int raised = 0;
+        for (int z = 0; z < g; ++z)
+            for (int x = 0; x < g; ++x) {
+                const float wx = (static_cast<float>(x) / (g - 1) - 0.5f) * w.in.sizeX;
+                const float wz = (static_cast<float>(z) / (g - 1) - 0.5f) * w.in.sizeZ;
+                const float dA = std::hypot(wx - span->anchorA.x, wz - span->anchorA.z);
+                const float dB = std::hypot(wx - span->anchorB.x, wz - span->anchorB.z);
+                const std::size_t idx = static_cast<std::size_t>(x) + g * z;
+                if (w.h[idx] >= w.in.waterLevel &&
+                    std::min(dA, dB) < p.bridges.abutmentBlend && carved[idx] > w.h[idx] + 0.005f)
+                    ++raised;
+            }
+        CHECK(raised > 0); // Terrain-Aufschüttung near the abutments
+        CHECK(deckN > w.in.waterLevel);
+    }
+    // --- scenario B: 50 m wide river in a rock region -> StoneArch (Steinbogenbruecke) ---
+    {
+        FlatWorld w = flatWorld(81, 160.f, 10.f, 0.3f, 0.55f);
+        const int g = 81;
+        std::fill(w.biome.begin(), w.biome.end(), static_cast<unsigned char>(8)); // Rock
+        w.in.biome = &w.biome;
+        for (int z = 0; z < g; ++z)
+            for (int x = 28; x <= 52; ++x) { // 25 cells = 50 m wide river
+                w.h[static_cast<std::size_t>(x) + g * z] = 0.05f;
+                w.flow[static_cast<std::size_t>(x) + g * z] = 0.1f; // not navigable
+            }
+        w.in.sites = {{{-60.f, 0.f}, 0.9f, 0}, {{60.f, 0.f}, 0.9f, 1}};
+        RoadGenParams p;
+        p.seed = 7u;
+        RoadGenerator rg;
+        const RoadNetwork net = rg.generate(w.in, p);
+        const BridgeSpan* span = nullptr;
+        CHECK(pathWithSpan(net, &span) != nullptr);
+        if (!span) return;
+        CHECK(span->span > p.bridges.woodSpanMax && span->span <= p.bridges.archSpanMax + 4.f);
+        CHECK(span->type == BridgeType::StoneArch); // medium span + stone region
+        CHECK(!span->navigable && span->rise == 0.f);
+        CHECK(span->maxDepth < p.bridges.ravineDepth); // shallow river bed -> not "deep"
+        RoadNetwork net2 = net;
+        rg.buildGeometry(net2, w.in, p);
+        CHECK(net2.bridgeMesh.vertexCount() > 0);
+        int lions = 0;
+        for (const auto& pr : net2.props)
+            if (pr.kind == RoadProp::Kind::StoneLion) ++lions;
+        CHECK(lions >= 2); // Steinlöwen at the entrances
+    }
+    // --- scenario C: 80 m wide river + high tech level -> Truss (Fachwerkbruecke) ---
+    {
+        FlatWorld w = flatWorld(81, 160.f, 10.f, 0.3f, 0.55f);
+        const int g = 81;
+        for (int z = 0; z < g; ++z)
+            for (int x = 20; x <= 59; ++x) { // 40 cells = 80 m wide river
+                w.h[static_cast<std::size_t>(x) + g * z] = 0.05f;
+                w.flow[static_cast<std::size_t>(x) + g * z] = 1.0f;
+            }
+        w.in.sites = {{{-70.f, 0.f}, 0.9f, 0}, {{70.f, 0.f}, 0.9f, 1}};
+        RoadGenParams p;
+        p.seed = 11u;
+        p.bridges.techLevel = 0.9f; // hoher Tech-Level / Wohlstand
+        RoadGenerator rg;
+        const RoadNetwork net = rg.generate(w.in, p);
+        const BridgeSpan* span = nullptr;
+        CHECK(pathWithSpan(net, &span) != nullptr);
+        if (!span) return;
+        CHECK(span->span > p.bridges.archSpanMax);
+        CHECK(span->type == BridgeType::Truss); // grosse Spannweite + hoher Tech-Level
+    }
+    // --- scenario D: deep wide river (riverbed far below the deck) -> Suspension ---
+    {
+        FlatWorld w = flatWorld(81, 160.f, 30.f, 0.3f, 0.55f); // land 16.5, water 9.0
+        const int g = 81;
+        for (int z = 0; z < g; ++z)
+            for (int x = 20; x <= 59; ++x) {
+                w.h[static_cast<std::size_t>(x) + g * z] = 0.0f; // riverbed at 0 -> 16.6 m deep
+                w.flow[static_cast<std::size_t>(x) + g * z] = 1.0f;
+            }
+        w.in.sites = {{{-70.f, 0.f}, 0.9f, 0}, {{70.f, 0.f}, 0.9f, 1}};
+        RoadGenParams p;
+        p.seed = 13u;
+        RoadGenerator rg;
+        const RoadNetwork net = rg.generate(w.in, p);
+        const BridgeSpan* span = nullptr;
+        CHECK(pathWithSpan(net, &span) != nullptr);
+        if (!span) return;
+        CHECK(span->maxDepth > p.bridges.ravineDepth); // tiefe Schlucht / tiefes Wasser
+        CHECK(span->type == BridgeType::Suspension);   // keine Pfeiler im tiefen Wasser
+        RoadNetwork net2 = net;
+        rg.buildGeometry(net2, w.in, p);
+        CHECK(net2.bridgeMesh.vertexCount() > 0);
+        int towers = 0, tolls = 0;
+        for (const auto& pr : net2.props) {
+            if (pr.kind == RoadProp::Kind::Watchtower) ++towers;
+            if (pr.kind == RoadProp::Kind::TollHouse) ++tolls;
+        }
+        CHECK(towers >= 1); // Wachturm am Brueckeneingang
+        CHECK(tolls >= 1);  // Zollhaeuschen (Highway)
+    }
+    // --- scenario E: dry ravine (tiefer Tobel ueber dem Wasserspiegel) -> bridge run, deep -> Suspension ---
+    {
+        FlatWorld w = flatWorld(81, 160.f, 30.f, 0.3f, 0.55f); // land 16.5, water 9.0
+        const int g = 81;
+        for (int z = 0; z < g; ++z)
+            for (int x = 38; x <= 42; ++x) // 10 m dry gorge floor at 9.6 (above water 9.0)
+                w.h[static_cast<std::size_t>(x) + g * z] = 0.32f;
+        w.in.sites = {{{-40.f, 0.f}, 0.9f, 0}, {{40.f, 0.f}, 0.9f, 1}};
+        RoadGenParams p;
+        p.seed = 17u;
+        p.bridges.ravineDepth = 5.f; // Schlucht 6.9 m tief -> als tief erkannt
+        RoadGenerator rg;
+        const RoadNetwork net = rg.generate(w.in, p);
+        const BridgeSpan* span = nullptr;
+        const RoadPath* path = pathWithSpan(net, &span);
+        CHECK(path != nullptr);
+        if (!span) return;
+        // the dry gorge was detected as a bridge run (not a sunken ribbon through the Tobel)
+        int flagged = 0;
+        for (char b : path->bridge) if (b) ++flagged;
+        CHECK(flagged > 0);
+        CHECK(span->maxDepth > p.bridges.ravineDepth);
+        CHECK(span->type == BridgeType::Suspension);
+        // deck spans bank-to-bank above the gorge floor
+        CHECK(span->deckY > 0.32f * 30.f + 1.f);
+    }
+}
+
 } // namespace
 
 void runProceduralRoadgenTests() {
@@ -296,4 +489,5 @@ void runProceduralRoadgenTests() {
     testSmoothPath();
     testGenerateHierarchyAndBridge();
     testGenerateEmptyAndSingleSite();
+    testBridgeSpansTypesAndGeometry();
 }

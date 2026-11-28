@@ -6,6 +6,7 @@
 // road mask + rut mask for the shaders/scatter, and spline props (milestones, lanterns,
 // signs, guard walls). Pure CPU, deterministic per seed — see docs/ROAD_GENERATION.md.
 
+#include <fuhglgraphics/procedural/bridgegen.hpp>
 #include <fuhglgraphics/procedural/roadgen.hpp>
 
 #include <fuhgl/render.hpp>
@@ -474,6 +475,43 @@ RoadNetwork RoadGenerator::generate(const RoadInput& in, const RoadGenParams& p)
                 }
             }
         }
+        // deep dry ravine (tiefer Tobel): a point far below the higher ground on BOTH sides
+        // within the anchor-search window is also a bridge run — the road then crosses the
+        // Schlucht on a deck instead of descending into it. Long runs without any water cell
+        // are valley floors (the road follows the valley), not crossings -> unflagged again.
+        if (p.bridges.ravineDepth > 0.f && path.points.size() > 2) {
+            const int K = std::max(1, static_cast<int>(p.bridges.maxAnchorSearch / step));
+            const float waterWorld = in.waterLevel * in.heightScale;
+            const std::size_t np = path.points.size();
+            for (std::size_t i = 1; i + 1 < np; ++i) {
+                if (path.bridge[i]) continue;
+                float hL = 0.f, hR = 0.f;
+                for (std::size_t k = (i > static_cast<std::size_t>(K) ? i - K : 0); k <= i; ++k)
+                    hL = std::max(hL, heightWorld(in, path.points[k].x, path.points[k].z));
+                for (std::size_t k = i; k < np && k <= i + static_cast<std::size_t>(K); ++k)
+                    hR = std::max(hR, heightWorld(in, path.points[k].x, path.points[k].z));
+                if (heightWorld(in, path.points[i].x, path.points[i].z) <
+                    std::min(hL, hR) - p.bridges.ravineDepth)
+                    path.bridge[i] = 1;
+            }
+            std::size_t i2 = 0;
+            while (i2 < np) {
+                if (!path.bridge[i2]) { ++i2; continue; }
+                const std::size_t a = i2;
+                while (i2 < np && path.bridge[i2]) ++i2;
+                bool hasWater = false;
+                float runLen = 0.f;
+                for (std::size_t k = a; k < i2; ++k) {
+                    if (k > a)
+                        runLen += std::hypot(path.points[k].x - path.points[k - 1].x,
+                                             path.points[k].z - path.points[k - 1].z);
+                    if (heightWorld(in, path.points[k].x, path.points[k].z) < waterWorld)
+                        hasWater = true;
+                }
+                if (!hasWater && runLen > p.bridges.maxAnchorSearch * 2.f)
+                    for (std::size_t k = a; k < i2; ++k) path.bridge[k] = 0;
+            }
+        }
         // bridge mask: path points over water that is too deep for a ford
         for (std::size_t i = 0; i < path.points.size(); ++i) {
             if (!path.bridge[i]) continue;
@@ -483,6 +521,8 @@ RoadNetwork RoadGenerator::generate(const RoadInput& in, const RoadGenParams& p)
             const std::size_t idx = static_cast<std::size_t>(x) + in.gridW * z;
             if ((*in.heightmap)[idx] < in.waterLevel) net.bridgeMask[idx] = 1;
         }
+        // analyze the bridge runs: shore anchors, span, clearance, bridge type (BridgeGenerator)
+        path.spans = BridgeGenerator::analyzeRuns(path, in, p);
         // the new road becomes "existing" for the merge discount of the next paths
         for (int c : cells) {
             built[static_cast<std::size_t>(c)] = 1.f;
@@ -613,7 +653,9 @@ void RoadGenerator::carveTerrain(std::vector<float>& heightmap, const RoadNetwor
         const float radius = hw + p.blendMargin;
         const int cr = static_cast<int>(std::ceil(radius / cell)) + 1;
         const float roadNorm = 1.f / net.heightScale; // world y -> normalized sample
-        for (const auto& pt : path.points) {
+        for (std::size_t pi = 0; pi < path.points.size(); ++pi) {
+            if (path.bridge[pi]) continue; // bridge decks fly over the gap — no bench under them
+            const auto& pt = path.points[pi];
             const float roadH = pt.y * roadNorm; // normalized centerline height of the bench
             const fuhgl::math::Vec2 gc =
                 {clamp01(pt.x / net.sizeX + 0.5f) * (gw - 1), clamp01(pt.z / net.sizeZ + 0.5f) * (gh - 1)};
@@ -643,6 +685,9 @@ void RoadGenerator::carveTerrain(std::vector<float>& heightmap, const RoadNetwor
                 }
         }
     }
+    // bridge heads: blend the shore terrain smoothly up to the deck approach height
+    // (Terrain-Aufschüttung, no edges/gaps at the abutments) — water + border ring untouched
+    BridgeGenerator::blendShoreTerrain(heightmap, net, p);
 }
 
 void RoadGenerator::buildGeometry(RoadNetwork& net, const RoadInput& in,
@@ -685,35 +730,16 @@ void RoadGenerator::buildGeometry(RoadNetwork& net, const RoadInput& in,
         const float hw = roadHalfWidth(p, path.cls);
         // refresh the path heights to the (possibly carved) terrain so the road sits on the bench
         for (auto& pt : path.points) pt.y = heightWorld(in, pt.x, pt.z) + 0.07f; // ribbon rides above the terrain mesh (no z-fighting)
-        // bridge runs get a flat deck above the water
-        std::vector<float> deckY(path.points.size(), 0.f);
+        // points inside an analyzed bridge span [first..last] are built by BridgeGenerator
+        // (deck slab + substructure + abutments) — the road ribbon skips them
+        std::vector<char> inSpan(path.points.size(), 0);
+        for (const BridgeSpan& span : path.spans)
+            for (std::size_t k = span.first; k <= span.last && k < path.points.size(); ++k)
+                inSpan[k] = 1;
+        // extrude the profile along the spline (road points only)
+        std::vector<std::uint32_t> baseRoad(path.points.size(), 0);
         for (std::size_t i = 0; i < path.points.size(); ++i) {
-            float deck = path.points[i].y;
-            if (path.bridge[i]) {
-                const float waterWorld = in.waterLevel * in.heightScale;
-                deck = std::max(deck, waterWorld + 0.7f);
-            }
-            deckY[i] = deck;
-        }
-        // smooth the deck over short bridge runs (constant per run)
-        for (std::size_t i = 0; i < path.points.size(); ++i) {
-            if (!path.bridge[i]) continue;
-            std::size_t j = i;
-            float mx = 0.f;
-            while (j < path.points.size() && path.bridge[j]) { mx = std::max(mx, deckY[j]); ++j; }
-            for (std::size_t k = i; k < j; ++k) deckY[k] = mx;
-            i = j;
-        }
-        // a point belongs to the bridge mesh when any adjacent segment is a bridge, so
-        // emission and segment indexing use the same per-point flag
-        std::vector<char> isBridgePt(path.points.size(), 0);
-        for (std::size_t i = 0; i < path.points.size(); ++i)
-            isBridgePt[i] = (path.bridge[i] || (i > 0 && path.bridge[i - 1]) ||
-                             (i + 1 < path.points.size() && path.bridge[i + 1])) ? 1 : 0;
-        // extrude the profile along the spline (bridge points go into the bridge mesh,
-        // so each point's vertex base is recorded per target mesh)
-        std::vector<std::uint32_t> baseRoad(path.points.size(), 0), baseBridge(path.points.size(), 0);
-        for (std::size_t i = 0; i < path.points.size(); ++i) {
+            if (inSpan[i]) continue; // bridge deck comes from BridgeGenerator::buildSpan
             const fuhgl::math::Vec3& c = path.points[i];
             const fuhgl::math::Vec3& prev = path.points[(i > 0 ? i - 1 : 0)];
             const fuhgl::math::Vec3& next =
@@ -722,10 +748,7 @@ void RoadGenerator::buildGeometry(RoadNetwork& net, const RoadInput& in,
             const float tl = std::hypot(tx, tz);
             if (tl > 1e-4f) { tx /= tl; tz /= tl; }
             const float nx = -tz, nz = tx; // left normal in XZ
-            const bool br = isBridgePt[i] != 0;
-            fuhgl::render::MeshData& md = br ? net.bridgeMesh : net.roadMesh;
-            std::uint32_t& base = br ? baseBridge[i] : baseRoad[i];
-            base = static_cast<std::uint32_t>(md.vertexCount());
+            baseRoad[i] = static_cast<std::uint32_t>(net.roadMesh.vertexCount());
             const int b = biomeAt(in, c.x, c.z);
             for (const ProfPt& pp : prof) {
                 fuhgl::math::Vec3 col;
@@ -734,40 +757,31 @@ void RoadGenerator::buildGeometry(RoadNetwork& net, const RoadInput& in,
                 const float off = pp.t * hw;
                 const float px = c.x + nx * off, pz = c.z + nz * off;
                 // per-vertex terrain sampling: on a cross-slope the uphill ribbon edge must
-                // not sink below the terrain surface (bridge decks stay flat)
-                const float y = br ? deckY[i] + pp.y
-                                   : heightWorld(in, px, pz) + 0.07f + pp.y;
+                // not sink below the terrain surface
+                const float y = heightWorld(in, px, pz) + 0.07f + pp.y;
                 const fuhgl::math::Vec3 pos{px, y, pz};
-                pushVertex(md, pos, up, col, pos.x * uvScale, pos.z * uvScale);
+                pushVertex(net.roadMesh, pos, up, col, pos.x * uvScale, pos.z * uvScale);
             }
         }
         for (std::size_t i = 0; i + 1 < path.points.size(); ++i) {
-            const bool br = isBridgePt[i] && isBridgePt[i + 1];
-            fuhgl::render::MeshData& md = br ? net.bridgeMesh : net.roadMesh;
-            const std::uint32_t a = br ? baseBridge[i] : baseRoad[i];
-            const std::uint32_t b2 = br ? baseBridge[i + 1] : baseRoad[i + 1];
+            if (inSpan[i] || inSpan[i + 1]) continue; // seam is covered by the abutment block
+            const std::uint32_t a = baseRoad[i];
+            const std::uint32_t b2 = baseRoad[i + 1];
             for (std::size_t k = 0; k + 1 < prof.size(); ++k) {
-                md.indices.push_back(a + static_cast<std::uint32_t>(k));
-                md.indices.push_back(a + static_cast<std::uint32_t>(k) + 1);
-                md.indices.push_back(b2 + static_cast<std::uint32_t>(k));
-                md.indices.push_back(a + static_cast<std::uint32_t>(k) + 1);
-                md.indices.push_back(b2 + static_cast<std::uint32_t>(k) + 1);
-                md.indices.push_back(b2 + static_cast<std::uint32_t>(k));
+                net.roadMesh.indices.push_back(a + static_cast<std::uint32_t>(k));
+                net.roadMesh.indices.push_back(a + static_cast<std::uint32_t>(k) + 1);
+                net.roadMesh.indices.push_back(b2 + static_cast<std::uint32_t>(k));
+                net.roadMesh.indices.push_back(a + static_cast<std::uint32_t>(k) + 1);
+                net.roadMesh.indices.push_back(b2 + static_cast<std::uint32_t>(k) + 1);
+                net.roadMesh.indices.push_back(b2 + static_cast<std::uint32_t>(k));
             }
         }
-        // bridge posts down to the ground/water every few samples
-        if (path.cls == RoadClass::Highway || path.cls == RoadClass::Country)
-            for (std::size_t i = 2; i + 1 < path.points.size(); i += 4) {
-                if (!path.bridge[i]) continue;
-                const fuhgl::math::Vec3& c = path.points[i];
-                const float ground = heightWorld(in, c.x, c.z);
-                const float postH = std::max(0.3f, deckY[i] - ground);
-                fuhgl::render::MeshData post =
-                    fuhgl::render::shapes::boxData({0.09f, postH * 0.5f, 0.09f}, {0.30f, 0.24f, 0.18f});
-                shiftY(post, postH * 0.5f);
-                appendTransformed(net.bridgeMesh, post,
-                                  fuhgl::math::translate({c.x, ground, c.z}));
-            }
+        // bridge spans: deck (Bordsteine/Rinnen/Brüstungen) + Unterbau (Bögen/Fachwerk/Kettenlinie)
+        // + Pfeiler per Raycast bis auf den Grund + Widerlager + Eingangs-Props
+        BridgeGenerator bridgeGen;
+        for (const BridgeSpan& span : path.spans)
+            bridgeGen.buildSpan(net.bridgeMesh, net.props, path, in, p, span,
+                                p.seed ^ 0xB21D6Eu ^ static_cast<std::uint32_t>(span.first));
 
         // --- props along the spline (milestones / lanterns / guard walls) ---
         float sinceMilestone = 0.f, sinceLantern = 0.f;
@@ -788,8 +802,9 @@ void RoadGenerator::buildGeometry(RoadNetwork& net, const RoadInput& in,
                     return std::hypot(s.pos.x - c.x, s.pos.y - c.z) < p.lanternRadius;
                 });
             const float hwFull = halfWidth(p, path.cls);
+            const bool onBridge = inSpan[i] != 0; // bridge entrances get their own props (buildSpan)
             // milestone (Meilenstein) every milestoneEvery on highway/country
-            if (path.cls != RoadClass::Trail) {
+            if (path.cls != RoadClass::Trail && !onBridge) {
                 sinceMilestone += segLen;
                 if (sinceMilestone >= p.milestoneEvery) {
                     sinceMilestone = 0.f;
@@ -813,7 +828,7 @@ void RoadGenerator::buildGeometry(RoadNetwork& net, const RoadInput& in,
                 }
             }
             // lantern (Laterne) near settlements on highway/country
-            if ((path.cls != RoadClass::Trail) && nearSite) {
+            if ((path.cls != RoadClass::Trail) && !onBridge && nearSite) {
                 sinceLantern += segLen;
                 if (sinceLantern >= p.lanternEvery) {
                     sinceLantern = 0.f;
@@ -837,7 +852,7 @@ void RoadGenerator::buildGeometry(RoadNetwork& net, const RoadInput& in,
                 }
             }
             // guard wall (Steinmauer) where the ground drops steeply at the road edge
-            if (++wallEvery >= 3 && !path.bridge[i]) {
+            if (++wallEvery >= 3 && !onBridge) {
                 wallEvery = 0;
                 for (int side = -1; side <= 1; side += 2) {
                     if (net.props.size() >= maxProps) break;

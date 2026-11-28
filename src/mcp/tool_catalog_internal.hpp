@@ -12,6 +12,7 @@
 #include <fuhgl/math.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
@@ -119,9 +120,12 @@ inline io::Json nodeToJson(const scene::Node& n) {
 }
 
 /// @brief Attaches `md` as a new child node (GL mesh via host.meshDataResolver when set).
-/// Returns nullptr when attaching is impossible (no scene / no resolver).
+/// `materialId` (when non-zero) is stored on the entry — e.g. 10 for G38 bridge meshes so the
+/// lighting pass can apply the waterline band to them. Returns nullptr when attaching is
+/// impossible (no scene / no resolver).
 inline scene::Node* attachMeshData(ToolHost& host, const std::string& name, const MeshData& md,
-                                   scene::Node* parent, const Vec3& translation) {
+                                   scene::Node* parent, const Vec3& translation,
+                                   std::uint32_t materialId = 0) {
     if (!host.scene || !parent || !host.meshDataResolver || !host.meshArena) return nullptr;
     scene::Node& node = parent->createChild(name);
     node.translation = translation;
@@ -130,6 +134,7 @@ inline scene::Node* attachMeshData(ToolHost& host, const std::string& name, cons
     if (!mesh) return nullptr;
     scene::MeshEntry& entry = node.attach<scene::MeshComponent>().addMesh(mesh.get());
     if (host.meshDataArena && !host.meshDataArena->empty()) entry.meshData = host.meshDataArena->back().get();
+    if (materialId != 0) entry.materialId = materialId;
     host.meshArena->push_back(std::move(mesh));
     return &node;
 }
