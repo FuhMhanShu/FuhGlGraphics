@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
     // --- stage: floor, monitor stand + screen quad carrying the WorldSurface texture ---
     scene::Scene scene;
     std::vector<fuhgl::render::Mesh> meshes;
+    meshes.reserve(8); // nodes hold pointers into this vector — no reallocation allowed
     auto addBox = [&](const char* name, const fuhgl::math::Vec3& pos, const fuhgl::math::Vec3& half,
                       const fuhgl::math::Vec3& albedo) {
         meshes.emplace_back();
@@ -172,7 +173,7 @@ int main(int argc, char** argv) {
     se.albedoTexture = &surface.texture(); // the UI texture on the 3D screen model
     se.meshData = &screenData;               // enables WorldSurface::pickUv on this node
     se.roughness = 0.15f;
-    se.emissive = {0.35f, 0.35f, 0.38f};
+    se.emissive = {0.10f, 0.10f, 0.12f}; // slight self-glow so the screen reads as "on"
     se.castShadow = false;
 
     fuhgl::FirstPersonCamera cam;

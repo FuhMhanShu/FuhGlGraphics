@@ -258,15 +258,23 @@ void Batch2D::begin(int width, int height) {
     gl::disable(gl::Cap::DepthTest);
     gl::disable(gl::Cap::CullFace);
     gl::enable(gl::Cap::Blend);
-    gl::blendFunc(gl::BlendFactor::SrcAlpha, gl::BlendFactor::OneMinusSrcAlpha);
+    // separate alpha: a_out = a_src + a_dst * (1 - a_src) — the alpha channel stays sane
+    // when compositing translucent UI over an opaque 3D frame
+    gl::blendFuncSeparate(gl::BlendFactor::SrcAlpha, gl::BlendFactor::OneMinusSrcAlpha,
+                          gl::BlendFactor::One, gl::BlendFactor::OneMinusSrcAlpha);
     im.begun = true;
 }
 
 void Batch2D::end() {
     Impl& im = *impl_;
     flush();
-    if (im.savedBlend) gl::enable(gl::Cap::Blend);
-    else gl::disable(gl::Cap::Blend);
+    if (im.savedBlend) {
+        gl::enable(gl::Cap::Blend);
+        gl::blendFuncSeparate(gl::BlendFactor::SrcAlpha, gl::BlendFactor::OneMinusSrcAlpha,
+                              gl::BlendFactor::One, gl::BlendFactor::OneMinusSrcAlpha);
+    } else {
+        gl::disable(gl::Cap::Blend);
+    }
     if (im.savedDepth) gl::enable(gl::Cap::DepthTest);
     else gl::disable(gl::Cap::DepthTest);
     if (im.savedScissor) gl::enable(gl::Cap::ScissorTest);

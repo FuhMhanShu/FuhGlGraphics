@@ -12,6 +12,7 @@
 #include <fuhgl/gl/info.hpp>
 #include <fuhgl/render.hpp>
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
@@ -126,13 +127,14 @@ int main() {
     surf.render(ui);
     fuhgl::gl::flush();
     const std::vector<unsigned char> px = readTex(surf.texture(), SW, SH);
+    // getTexImage returns the bottom row first: flip y so (x, y) is "y from the top"
     const auto at = [&](int x, int y) -> const unsigned char* {
-        return px.data() + (static_cast<std::size_t>(y) * SW + x) * 4;
+        return px.data() + (static_cast<std::size_t>(SH - 1 - y) * SW + x) * 4;
     };
-    // panel background at the panel center (theme.panelBg ~ (41,43,51) with alpha 0.98 over black)
-    const unsigned char* bg = at(SW / 2, 20);
+    // panel background in the title bar (theme.panelBg ~ (41,43,51), alpha 0.98 over cleared black)
+    const unsigned char* bg = at(SW / 2, 14);
     std::fprintf(stderr, "gl_smoke_ui: panel bg=(%d,%d,%d,%d)\n", bg[0], bg[1], bg[2], bg[3]);
-    if (bg[3] < 200 || bg[0] < 25 || bg[0] > 70) {
+    if (bg[3] < 240 || bg[0] < 25 || bg[0] > 70) {
         std::fprintf(stderr, "gl_smoke_ui: FAIL panel bg pixel\n");
         return 1;
     }
@@ -183,24 +185,22 @@ int main() {
     renderer.output().bind();
     std::vector<unsigned char> out(static_cast<std::size_t>(W) * H * 4, 0);
     fuhgl::gl::readPixels(0, 0, W, H, fuhgl::gl::GL_RGBA, fuhgl::gl::GL_UNSIGNED_BYTE, out.data());
-    // the overlay panel covers (8,8)..(W-8,H-8) top-left in screen space; readPixels is bottom-up:
+    // the overlay panel covers (8,8)..(W-8,H-8) in screen space; readPixels is bottom-up:
     const auto oat = [&](int x, int yTop) -> const unsigned char* {
         return out.data() + (static_cast<std::size_t>(H - 1 - yTop) * W + x) * 4;
     };
-    const unsigned char* op = oat(W / 2, 20); // inside the panel, above the title text row
-    std::fprintf(stderr, "gl_smoke_ui: overlay panel=(%d,%d,%d,%d)\n", op[0], op[1], op[2], op[3]);
-    if (op[3] != 255 || op[0] < 25 || op[0] > 70) {
-        std::fprintf(stderr, "gl_smoke_ui: FAIL overlay pass did not draw the panel\n");
-        return 1;
-    }
-    bool foundHudText = false;
-    for (int y = 30; y < 48 && !foundHudText; ++y)
-        for (int x = 16; x < W - 16 && !foundHudText; ++x) {
+    // the overlay panel covers (8,8)..(W-8,H-8): scan the region for panel-bg pixels
+    // (theme.panelBg ~ r=41, opaque after the separate-alpha blend) and bright text pixels
+    int panelPx = 0, textPx = 0;
+    for (int y = 8; y < H - 8; ++y)
+        for (int x = 8; x < W - 8; ++x) {
             const unsigned char* p = oat(x, y);
-            if (p[0] > 180) foundHudText = true;
+            if (p[3] == 255 && p[0] >= 30 && p[0] <= 60) ++panelPx;
+            if (p[0] > 180) ++textPx;
         }
-    if (!foundHudText) {
-        std::fprintf(stderr, "gl_smoke_ui: FAIL overlay text pixels\n");
+    std::fprintf(stderr, "gl_smoke_ui: overlay panelPx=%d textPx=%d\n", panelPx, textPx);
+    if (panelPx < 2000 || textPx < 20) {
+        std::fprintf(stderr, "gl_smoke_ui: FAIL overlay pass did not draw the panel/text\n");
         return 1;
     }
 
@@ -214,7 +214,10 @@ int main() {
     auto& entry = node.attach<scene::MeshComponent>().addMesh(&screenMesh);
     entry.meshData = &md;
     fuhgl::FirstPersonCamera pickCam;
-    pickCam.position = {0.f, 0.f, 3.f}; // yaw 0, pitch 0 -> looks down -Z at the XY quad
+    pickCam.position = {0.f, 0.f, 6.f}; // yaw 0, pitch 0 -> looks down -Z at the XY quad
+    // fov chosen so the frustum at the quad (dist 6) is 4 units wide, the quad (half 1) covers
+    // ndc |x| <= 0.5: center -> u = 0.5, viewport x = 80 (ndc 0.25) -> u = 0.75, corner misses
+    pickCam.fovY = 2.f * std::atan(1.f / 3.f);
     float u = 0.f, v = 0.f;
     if (!ui::WorldSurface::pickUv(sc, pickCam, 128, 128, 64.f, 64.f, &node, u, v)) {
         std::fprintf(stderr, "gl_smoke_ui: pickUv missed the quad center\n");
@@ -224,15 +227,15 @@ int main() {
     CHECK_NEAR(u, 0.5, 0.03);
     CHECK_NEAR(v, 0.5, 0.03);
     float u2 = 0.f, v2 = 0.f;
-    if (!ui::WorldSurface::pickUv(sc, pickCam, 128, 128, 96.f, 64.f, &node, u2, v2)) {
+    if (!ui::WorldSurface::pickUv(sc, pickCam, 128, 128, 80.f, 64.f, &node, u2, v2)) {
         std::fprintf(stderr, "gl_smoke_ui: pickUv missed the right quarter\n");
         return 1;
     }
     CHECK_NEAR(u2, 0.75, 0.03);
-    // a pick far outside the quad must miss
+    // a pick near the frame corner is outside the quad -> must miss
     float u3 = 0.f, v3 = 0.f;
     CHECK(!ui::WorldSurface::pickUv(sc, pickCam, 128, 128, 2.f, 2.f, &node, u3, v3));
 
     std::fprintf(stderr, "gl_smoke_ui: OK\n");
-    return 0;
+    return fuhglgraphicstest::failures() > 0 ? 1 : 0;
 }
