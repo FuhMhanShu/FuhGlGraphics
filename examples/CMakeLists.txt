@@ -214,3 +214,9 @@ target_link_libraries(fuhglgraphics_cave_screenshot PRIVATE fuhglgraphics)
 # flash + optional L-system bolt, bloom) — one PNG per --weather state, headless to PNG.
 add_executable(fuhglgraphics_weather_screenshot weather_screenshot/main.cpp)
 target_link_libraries(fuhglgraphics_weather_screenshot PRIVATE fuhglgraphics)
+
+# G41 demo: 2D UI layer in the G3 deferred renderer — a menu on a 3D screen model
+# (WorldSurface texture + pickUv) plus a screen-space HUD overlay post pass
+# (makeOverlayPass), headless to PNG (docs/images/).
+add_executable(fuhglgraphics_ui_screenshot ui_screenshot/main.cpp)
+target_link_libraries(fuhglgraphics_ui_screenshot PRIVATE fuhglgraphics)

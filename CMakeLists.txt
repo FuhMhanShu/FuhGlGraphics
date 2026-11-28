@@ -76,6 +76,11 @@ add_library(fuhglgraphics STATIC
     src/procedural/plant.cpp
     src/procedural/vegetation.cpp
     src/weather/weather.cpp
+    src/ui/batch2d.cpp
+    src/ui/widget.cpp
+    src/ui/widgets.cpp
+    src/ui/ui_root.cpp
+    src/ui/overlay.cpp
 )
 add_library(FuhGlGraphics::fuhglgraphics ALIAS fuhglgraphics)
 

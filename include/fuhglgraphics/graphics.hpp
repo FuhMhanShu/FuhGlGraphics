@@ -85,6 +85,25 @@
 
 #include <fuhglgraphics/weather/weather.hpp>
 
+//   ui/       G41  2D engine / UI layer on top of FuhGLCore (implemented): Batch2D
+//                   (batched quads/lines/text, one dynamic VBO), Font metrics on the
+//                   embedded 8x8 atlas, input events, Signal/Property two-way binding,
+//                   widget tree with layouts (Free/HBox/VBox/Grid) + widgets (Label,
+//                   Button, Checkbox, RadioButton, Slider, ProgressBar, LineEdit,
+//                   ListBox, Panel, Image), UiRoot (dispatch/focus/render) and the G3
+//                   integration (overlay post pass + WorldSurface for a menu on a 3D
+//                   screen model via G18 picking)
+#include <fuhglgraphics/ui/geometry.hpp>
+#include <fuhglgraphics/ui/input.hpp>
+#include <fuhglgraphics/ui/binding.hpp>
+#include <fuhglgraphics/ui/font.hpp>
+#include <fuhglgraphics/ui/theme.hpp>
+#include <fuhglgraphics/ui/batch2d.hpp>
+#include <fuhglgraphics/ui/widget.hpp>
+#include <fuhglgraphics/ui/widgets.hpp>
+#include <fuhglgraphics/ui/ui_root.hpp>
+#include <fuhglgraphics/ui/overlay.hpp>
+
 // NOTE: editor/gl_viewport_widget.hpp (WITH_QT only) is deliberately NOT included here:
 // its Qt/GL headers would leak GL macros (e.g. GL_UNSIGNED_INT) into every core TU and
 // clash with FuhGLCore's fuhgl::gl constants. Editor code includes it directly:
